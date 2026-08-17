@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=7" />
+    <link rel="stylesheet" href="./styles.css?v=8" />
   </head>
   <body>
     <main class="app-shell">
@@ -32,14 +32,10 @@
               <h2>Помещение</h2>
               <span class="unit-label">метры</span>
             </div>
-            <label class="field">
-              <span>Ширина</span>
-              <input id="room-width" type="text" inputmode="decimal" value="20" />
-            </label>
-            <label class="field">
-              <span>Длина</span>
-              <input id="room-depth" type="text" inputmode="decimal" value="12" />
-            </label>
+            <div class="static-field-row room-field-row">
+              <label class="compact-field"><span>Ширина</span><input id="room-width" type="text" inputmode="decimal" value="20" /></label>
+              <label class="compact-field"><span>Длина</span><input id="room-depth" type="text" inputmode="decimal" value="12" /></label>
+            </div>
           </section>
 
           <section class="panel-section">
@@ -47,13 +43,12 @@
               <h2>Сцена</h2>
               <span class="unit-label">метры</span>
             </div>
-            <label class="field"><span>Ширина</span><input id="stage-width" type="text" inputmode="decimal" value="12" /></label>
-            <label class="field"><span>Длина</span><input id="stage-depth" type="text" inputmode="decimal" value="8" /></label>
-            <label class="field"><span>Высота</span><input id="stage-height" type="text" inputmode="decimal" value="0.8" /></label>
-            <label class="checkbox-field">
-              <input id="measure-from-stage" type="checkbox" />
-              <span>Отсчитывать высоту объектов от сцены</span>
-            </label>
+            <div class="static-field-row stage-field-row">
+              <label class="compact-field"><span>Ширина</span><input id="stage-width" type="text" inputmode="decimal" value="12" /></label>
+              <label class="compact-field"><span>Длина</span><input id="stage-depth" type="text" inputmode="decimal" value="8" /></label>
+              <label class="compact-field"><span>Высота</span><input id="stage-height" type="text" inputmode="decimal" value="0.8" /></label>
+              <label class="compact-checkbox"><input id="measure-from-stage" type="checkbox" /><span>от сцены</span></label>
+            </div>
           </section>
 
           <section class="panel-section object-browser-section">
@@ -140,7 +135,7 @@
         </div>
       </section>
     </div>
-    <script src="./designer-adapter.js?v=7"></script>
-    <script src="./app.js?v=7"></script>
+    <script src="./designer-adapter.js?v=8"></script>
+    <script src="./app.js?v=8"></script>
   </body>
 </html>

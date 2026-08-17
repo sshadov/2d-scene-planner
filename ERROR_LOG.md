@@ -169,3 +169,19 @@
 - Cause: the UI checked only whether the browser adapter object was loaded, not whether `/api/session/status/session` answered.
 - Fix: probe the session endpoint at startup and distinguish `Designer доступен` from `Designer не отвечает · JSON доступен`.
 - Regression test: with the endpoint unavailable, the export dialog remains disabled and the footer reports the offline state.
+
+## ERR-020: Expanding object controls moved the plan
+
+- Date: 2026-08-17
+- Symptom: opening several object inspectors increased the page height and made the right-hand plan jump or move away.
+- Cause: the application shell used only `min-height`, so tall sidebar content expanded the shared grid instead of scrolling independently.
+- Fix: lock the desktop shell to the viewport, give the sidebar its own scroll container, and group related inputs into compact horizontal rows.
+- Regression test: canvas height is identical before and after expanding an LED inspector; fields in each titled section share the same top coordinate.
+
+## ERR-021: Projector Look At was invisible and hard to control
+
+- Date: 2026-08-17
+- Symptom: numeric Look At coordinates did not show where the projector was aimed, and users could not target a projection surface directly.
+- Cause: Look At existed only as three inspector inputs without a plan marker or scene-object relation.
+- Fix: draw a target cross and dashed line, allow the cross to be dragged in X/Z, and add a surface selector that derives the target from the selected surface centre.
+- Regression test: a projector linked to a surface at `(4,1,-2)` with height `3` exports Look At `(4,2.5,-2)`; the inspector contains no raw Look At Z field.

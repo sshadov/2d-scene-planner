@@ -14,7 +14,7 @@ The project helps a video engineer create the first usable layout of an event in
 
 The planner owns only objects identified by a stable plugin ID or explicitly adopted known defaults. It never silently edits or deletes manual Designer objects. In this version, "new scene" means a clean object set in the current `stage`, not a new Designer project.
 
-The current object set is LED screens, surfaces, cameras, projectors, and lights. Screens and projection surfaces carry physical size, resolution, and pixel pitch; projectors carry position, target, and resolution. Projector lens models, parent-child constraints, podium geometry, calibration, and content routing are future work.
+The current object set is LED screens, surfaces, cameras, projectors, and lights. LED screens carry physical size, resolution, and PPI; projection surfaces carry size and resolution; projectors carry position, target, and resolution. Projector lens models, parent-child constraints, podium geometry, calibration, and content routing are future work.
 
 ## Definition of done for the current milestone
 
@@ -33,4 +33,6 @@ The current object set is LED screens, surfaces, cameras, projectors, and lights
 - Create/update reads coordinates back from Designer and rejects a mismatch over `0.001`.
 - Projectors use a target point (`Look At`) and concrete cameras use the `Camera` resource class.
 - Object deletion requires an inline confirmation before changing the local plan.
+- Opening object controls must not resize or move the top-view canvas.
+- A projector target is visible on the plan and may follow a selected projection surface centre.
 - Setup and tests can be followed from `TESTING.md`.

@@ -16,6 +16,8 @@
 - **Bottom-centre anchor**: planner position for a screen/surface; Designer receives a centre pivot calculated as `Y + height/2`.
 - **Optical centre**: planner position for a projector or camera, written to its type-specific Designer transform.
 - **Look At**: projector target point in world coordinates, written to `Projector.configLookAt`.
+- **Target surface**: optional projection surface whose current centre supplies a projector's Look At point.
+- **PPI**: pixels per inch, stored only for LED screens in the planner metadata.
 - **Stage-relative height**: UI-only offset from `stage.floorY + stage.height`; saved plans still store absolute Designer Y.
 - **Room frame**: visible plan boundary centred on world `X=0, Z=0`; it never offsets object coordinates.
 - **Stage footprint**: positioned X/Z rectangle with physical width, depth, height, and top elevation used for initial object placement.

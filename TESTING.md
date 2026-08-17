@@ -74,9 +74,10 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 5. Change `Y`; the canvas position must not move. Click the object away from its centre; coordinates must not change. Drag it; only absolute `X/Z` may change and the original cursor offset must be preserved.
 6. Set a projector to `(3,2.5,-5)` with Look At `(0,0.8,0)` and verify `configPosition/configLookAt` are written and read back. Its body `offset/rotation` and `configRotation` are not changed.
 7. Verify a camera resource is class `Camera` and uses `offset/rotation`; a light also uses `offset/rotation`.
-8. Verify the projector cone follows its Look At point and camera/light cones follow `Ry` in the top view.
+8. Verify the projector cone and target marker follow its Look At point and camera/light cones follow `Ry` in the top view.
 9. Force a readback difference above `0.001`; sync must stop and display the mismatched field.
-10. Load a v6 screen with `Y=0`; v7 must preserve its object world Y and convert the old stage-top floor reference correctly.
+10. Load a v6 screen with `Y=0`; v8 must preserve its object world Y and convert the old stage-top floor reference correctly.
+11. Load a v7 plan with base `floorY=0.4`; v8 must keep `0.4` rather than subtracting stage height again.
 
 ## Sidebar and numeric input scenarios
 
@@ -86,8 +87,13 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 4. Temporarily clear a field; the model must retain its previous value rather than writing zero.
 5. Hold the primary mouse button over a numeric field and move horizontally; every 8 px changes the value by `0.1 m` for metric fields.
 6. Add an object after entering comma-formatted room/stage values; the room/stage dimensions must remain unchanged.
-7. For an LED screen and projection surface, verify width, height, resolution X/Y, and pixel pitch are editable. For a projector, verify resolution X/Y is editable.
+7. For an LED screen, verify width, height, resolution X/Y, and PPI are editable. For a projection surface, verify the same fields except PPI. For a projector, verify resolution X/Y is editable.
 8. Toggle "Отсчитывать высоту объектов от сцены": a screen at world Y `0.8` displays `0` when stage top is `0.8`, then returns to `0.8` when unchecked.
+9. Expand and collapse an object inspector; the canvas bounding-box height must not change.
+10. Verify the `Размер`, `Положение`, and `Разрешение` section fields share one horizontal row whenever they fit.
+11. Verify lights and cameras expose no tilt field, only position and horizontal direction/rotation.
+12. Link a projector to a surface and move the surface; the projector target marker and exported Look At must follow its centre.
+13. Switch the projector to `Ручная точка на плане` and drag the marker; only Look At X/Z change.
 
 ## Safe synchronization scenarios
 

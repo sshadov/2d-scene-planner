@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 - 2026-08-17
+
+- Rebuilt object inspectors as compact titled rows to stop the sidebar from expanding the canvas.
+- Kept room dimensions and all stage dimensions plus the relative-height checkbox on compact rows.
+- Changed LED density metadata from millimetre pitch to PPI and removed density from projection surfaces.
+- Reduced projector, light, and camera controls to the requested position and horizontal direction fields.
+- Added visible draggable projector Look At markers and surface-centre targeting.
+- Added v8 migration that preserves v7 stage-floor semantics and converts legacy LED pixel pitch to PPI.
+
 ## 0.8.0 - 2026-08-17
 
 - Added stage-relative height display without changing saved world Y.

@@ -1,6 +1,6 @@
 (() => {
-  const VERSION = 7;
-  const STORAGE_KEY = "disguise-scene-generator-state-v7";
+  const VERSION = 8;
+  const STORAGE_KEY = "disguise-scene-generator-state-v8";
   const PLANAR_TYPES = new Set(["screen", "surface"]);
   const GROUP_ORDER = ["screen", "projector", "light", "surface", "camera"];
   const defaults = {
@@ -9,10 +9,10 @@
     counts: { screen: 3, projector: 1, light: 4, surface: 0, camera: 0 }
   };
   const typeConfig = {
-    screen: { label: "LED-экран", group: "LED-экраны", color: "#3dd9d4", geometry: { width: 4, height: 2 }, media: { resolutionX: 1920, resolutionY: 1080, pixelPitchMm: 2.6 } },
+    screen: { label: "LED-экран", group: "LED-экраны", color: "#3dd9d4", geometry: { width: 4, height: 2 }, media: { resolutionX: 1920, resolutionY: 1200, pixelsPerInch: 10 } },
     projector: { label: "Проектор", group: "Проекторы", color: "#c084fc", radius: 0.38, defaultHeight: 2.5, media: { resolutionX: 1920, resolutionY: 1080 } },
     light: { label: "Световой прибор", group: "Световые приборы", color: "#f8c84d", radius: 0.23, defaultHeight: 3 },
-    surface: { label: "Поверхность", group: "Поверхности", color: "#4e9cff", geometry: { width: 3, height: 2 }, media: { resolutionX: 1920, resolutionY: 1080, pixelPitchMm: 2.6 } },
+    surface: { label: "Поверхность", group: "Поверхности", color: "#4e9cff", geometry: { width: 3, height: 2 }, media: { resolutionX: 1920, resolutionY: 1200 } },
     camera: { label: "Камера", group: "Камеры", color: "#ff7d62", radius: 0.36, defaultHeight: 1.6 }
   };
   const roomInputs = {
@@ -44,6 +44,12 @@
   function roomBounds() { return { minX: -state.room.width / 2, maxX: state.room.width / 2, minZ: -state.room.depth / 2, maxZ: state.room.depth / 2 }; }
   function stageBounds() { return { minX: state.stage.centerX - state.stage.width / 2, maxX: state.stage.centerX + state.stage.width / 2, minZ: state.stage.centerZ - state.stage.depth / 2, maxZ: state.stage.centerZ + state.stage.depth / 2 }; }
   function stageTopY() { return state.stage.floorY + state.stage.height; }
+  function targetSurface(object) { return object?.targetSurfacePluginId ? state.objects.find(item => item.type === "surface" && item.pluginId === object.targetSurfacePluginId) : null; }
+  function effectiveLookAt(object) {
+    const surface = targetSurface(object);
+    if (surface) return { x: surface.transform.position.x, y: surface.transform.position.y + surface.geometry.height / 2, z: surface.transform.position.z };
+    return vector(object?.lookAt);
+  }
   function lookAtFromRotation(position, rotation) {
     const yaw = finite(rotation?.y); return { x: position.x + Math.sin(yaw * Math.PI / 180), y: position.y, z: position.z + Math.cos(yaw * Math.PI / 180) };
   }
@@ -60,7 +66,7 @@
       const legacyTopY = finite(saved.floorY, defaults.stage.floorY);
       return {
         centerX: finite(saved.centerX), centerZ: finite(saved.centerZ),
-        floorY: sourceVersion >= VERSION ? legacyTopY : Number((legacyTopY - savedHeight).toFixed(3)),
+        floorY: sourceVersion >= 7 ? legacyTopY : Number((legacyTopY - savedHeight).toFixed(3)),
         width: Math.max(.5, finite(saved.width, defaults.stage.width)), depth: Math.max(.5, finite(saved.depth, defaults.stage.depth)), height: savedHeight,
         measureFromStage: Boolean(saved.measureFromStage)
       };
@@ -93,15 +99,18 @@
     if (config.media) normalized.media = {
       resolutionX: Math.max(1, Math.round(finite(object.media?.resolutionX, config.media.resolutionX))),
       resolutionY: Math.max(1, Math.round(finite(object.media?.resolutionY, config.media.resolutionY))),
-      ...(PLANAR_TYPES.has(type) ? { pixelPitchMm: Math.max(.1, finite(object.media?.pixelPitchMm, config.media.pixelPitchMm)) } : {})
+      ...(type === "screen" ? { pixelsPerInch: Math.max(.1, finite(object.media?.pixelsPerInch, object.media?.pixelPitchMm ? 25.4 / finite(object.media.pixelPitchMm, 2.6) : config.media.pixelsPerInch)) } : {})
     };
-    if (type === "projector") normalized.lookAt = vector(object.lookAt || lookAtFromRotation(position, rotation));
+    if (type === "projector") {
+      normalized.lookAt = vector(object.lookAt || lookAtFromRotation(position, rotation));
+      if (object.targetSurfacePluginId) normalized.targetSurfacePluginId = String(object.targetSurfacePluginId);
+    }
     if (object.designer) normalized.designer = object.designer;
     return normalized;
   }
   function loadPersisted() {
     try {
-      const keys = [STORAGE_KEY, "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
+      const keys = [STORAGE_KEY, "disguise-scene-generator-state-v7", "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
       const saved = JSON.parse(keys.map(key => localStorage.getItem(key)).find(Boolean) || "null"); if (!saved) return false;
       const sourceVersion = Number(saved.version) || (saved.objects?.some(object => object.position) ? 3 : 2);
       state.room = normalizedRoom(saved.room); state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion);
@@ -194,7 +203,7 @@
   }
   function directionAngle(object) {
     const position = object.transform.position;
-    if (object.type === "projector" && object.lookAt) return Math.atan2(object.lookAt.x - position.x, object.lookAt.z - position.z);
+    if (object.type === "projector" && object.lookAt) { const target = effectiveLookAt(object); return Math.atan2(target.x - position.x, target.z - position.z); }
     return finite(object.transform.rotation.y) * Math.PI / 180;
   }
   function drawDirection(config, frame, object, length, spread) {
@@ -209,10 +218,16 @@
     if (object.type === "camera") { drawDirection(config, frame, object, 3, 1.4); const r = config.radius * frame.scale; ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(-r * .75, r * .8); ctx.lineTo(r * .75, r * .8); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     ctx.restore(); if (selected) { ctx.fillStyle = "#fff"; ctx.font = "12px Inter,sans-serif"; ctx.textAlign = "center"; ctx.fillText(object.name, position.x, position.y - 16); }
   }
-  function drawScene() { const frame = sizing(); drawGrid(frame); state.objects.forEach(object => drawObject(object, frame)); emptyHint.hidden = state.objects.length > 0; document.querySelector("#zoom-level").textContent = `${Math.round(state.zoom * 100)}%`; document.querySelector("#scene-summary").textContent = `Помещение ${state.room.width.toFixed(1)} × ${state.room.depth.toFixed(1)} м · сцена ${state.stage.width.toFixed(1)} × ${state.stage.depth.toFixed(1)} × ${state.stage.height.toFixed(1)} м`; }
+  function drawProjectorTarget(object, frame) {
+    const source = toScreen(object.transform.position.x, object.transform.position.z, frame); const target = effectiveLookAt(object); const point = toScreen(target.x, target.z, frame); const selected = object.id === state.selectedId;
+    ctx.save(); ctx.strokeStyle = selected ? "rgba(192,132,252,.95)" : "rgba(192,132,252,.38)"; ctx.lineWidth = selected ? 1.5 : 1; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(source.x, source.y); ctx.lineTo(point.x, point.y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = targetSurface(object) ? "#4e9cff" : "#10161c"; ctx.strokeStyle = "#c084fc"; ctx.lineWidth = selected ? 2.5 : 1.5; ctx.beginPath(); ctx.arc(point.x, point.y, selected ? 7 : 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(point.x - 10, point.y); ctx.lineTo(point.x + 10, point.y); ctx.moveTo(point.x, point.y - 10); ctx.lineTo(point.x, point.y + 10); ctx.stroke(); ctx.restore();
+  }
+  function drawScene() { const frame = sizing(); drawGrid(frame); state.objects.filter(object => object.type === "projector").forEach(object => drawProjectorTarget(object, frame)); state.objects.forEach(object => drawObject(object, frame)); emptyHint.hidden = state.objects.length > 0; document.querySelector("#zoom-level").textContent = `${Math.round(state.zoom * 100)}%`; document.querySelector("#scene-summary").textContent = `Помещение ${state.room.width.toFixed(1)} × ${state.room.depth.toFixed(1)} м · сцена ${state.stage.width.toFixed(1)} × ${state.stage.depth.toFixed(1)} × ${state.stage.height.toFixed(1)} м`; }
   function selectedObject() { return state.objects.find(object => object.id === state.selectedId); }
   function objectRadius(object, frame) { return PLANAR_TYPES.has(object.type) ? object.geometry.width * frame.scale / 2 : Math.max(12, (typeConfig[object.type].radius || .3) * frame.scale * 1.8); }
   function hitTest(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { const p = toScreen(object.transform.position.x, object.transform.position.z, frame); return Math.hypot(point.x - p.x, point.y - p.y) < objectRadius(object, frame) + 7; }); }
+  function hitTestProjectorTarget(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { if (object.type !== "projector") return false; const target = effectiveLookAt(object); const p = toScreen(target.x, target.z, frame); return Math.hypot(point.x - p.x, point.y - p.y) <= 12; }); }
   function snapCoordinate(axis, value, object) {
     const mode = document.querySelector("#snap-mode").value; let result = value; if (mode === "grid-1") result = Math.round(result); if (mode === "grid-01") result = Math.round(result * 10) / 10;
     const stage = stageBounds(); const center = axis === "x" ? state.stage.centerX : state.stage.centerZ; const min = axis === "x" ? stage.minX : stage.minZ; const max = axis === "x" ? stage.maxX : stage.maxZ;
@@ -224,16 +239,23 @@
   function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
   function objectHeightValue(object) { return state.stage.measureFromStage ? object.transform.position.y - stageTopY() : object.transform.position.y; }
   function setObjectHeight(object, value) { object.transform.position.y = state.stage.measureFromStage ? stageTopY() + value : value; }
-  function fieldDefinition(object) {
-    const fields = [];
-    if (object.geometry) fields.push(["Ширина", "geometry.width", object.geometry.width, .1, "м"], ["Высота", "geometry.height", object.geometry.height, .1, "м"]);
-    const heightLabel = state.stage.measureFromStage ? "Высота от сцены" : PLANAR_TYPES.has(object.type) ? "Y нижнего края" : object.type === "projector" ? "Y линзы" : object.type === "camera" ? "Y камеры" : "Y прибора";
-    fields.push(["X", "transform.position.x", object.transform.position.x, .1, "м"], [heightLabel, "transform.position.y", objectHeightValue(object), .1, "м"], ["Z", "transform.position.z", object.transform.position.z, .1, "м"]);
-    if (object.type === "projector") fields.push(["Look at X", "lookAt.x", object.lookAt?.x ?? state.stage.centerX, .1, "м"], ["Look at Y", "lookAt.y", object.lookAt?.y ?? stageTopY(), .1, "м"], ["Look at Z", "lookAt.z", object.lookAt?.z ?? state.stage.centerZ, .1, "м"]);
-    else if (PLANAR_TYPES.has(object.type)) fields.push(["Поворот по плану", "transform.rotation.y", object.transform.rotation.y, 1, "°"]);
-    else fields.push(["Наклон X", "transform.rotation.x", object.transform.rotation.x, 1, "°"], ["Направление Y", "transform.rotation.y", object.transform.rotation.y, 1, "°"]);
-    if (object.media) fields.push(["Разрешение X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Разрешение Y", "media.resolutionY", object.media.resolutionY, 1, "px"]); if (PLANAR_TYPES.has(object.type)) fields.push(["Шаг пикселя", "media.pixelPitchMm", object.media.pixelPitchMm, .1, "мм"]);
-    return fields;
+  function fieldSections(object) {
+    const heightLabel = state.stage.measureFromStage ? "От сцены" : "Высота";
+    const position = [["X", "transform.position.x", object.transform.position.x, .1, "м"], ["Z", "transform.position.z", object.transform.position.z, .1, "м"], [heightLabel, "transform.position.y", objectHeightValue(object), .1, "м"]];
+    if (PLANAR_TYPES.has(object.type)) return [
+      { title: "Размер", fields: [["Ширина", "geometry.width", object.geometry.width, .1, "м"], ["Высота", "geometry.height", object.geometry.height, .1, "м"]] },
+      { title: "Положение", fields: [...position, ["Поворот", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] },
+      { title: "Разрешение", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"], ...(object.type === "screen" ? [["PPI", "media.pixelsPerInch", object.media.pixelsPerInch, .1, "ppi"]] : [])] }
+    ];
+    if (object.type === "projector") return [
+      { title: "Положение", fields: position },
+      { title: "Цель Look At", targetSurface: true },
+      { title: "Разрешение", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] }
+    ];
+    return [
+      { title: "Положение", fields: position },
+      { title: object.type === "camera" ? "Поворот" : "Направление", fields: [["По плану", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }
+    ];
   }
   function getPath(object, path) { return path.split(".").reduce((value, key) => value[key], object); }
   function getFieldValue(object, path) { return path === "transform.position.y" ? objectHeightValue(object) : getPath(object, path); }
@@ -245,6 +267,19 @@
   function makeObjectField(object, definition) {
     const [labelText, path, value, step, unit] = definition; const label = element("label", "object-field"); label.append(element("span", "object-field-label", labelText)); const shell = element("span", "input-shell"); const input = document.createElement("input"); input.type = "text"; input.inputMode = "decimal"; input.value = formatValue(value, step); input.dataset.field = path; input.setAttribute("aria-label", `${object.name}: ${labelText}`); shell.append(input, element("i", "input-unit", unit)); label.append(shell);
     bindScrub(input, () => getFieldValue(object, path), next => setPath(object, path, next), step); return label;
+  }
+  function makeTargetSurfaceField(object) {
+    const label = element("label", "object-field object-select-field"); label.append(element("span", "object-field-label", "Поверхность")); const select = document.createElement("select"); select.setAttribute("aria-label", `${object.name}: поверхность Look At`);
+    const manual = document.createElement("option"); manual.value = ""; manual.textContent = "Ручная точка на плане"; select.append(manual);
+    state.objects.filter(item => item.type === "surface").forEach(surface => { const option = document.createElement("option"); option.value = surface.pluginId; option.textContent = surface.name; select.append(option); });
+    select.value = targetSurface(object)?.pluginId || "";
+    select.addEventListener("change", () => { saveHistory(); const currentTarget = effectiveLookAt(object); if (select.value) { object.targetSurfacePluginId = select.value; object.lookAt = effectiveLookAt(object); } else { delete object.targetSurfacePluginId; object.lookAt = currentTarget; } persist(); render(); });
+    label.append(select); return label;
+  }
+  function makePropertySection(object, definition) {
+    const section = element("section", "object-property-section"); section.append(element("h3", "object-property-title", definition.title)); const grid = element("div", "object-property-grid");
+    if (definition.targetSurface) grid.append(makeTargetSurfaceField(object)); else definition.fields.forEach(field => grid.append(makeObjectField(object, field)));
+    grid.style.setProperty?.("--field-count", String(Math.max(1, definition.fields?.length || 1))); section.append(grid); return section;
   }
   function showDeletePopover(object, anchor) {
     if ([...(anchor.children || [])].some(child => child.className?.split?.(" ").includes("delete-popover"))) return;
@@ -262,7 +297,7 @@
       const list = element("div", "object-list"); objects.forEach(object => {
         const entry = element("details", "object-entry"); entry.open = state.expandedIds.has(object.id); if (object.id === state.selectedId) entry.classList.add("selected"); entry.addEventListener("toggle", () => entry.open ? state.expandedIds.add(object.id) : state.expandedIds.delete(object.id));
         const objectSummary = element("summary", "object-summary"); const name = element("span", "object-name", object.name); const remove = element("button", "object-remove", "×"); remove.type = "button"; remove.title = "Удалить объект"; remove.setAttribute("aria-label", `Удалить ${object.name}`); remove.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); showDeletePopover(object, objectSummary); }); objectSummary.append(name, remove); objectSummary.addEventListener("click", () => { state.selectedId = object.id; }); entry.append(objectSummary);
-        const body = element("div", "object-properties"); fieldDefinition(object).forEach(definition => body.append(makeObjectField(object, definition))); entry.append(body); list.append(entry);
+        const body = element("div", "object-properties"); fieldSections(object).forEach(definition => body.append(makePropertySection(object, definition))); entry.append(body); list.append(entry);
       }); group.append(list); objectGroups.append(group);
     });
   }
@@ -272,7 +307,7 @@
 
   function canonical(value) { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }
   function changedValue(previous, current) { if (previous && current && typeof previous === "object" && typeof current === "object" && !Array.isArray(previous) && !Array.isArray(current)) { const result = {}; Object.keys(current).forEach(key => { const change = changedValue(previous[key], current[key]); if (change !== undefined) result[key] = change; }); return Object.keys(result).length ? result : undefined; } return canonical(previous) === canonical(current) ? undefined : current; }
-  function objectPayload(object) { const payload = { pluginId: object.pluginId, type: object.type, name: object.name, transform: clone(object.transform) }; if (object.lookAt) payload.lookAt = clone(object.lookAt); if (object.geometry) payload.geometry = clone(object.geometry); if (object.media) payload.media = clone(object.media); return payload; }
+  function objectPayload(object) { const payload = { pluginId: object.pluginId, type: object.type, name: object.name, transform: clone(object.transform) }; if (object.lookAt) payload.lookAt = clone(effectiveLookAt(object)); if (object.geometry) payload.geometry = clone(object.geometry); if (object.media) payload.media = clone(object.media); return payload; }
   function validateReadback(expected, result, tolerance = .001) {
     const actual = result?.readback; if (!actual) throw new Error("Designer не вернул координаты объекта для проверки"); const mismatches = [];
     const compare = (path, wanted, got) => { if (!Number.isFinite(Number(got)) || Math.abs(Number(wanted) - Number(got)) > tolerance) mismatches.push(`${path}: ожидалось ${wanted}, получено ${got}`); };
@@ -310,13 +345,20 @@
   }
   async function confirmSync() { const modal = document.querySelector("#sync-modal"); const diff = modal._diff; if (!diff?.adapter) return; const button = document.querySelector("#confirm-sync"); button.disabled = true; button.textContent = "Синхронизация…"; try { await syncToDesigner(diff); modal.hidden = true; document.querySelector("#adapter-status").textContent = `Designer API: координаты проверены · ${new Date().toLocaleTimeString()}`; } catch (error) { document.querySelector("#sync-warning").textContent = `Синхронизация остановлена: ${error.message || error}`; document.querySelector("#sync-warning").hidden = false; } finally { button.disabled = false; button.textContent = "Экспортировать изменения"; } }
   async function deleteSelectedStandards() { const modal = document.querySelector("#sync-modal"); const diff = modal._diff; const ids = [...document.querySelectorAll("#standard-checklist input:checked")].map(input => input.value); if (!diff?.adapter || !ids.length || typeof diff.adapter.deleteObjects !== "function") return; if (!window.confirm(`Удалить ${ids.length} выбранных стандартных объектов?`)) return; try { await diff.adapter.deleteObjects(ids); modal.hidden = true; } catch (error) { document.querySelector("#sync-warning").textContent = `Очистка остановлена: ${error.message || error}`; } }
-  function exportSceneJson() { const output = { version: VERSION, units: "metres", coordinateSystem: "Designer world XYZ; top view X/Z; no room-relative transform", room: state.room, stage: state.stage, objects: state.objects.map(({ id, ...object }) => object) }; const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "disguise-scene-plan.json"; link.click(); URL.revokeObjectURL(url); }
+  function exportSceneJson() { const output = { version: VERSION, units: "metres", coordinateSystem: "Designer world XYZ; top view X/Z; no room-relative transform", room: state.room, stage: state.stage, objects: state.objects.map(({ id, ...object }) => object.type === "projector" ? { ...object, lookAt: effectiveLookAt(object) } : object) }; const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "disguise-scene-plan.json"; link.click(); URL.revokeObjectURL(url); }
 
   document.querySelector("#reset-button").addEventListener("click", generate); document.querySelector("#export-button").addEventListener("click", openSyncDialog); document.querySelector("#json-button").addEventListener("click", exportSceneJson); document.querySelector("#confirm-sync").addEventListener("click", confirmSync); document.querySelector("#delete-standards").addEventListener("click", deleteSelectedStandards); document.querySelectorAll("input[name=sync-mode]").forEach(input => input.addEventListener("change", () => { if (!document.querySelector("#sync-modal").hidden) openSyncDialog(); })); ["#close-sync", "#cancel-sync"].forEach(selector => document.querySelector(selector).addEventListener("click", () => { document.querySelector("#sync-modal").hidden = true; }));
   document.querySelector("#undo-button").addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button").addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in").addEventListener("click", () => { state.zoom = clamp(state.zoom + .15, .5, 2); drawScene(); }); document.querySelector("#zoom-out").addEventListener("click", () => { state.zoom = clamp(state.zoom - .15, .5, 2); drawScene(); });
   document.querySelector("#align-x").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.x = state.stage.centerX; persist(); render(); }); document.querySelector("#align-z").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.z = state.stage.centerZ; persist(); render(); });
-  canvas.addEventListener("pointerdown", event => { const object = hitTest(event.clientX, event.clientY); state.selectedId = object?.id ?? null; if (object) { const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); saveHistory(); state.dragging = { id: object.id, offsetX: object.transform.position.x - point.x, offsetZ: object.transform.position.z - point.z }; canvas.setPointerCapture(event.pointerId); state.openGroups.add(object.type); } render(); });
-  canvas.addEventListener("pointermove", event => { if (!state.dragging) return; const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); const object = state.objects.find(item => item.id === state.dragging.id); if (!object) return; const bounds = roomBounds(); state.guides = []; object.transform.position.x = Number(clamp(snapCoordinate("x", point.x + state.dragging.offsetX, object), bounds.minX, bounds.maxX).toFixed(3)); object.transform.position.z = Number(clamp(snapCoordinate("z", point.z + state.dragging.offsetZ, object), bounds.minZ, bounds.maxZ).toFixed(3)); drawScene(); });
+  canvas.addEventListener("pointerdown", event => {
+    const targetOwner = hitTestProjectorTarget(event.clientX, event.clientY); const object = targetOwner || hitTest(event.clientX, event.clientY); state.selectedId = object?.id ?? null;
+    if (object) { const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); saveHistory();
+      if (targetOwner) { const target = effectiveLookAt(targetOwner); delete targetOwner.targetSurfacePluginId; targetOwner.lookAt = target; state.dragging = { kind: "lookAt", id: targetOwner.id, offsetX: target.x - point.x, offsetZ: target.z - point.z }; }
+      else state.dragging = { kind: "object", id: object.id, offsetX: object.transform.position.x - point.x, offsetZ: object.transform.position.z - point.z };
+      canvas.setPointerCapture(event.pointerId); state.openGroups.add(object.type); state.expandedIds.add(object.id);
+    } render();
+  });
+  canvas.addEventListener("pointermove", event => { if (!state.dragging) return; const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); const object = state.objects.find(item => item.id === state.dragging.id); if (!object) return; const bounds = roomBounds(); state.guides = []; const x = Number(clamp(snapCoordinate("x", point.x + state.dragging.offsetX, object), bounds.minX, bounds.maxX).toFixed(3)); const z = Number(clamp(snapCoordinate("z", point.z + state.dragging.offsetZ, object), bounds.minZ, bounds.maxZ).toFixed(3)); if (state.dragging.kind === "lookAt") { object.lookAt.x = x; object.lookAt.z = z; } else { object.transform.position.x = x; object.transform.position.z = z; } drawScene(); });
   canvas.addEventListener("pointerup", event => { state.dragging = null; state.guides = []; persist(); render(); if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId); }); canvas.addEventListener("pointercancel", () => { state.dragging = null; state.guides = []; persist(); render(); }); window.addEventListener("resize", drawScene);
 
   setupStaticInputs(); if (!loadPersisted()) generate(); else { syncStaticInputs(); render(); }
@@ -326,5 +368,5 @@
     adapterStatus.textContent = "Designer API: проверка соединения…";
     adapter.sessionStatus?.().then(() => { adapterStatus.textContent = "Designer API: Designer доступен"; }).catch(() => { adapterStatus.textContent = "Designer API: Designer не отвечает · JSON доступен"; });
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, objectPayload, validateReadback, canonical, changedValue, normalizeObject, roomBounds, stageBounds, toScreen, toWorld, snapCoordinate, typeConfig, finite, newObject };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, objectPayload, validateReadback, canonical, changedValue, normalizeObject, roomBounds, stageBounds, toScreen, toWorld, snapCoordinate, typeConfig, finite, newObject, fieldSections, effectiveLookAt };
 })();

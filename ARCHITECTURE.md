@@ -16,8 +16,9 @@ object:
     position: { x, y, z }
     rotation: { x, y, z }
   geometry: { width, height }  # screen/surface only
-  media: { resolutionX, resolutionY, pixelPitchMm }  # planar objects; projector omits pitch
+  media: { resolutionX, resolutionY, pixelsPerInch }  # PPI is LED-only
   lookAt: { x, y, z }  # projector only
+  targetSurfacePluginId  # optional projector-to-surface relation
 sync.objects[pluginId]:
   designerId, path
   lastExported, payload
@@ -36,9 +37,9 @@ The room is a viewport frame centred on world `X=0, Z=0` and never changes objec
 
 Dragging updates `transform.position.x/z` only. The saved numeric `Y` is always absolute. `floorY` is the hidden Designer floor/base reference; the top of the stage is `floorY + height`. With `measureFromStage` enabled, object Y fields display and accept offsets from that top without changing the saved world coordinate.
 
-For screens and surfaces, position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and `rotation = Vec(0, yaw, 0)`. Resolution and pixel pitch on planar objects are planning metadata until a matching Designer media property is explicitly mapped. Projectors use `configPosition/configLookAt`; setting inherited body transforms or `configRotation` changes the optical configuration unexpectedly. Cameras use the concrete `Camera` class with `offset/rotation`. Lights use `offset/rotation`.
+For screens and surfaces, position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and `rotation = Vec(0, yaw, 0)`. Resolution and LED PPI are planning metadata until a matching Designer media property is explicitly mapped. Projectors use `configPosition/configLookAt`; setting inherited body transforms or `configRotation` changes the optical configuration unexpectedly. A projector may target a surface by stable plugin ID; its exported Look At is then recomputed from the surface centre. Cameras use the concrete `Camera` class with `offset/rotation`. Lights use `offset/rotation`.
 
-The sidebar groups objects by type. New objects open automatically; existing groups start collapsed. Numeric fields accept comma or dot, update the model while typing, and support horizontal pointer scrubbing in `0.1` steps. Projectors, cameras, and lights have direction cones in the X/Z view. Dragging preserves the pointer-to-object offset and optional snapping can use the 1 m grid, 0.1 m grid, stage centre/edges, same-type coordinates, and mirrored distances.
+The sidebar groups objects by type. New objects open automatically; existing groups start collapsed. Each inspector uses compact titled rows so fields that belong together share one line. The application shell is fixed to the viewport; only the sidebar scrolls, so opening an inspector cannot resize the canvas. Numeric fields accept comma or dot, update the model while typing, and support horizontal pointer scrubbing in `0.1` steps. Projectors show a target marker and dashed source-to-target line in the X/Z view. Dragging a manual marker edits Look At X/Z; selecting a surface locks the marker to that surface centre. Dragging objects preserves the pointer offset and optional snapping can use the 1 m grid, 0.1 m grid, stage centre/edges, same-type coordinates, and mirrored distances.
 
 Every successful create/update returns a type-specific readback. The planner compares position, rotation, and planar geometry to the requested values with a `0.001` metre/degree tolerance before recording the sync version.
 
@@ -58,4 +59,4 @@ The adapter repeats the default/managed check before deletion. Repeat sync resol
 
 ## Persistence
 
-Browser state uses localStorage key `disguise-scene-generator-state-v7`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v6 keys are read only as migration sources.
+Browser state uses localStorage key `disguise-scene-generator-state-v8`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v7 keys are read only as migration sources.

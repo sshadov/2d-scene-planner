@@ -95,3 +95,14 @@ Version 5 already stored a separate `stage` object. The v7 loader preserves it w
 The planner creates Designer `Camera` resources, not `VirtualCamera` resources. Camera transforms use inherited `offset/rotation`. Generated resource paths use stable human-readable names such as `dsg-camera-1.apx`; local `pluginId -> designerId/path` remains the ownership source and names are never the only identity.
 
 Projectors expose a world `lookAt` point. The adapter converts it to `configLookAt`, while the 2D view derives its cone from the vector between position and target.
+
+## ADR-013: Compact inspectors and surface-linked projector targets
+
+- Date: 2026-08-17
+- Status: accepted
+
+Object properties are rendered as titled horizontal rows rather than one label/value row per property. The desktop application shell is fixed to the viewport and only the sidebar scrolls, so expanding controls cannot change the canvas dimensions.
+
+The visible projector marker is the editable Look At source of truth. Manual markers store world X/Y/Z and may be dragged in X/Z. A projector may instead store `targetSurfacePluginId`; export then derives Look At from the current centre of that surface. Lights and cameras expose only position plus horizontal `Ry` until a proven vertical aiming contract is introduced.
+
+LED density is stored as `pixelsPerInch`. Projection surfaces have resolution metadata but no density field. v8 converts legacy LED `pixelPitchMm` using `25.4 / pixelPitchMm` and preserves the v7 stage base elevation unchanged.
