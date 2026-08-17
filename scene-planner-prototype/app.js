@@ -3,7 +3,7 @@
     room: { width: 20, depth: 12, height: 6 },
     counts: { screen: 3, surface: 2, camera: 2, projector: 1, light: 4 }
   };
-  const STORAGE_KEY = "disguise-scene-generator-state-v3";
+  const STORAGE_KEY = "disguise-scene-generator-state-v4";
   const typeConfig = {
     screen: { label: "LED-экран", color: "#3dd9d4", width: 3.4, thickness: 0.1, height: 0.38 },
     surface: { label: "Поверхность", color: "#4e9cff", width: 2.3, thickness: 0.1, height: 1.4 },
@@ -42,13 +42,18 @@
     state.room.height = clamp(numberValue(inputs.height, defaults.room.height), 2, 40);
     inputs.width.value = state.room.width; inputs.depth.value = state.room.depth; inputs.height.value = state.room.height;
   }
-  function normalizeObject(object, index) {
+  function normalizeObject(object, index, sourceVersion = 4) {
     const oldPosition = object.position;
-    // v2 used x/y for the plan and z for height. Convert it once to native Designer axes.
+    const legacyOrigin = sourceVersion < 4;
+    // v2 used x/y for the plan and z for height; v2/v3 also placed zero in the room corner.
     const position = oldPosition ? {
-      x: Number(oldPosition.x) || 0, y: Number(oldPosition.y) || 0, z: Number(oldPosition.z) || 0
+      x: (Number(oldPosition.x) || 0) - (legacyOrigin ? state.room.width / 2 : 0),
+      y: Number(oldPosition.y) || 0,
+      z: (Number(oldPosition.z) || 0) - (legacyOrigin ? state.room.depth / 2 : 0)
     } : {
-      x: Number(object.x) || 0, y: Number(object.z) || 0, z: Number(object.y) || 0
+      x: (Number(object.x) || 0) - state.room.width / 2,
+      y: Number(object.z) || 0,
+      z: (Number(object.y) || 0) - state.room.depth / 2
     };
     const oldRotation = Number(object.rotation) || 0;
     const rotation = object.rotation && typeof object.rotation === "object" ? {
@@ -60,14 +65,16 @@
       position, rotation, verticalRef: object.verticalRef || { from: "floor", to: "bottom" }, designer: object.designer || undefined
     };
   }
-  function snapshot() { return JSON.stringify({ room: state.room, objects: state.objects, sync: state.sync }); }
-  function persist() { localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 3, room: state.room, objects: state.objects, sync: state.sync, nextId })); }
+  function snapshot() { return JSON.stringify({ version: 4, room: state.room, objects: state.objects, sync: state.sync }); }
+  function persist() { localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 4, room: state.room, objects: state.objects, sync: state.sync, nextId })); }
   function loadPersisted() {
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || localStorage.getItem("disguise-scene-generator-state-v2") || "null");
+      const savedText = localStorage.getItem(STORAGE_KEY) || localStorage.getItem("disguise-scene-generator-state-v3") || localStorage.getItem("disguise-scene-generator-state-v2");
+      const saved = JSON.parse(savedText || "null");
       if (!saved) return false;
       state.room = { ...defaults.room, ...saved.room };
-      state.objects = Array.isArray(saved.objects) ? saved.objects.map(normalizeObject) : [];
+      const sourceVersion = Number(saved.version) || (saved.objects?.some(object => object.position) ? 3 : 2);
+      state.objects = Array.isArray(saved.objects) ? saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)) : [];
       state.sync = { objects: {}, designerScene: null, lastSyncAt: null, ...(saved.sync || {}) };
       nextId = Math.max(Number(saved.nextId) || 1, ...state.objects.map(object => (Number(object.id) || 0) + 1), 1);
       state.selectedId = state.objects[0]?.id ?? null;
@@ -76,7 +83,7 @@
   }
   function saveHistory() { state.history.push(snapshot()); if (state.history.length > 30) state.history.shift(); state.future = []; }
   function restore(json) {
-    const data = JSON.parse(json); state.room = data.room; state.objects = data.objects.map(normalizeObject); state.sync = data.sync || state.sync; state.selectedId = null;
+    const data = JSON.parse(json); state.room = data.room; state.objects = data.objects.map((object, index) => normalizeObject(object, index, Number(data.version) || 4)); state.sync = data.sync || state.sync; state.selectedId = null;
     Object.entries(state.room).forEach(([key, value]) => { if (inputs[key]) inputs[key].value = value; }); persist(); render();
   }
   function applyHistory(direction) {
@@ -93,15 +100,15 @@
   }
   function generate() {
     syncRoomFromInputs(); saveHistory(); state.objects = [];
-    const requested = counts(); const margin = 0.8; const screenSpacing = state.room.width / (requested.screen + 1);
-    for (let i = 0; i < requested.screen; i++) state.objects.push(newObject("screen", screenSpacing * (i + 1), margin));
+    const requested = counts(); const margin = 0.8; const halfWidth = state.room.width / 2; const halfDepth = state.room.depth / 2; const screenSpacing = state.room.width / (requested.screen + 1);
+    for (let i = 0; i < requested.screen; i++) state.objects.push(newObject("screen", -halfWidth + screenSpacing * (i + 1), -halfDepth + margin));
     const surfaceSpacing = state.room.depth / (requested.surface + 1);
-    for (let i = 0; i < requested.surface; i++) state.objects.push(newObject("surface", margin, surfaceSpacing * (i + 1), { y: 90 }));
-    for (let i = 0; i < requested.camera; i++) state.objects.push(newObject("camera", state.room.width * (0.3 + (i % 3) * 0.2), state.room.depth - margin - Math.floor(i / 3) * 1.1, { y: 180 }));
-    for (let i = 0; i < requested.projector; i++) state.objects.push(newObject("projector", state.room.width * .72, state.room.depth - margin, { y: 180 }));
+    for (let i = 0; i < requested.surface; i++) state.objects.push(newObject("surface", -halfWidth + margin, -halfDepth + surfaceSpacing * (i + 1), { y: 90 }));
+    for (let i = 0; i < requested.camera; i++) state.objects.push(newObject("camera", state.room.width * (-.2 + (i % 3) * .2), halfDepth - margin - Math.floor(i / 3) * 1.1, { y: 180 }));
+    for (let i = 0; i < requested.projector; i++) state.objects.push(newObject("projector", state.room.width * .22, halfDepth - margin, { y: 180 }));
     for (let i = 0; i < requested.light; i++) {
       const columns = Math.max(1, Math.ceil(Math.sqrt(requested.light)));
-      state.objects.push(newObject("light", state.room.width * ((i % columns + 1) / (columns + 1)), state.room.depth * ((Math.floor(i / columns) + 1) / (Math.ceil(requested.light / columns) + 1))));
+      state.objects.push(newObject("light", -halfWidth + state.room.width * ((i % columns + 1) / (columns + 1)), -halfDepth + state.room.depth * ((Math.floor(i / columns) + 1) / (Math.ceil(requested.light / columns) + 1))));
     }
     state.selectedId = state.objects[0]?.id ?? null; persist(); render();
   }
@@ -112,13 +119,14 @@
     const roomWidth = state.room.width * scale; const roomHeight = state.room.depth * scale;
     return { rect, scale, left: (rect.width - roomWidth) / 2, top: (rect.height - roomHeight) / 2, roomWidth, roomHeight };
   }
-  function toScreen(x, z, frame) { return { x: frame.left + x * frame.scale, y: frame.top + (state.room.depth - z) * frame.scale }; }
-  function toWorld(x, y, frame) { return { x: (x - frame.left) / frame.scale, z: state.room.depth - (y - frame.top) / frame.scale }; }
+  function toScreen(x, z, frame) { return { x: frame.left + (x + state.room.width / 2) * frame.scale, y: frame.top + (state.room.depth / 2 - z) * frame.scale }; }
+  function toWorld(x, y, frame) { return { x: (x - frame.left) / frame.scale - state.room.width / 2, z: state.room.depth / 2 - (y - frame.top) / frame.scale }; }
   function drawGrid(frame) {
     ctx.fillStyle = "#10161c"; ctx.fillRect(0, 0, frame.rect.width, frame.rect.height); ctx.save(); ctx.beginPath(); ctx.rect(frame.left, frame.top, frame.roomWidth, frame.roomHeight); ctx.clip();
     ctx.strokeStyle = "rgba(157, 169, 183, .12)"; ctx.lineWidth = 1;
-    for (let x = 0; x <= state.room.width; x += 1) { const point = toScreen(x, 0, frame); ctx.beginPath(); ctx.moveTo(point.x, frame.top); ctx.lineTo(point.x, frame.top + frame.roomHeight); ctx.stroke(); }
-    for (let z = 0; z <= state.room.depth; z += 1) { const point = toScreen(0, z, frame); ctx.beginPath(); ctx.moveTo(frame.left, point.y); ctx.lineTo(frame.left + frame.roomWidth, point.y); ctx.stroke(); }
+    for (let x = Math.ceil(-state.room.width / 2); x <= state.room.width / 2; x += 1) { const point = toScreen(x, 0, frame); ctx.beginPath(); ctx.moveTo(point.x, frame.top); ctx.lineTo(point.x, frame.top + frame.roomHeight); ctx.stroke(); }
+    for (let z = Math.ceil(-state.room.depth / 2); z <= state.room.depth / 2; z += 1) { const point = toScreen(0, z, frame); ctx.beginPath(); ctx.moveTo(frame.left, point.y); ctx.lineTo(frame.left + frame.roomWidth, point.y); ctx.stroke(); }
+    const origin = toScreen(0, 0, frame); ctx.strokeStyle = "rgba(61, 217, 212, .48)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(origin.x, frame.top); ctx.lineTo(origin.x, frame.top + frame.roomHeight); ctx.stroke(); ctx.beginPath(); ctx.moveTo(frame.left, origin.y); ctx.lineTo(frame.left + frame.roomWidth, origin.y); ctx.stroke();
     ctx.restore(); ctx.strokeStyle = "#92a0ae"; ctx.lineWidth = 2; ctx.strokeRect(frame.left, frame.top, frame.roomWidth, frame.roomHeight);
     ctx.fillStyle = "#9da9b7"; ctx.font = "12px Inter, sans-serif"; ctx.textAlign = "center"; ctx.fillText(`${state.room.width.toFixed(1)} м · X`, frame.left + frame.roomWidth / 2, frame.top + frame.roomHeight + 23);
     ctx.save(); ctx.translate(frame.left - 24, frame.top + frame.roomHeight / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(`${state.room.depth.toFixed(1)} м · Z`, 0, 0); ctx.restore();
@@ -151,7 +159,11 @@
   function updateSelected(field) {
     const object = selectedObject(); if (!object) return; saveHistory();
     if (field === "heightFrom" || field === "heightTo") object.verticalRef[field === "heightFrom" ? "from" : "to"] = objectInputs[field].value;
-    else if (["x", "y", "z"].includes(field)) { const max = field === "x" ? state.room.width : field === "z" ? state.room.depth : state.room.height + 100; object.position[field] = Number(clamp(numberValue(objectInputs[field], object.position[field]), field === "y" ? -100 : 0, max).toFixed(2)); }
+    else if (["x", "y", "z"].includes(field)) {
+      const min = field === "x" ? -state.room.width / 2 : field === "z" ? -state.room.depth / 2 : -100;
+      const max = field === "x" ? state.room.width / 2 : field === "z" ? state.room.depth / 2 : state.room.height + 100;
+      object.position[field] = Number(clamp(numberValue(objectInputs[field], object.position[field]), min, max).toFixed(2));
+    }
     else { const axis = field.slice(1); object.rotation[axis] = Number(numberValue(objectInputs[field], object.rotation[axis]).toFixed(1)); }
     persist(); render();
   }
@@ -173,14 +185,14 @@
     const diff = { create: [], update: [], adopt: [], unchanged: [], orphans: [], preserve: [], standardCandidates: inspected.filter(isStandardCandidate), deletionCandidates: inspected.filter(isStandardCandidate), designerCount: inspected.length, adapter, mode, floorY: designerScene?.floorY ?? 0 };
     for (const object of state.objects) {
       const payload = objectPayload(object); const serialized = canonical(payload); let record = records[object.pluginId]; let designerId = record?.designerId;
-      if (!designerId) {
-        const managed = inspected.find(item => (item.managed && String(item.pluginId || "") === object.pluginId) || String(item.path || "").includes(`dsg-${object.pluginId}`));
-        if (managed) { designerId = String(managed.id); record = { ...(record || {}), designerId, path: managed.path }; }
-      }
-      if (designerId && byId.has(String(designerId))) {
+      let designerObject = designerId ? byId.get(String(designerId)) : null;
+      if (!designerObject && record?.path) designerObject = inspected.find(item => String(item.path || "") === String(record.path));
+      if (!designerObject) designerObject = inspected.find(item => (item.managed && String(item.pluginId || "") === object.pluginId) || String(item.path || "").includes(`dsg-${object.pluginId}`));
+      if (designerObject) { designerId = String(designerObject.id || designerObject.uid); record = { ...(record || {}), designerId, path: designerObject.path }; }
+      if (designerId && designerObject) {
         usedIds.add(String(designerId));
-        if (record?.lastExported === serialized) diff.unchanged.push({ object, payload, designerId });
-        else diff.update.push({ object, payload, serialized, designerId, changed: changedValue(record?.payload || {}, payload) || {} });
+        if (record?.lastExported === serialized) diff.unchanged.push({ object, payload, designerId, designerPath: designerObject.path });
+        else diff.update.push({ object, payload, serialized, designerId, designerPath: designerObject.path, changed: changedValue(record?.payload || {}, payload) || {} });
         continue;
       }
       const candidate = diff.standardCandidates.find(item => !usedIds.has(String(item.id)) && typeOfSceneObject(item) === object.type);
@@ -214,11 +226,19 @@
   async function syncToDesigner(diff) {
     const records = state.sync.objects || {};
     for (const item of [...diff.create, ...diff.adopt]) {
-      if (item.designerId) await diff.adapter.updateObject(item.designerId, item.payload);
-      else { const result = await diff.adapter.createObject(item.payload); item.designerId = result?.designerId || result?.id; item.designerPath = result?.path; }
+      try {
+        if (item.designerId) await diff.adapter.updateObject(item.designerId, item.payload, item.candidate?.path);
+        else { const result = await diff.adapter.createObject(item.payload); item.designerId = result?.designerId || result?.id; item.designerPath = result?.path; }
+      } catch (error) { throw new Error(`${item.designerId ? "Обновление" : "Создание"} «${item.object.name}»: ${error.message || error}`); }
       records[item.object.pluginId] = { pluginId: item.object.pluginId, designerId: item.designerId || `dsg:${item.object.pluginId}`, path: item.candidate?.path || item.designerPath, type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload, adopted: Boolean(item.candidate) };
+      state.sync.objects = records; persist();
     }
-    for (const item of diff.update) { await diff.adapter.updateObject(item.designerId, item.changed); records[item.object.pluginId] = { ...(records[item.object.pluginId] || {}), pluginId: item.object.pluginId, designerId: item.designerId, type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload }; }
+    for (const item of diff.update) {
+      try { await diff.adapter.updateObject(item.designerId, item.changed, item.designerPath || records[item.object.pluginId]?.path); }
+      catch (error) { throw new Error(`Обновление «${item.object.name}»: ${error.message || error}`); }
+      records[item.object.pluginId] = { ...(records[item.object.pluginId] || {}), pluginId: item.object.pluginId, designerId: item.designerId, path: item.designerPath || records[item.object.pluginId]?.path, type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload };
+      state.sync.objects = records; persist();
+    }
     state.sync.objects = records; state.sync.designerScene = { inspectedAt: new Date().toISOString(), objectCount: diff.designerCount, floorY: diff.floorY }; state.sync.lastSyncAt = new Date().toISOString(); persist();
   }
   async function deleteSelectedStandards() {
@@ -230,7 +250,7 @@
     finally { button.disabled = false; }
   }
   function exportSceneJson() {
-    const output = { version: 3, units: "metres", coordinateSystem: "Designer XYZ; top view X/Z", room: state.room, objects: state.objects.map(({ id, ...object }) => object) };
+    const output = { version: 4, units: "metres", coordinateSystem: "Designer XYZ; origin at room centre; top view X/Z", room: state.room, objects: state.objects.map(({ id, ...object }) => object) };
     const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "disguise-scene-plan.json"; link.click(); URL.revokeObjectURL(url);
   }
   async function confirmSync() {
@@ -239,7 +259,7 @@
     catch (error) { document.querySelector("#sync-warning").textContent = `Синхронизация остановлена: ${error.message || error}`; document.querySelector("#sync-warning").hidden = false; }
     finally { button.disabled = false; button.textContent = "Экспортировать изменения"; }
   }
-  function addObject(type) { syncRoomFromInputs(); saveHistory(); const object = newObject(type, state.room.width / 2, state.room.depth / 2); state.objects.push(object); state.selectedId = object.id; persist(); render(); }
+  function addObject(type) { syncRoomFromInputs(); saveHistory(); const object = newObject(type, 0, 0); state.objects.push(object); state.selectedId = object.id; persist(); render(); }
   function resetInputs() { Object.entries(defaults.room).forEach(([key, value]) => { inputs[key].value = value; }); Object.entries(defaults.counts).forEach(([key, value]) => { if (inputs[key]) inputs[key].value = value; }); generate(); }
 
   document.querySelector("#reset-button").addEventListener("click", resetInputs); document.querySelector("#export-button").addEventListener("click", openSyncDialog); document.querySelector("#json-button").addEventListener("click", exportSceneJson); document.querySelector("#add-object-button").addEventListener("click", () => addObject(document.querySelector("#add-object-type").value)); document.querySelector("#confirm-sync").addEventListener("click", confirmSync); document.querySelector("#delete-standards").addEventListener("click", deleteSelectedStandards);
@@ -249,8 +269,8 @@
   document.querySelector("#delete-button").addEventListener("click", () => { const index = state.objects.findIndex(object => object.id === state.selectedId); if (index < 0) return; saveHistory(); state.objects.splice(index, 1); state.selectedId = null; persist(); render(); });
   Object.keys(objectInputs).forEach(field => objectInputs[field].addEventListener("change", () => updateSelected(field))); [inputs.width, inputs.depth, inputs.height].forEach(input => input.addEventListener("change", () => { syncRoomFromInputs(); persist(); render(); }));
   canvas.addEventListener("pointerdown", event => { const object = hitTest(event.clientX, event.clientY); state.selectedId = object?.id ?? null; if (object) { saveHistory(); state.dragging = object.id; canvas.setPointerCapture(event.pointerId); } render(); });
-  canvas.addEventListener("pointermove", event => { if (!state.dragging) return; const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); const object = state.objects.find(item => item.id === state.dragging); if (!object) return; object.position.x = Number(clamp(point.x, 0, state.room.width).toFixed(2)); object.position.z = Number(clamp(point.z, 0, state.room.depth).toFixed(2)); render(); });
+  canvas.addEventListener("pointermove", event => { if (!state.dragging) return; const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); const object = state.objects.find(item => item.id === state.dragging); if (!object) return; object.position.x = Number(clamp(point.x, -state.room.width / 2, state.room.width / 2).toFixed(2)); object.position.z = Number(clamp(point.z, -state.room.depth / 2, state.room.depth / 2).toFixed(2)); render(); });
   canvas.addEventListener("pointerup", event => { state.dragging = null; persist(); if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId); }); window.addEventListener("resize", render);
   if (!loadPersisted()) generate(); if (getAdapter()) document.querySelector("#adapter-status").textContent = "Designer API: подключение проверяется при экспорте"; render();
-  globalThis.scenePlannerDebug = { state, makeDiff, objectPayload, canonical, changedValue, normalizeObject, toScreen, toWorld, typeConfig };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, objectPayload, canonical, changedValue, normalizeObject, toScreen, toWorld, typeConfig };
 })();

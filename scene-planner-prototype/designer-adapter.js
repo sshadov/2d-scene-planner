@@ -20,8 +20,11 @@
     } catch (error) {
       throw new Error(`Нет соединения с Designer API по адресу ${API_ORIGIN}. Проверьте, что Designer запущен, а v2rayN обходит localhost. ${error.message || error}`);
     }
-    if (!response.ok) throw new Error(`Designer API ответил HTTP ${response.status}`);
-    const body = await response.json();
+    const responseText = await response.text();
+    if (!response.ok) throw new Error(`Designer API HTTP ${response.status}: ${responseText.slice(0, 800) || "пустой ответ"}`);
+    let body;
+    try { body = JSON.parse(responseText); }
+    catch { throw new Error(`Designer API вернул не-JSON ответ: ${responseText.slice(0, 800)}`); }
     if (body.status && body.status.code !== 0) throw new Error(body.status.message || "Designer отклонил Python-команду");
     return parseReturnValue(body.returnValue);
   }
@@ -81,15 +84,17 @@ if obj not in collection:
     collection.append(obj)
 return json.dumps({"designerId": str(obj.uid), "path": path})`;
   }
-  function updateScript(designerId, changed) {
+  function updateScript(designerId, changed, designerPath) {
     return `import json
 target_id = ${quote(String(designerId))}
+target_path = ${quote(String(designerPath || ""))}
 changed = json.loads(${payloadText(changed)})
 stage = state.stage
 obj = None
 for collection_name in ${quote(Object.values(typeCollections))}:
     for candidate in getattr(stage, collection_name, []):
-        if str(candidate.uid) == target_id:
+        candidate_path = str(getattr(candidate, "path", ""))
+        if str(candidate.uid) == target_id or (target_path and candidate_path == target_path):
             obj = candidate
             break
     if obj is not None:
@@ -149,7 +154,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     sessionStatus,
     inspectScene: () => execute(inspectScript()),
     createObject: payload => execute(createScript(payload)),
-    updateObject: (designerId, changed) => execute(updateScript(designerId, changed)),
+    updateObject: (designerId, changed, designerPath) => execute(updateScript(designerId, changed, designerPath)),
     deleteObjects: designerIds => execute(deleteScript(designerIds))
   };
 })();

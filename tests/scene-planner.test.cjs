@@ -80,8 +80,15 @@ function sceneObject(type, pluginId, position = { x: 1, y: 2, z: 3 }) {
     room: { width: 20, depth: 12, height: 6 }, nextId: 2,
     objects: [{ id: 1, pluginId: "old", type: "camera", name: "Old", x: 4, y: 9, z: 2.5, rotation: 135 }]
   }).state.objects[0];
-  assert.deepEqual(JSON.parse(JSON.stringify(migrated.position)), { x: 4, y: 2.5, z: 9 });
+  assert.deepEqual(JSON.parse(JSON.stringify(migrated.position)), { x: -6, y: 2.5, z: 3 });
   assert.deepEqual(JSON.parse(JSON.stringify(migrated.rotation)), { x: 0, y: 135, z: 0 });
+
+  const frame = { left: 100, top: 50, scale: 10 };
+  assert.deepEqual(JSON.parse(JSON.stringify(core.toScreen(0, 0, frame))), { x: 200, y: 110 });
+  assert.deepEqual(JSON.parse(JSON.stringify(core.toWorld(200, 110, frame))), { x: 0, z: 0 });
+  const generatedX = core.state.objects.filter(object => object.type === "screen").map(object => object.position.x);
+  assert.ok(generatedX.some(value => value < 0));
+  assert.ok(generatedX.some(value => value > 0));
 
   const standard = JSON.parse(fs.readFileSync(path.join(root, "fixtures", "standard-scene.json"), "utf8"));
   const mock = JSON.parse(fs.readFileSync(path.join(root, "fixtures", "mock-api-inspection.json"), "utf8"));
@@ -101,8 +108,19 @@ function sceneObject(type, pluginId, position = { x: 1, y: 2, z: 3 }) {
   const updateDiff = await core.makeDiff({ inspectScene: async () => ({ objects: [{ id: "managed-uid", type: "screen", path: "objects/screen/dsg-managed-screen.apx", managed: true }], floorY: 0 }) }, "update");
   assert.deepEqual(JSON.parse(JSON.stringify(updateDiff.update[0].changed)), { position: { y: 4 } });
 
-  core.state.sync.objects["managed-screen"].lastExported = core.canonical(core.objectPayload(current));
-  core.state.sync.objects["managed-screen"].payload = core.objectPayload(current);
+  const updateCalls = [];
+  updateDiff.adapter = { updateObject: async (...args) => updateCalls.push(args) };
+  await core.syncToDesigner(updateDiff);
+  assert.deepEqual(JSON.parse(JSON.stringify(updateCalls)), [["managed-uid", { position: { y: 4 } }, "objects/screen/dsg-managed-screen.apx"]]);
+
+  core.state.sync.objects["managed-screen"].designerId = "stale-uid";
+  core.state.sync.objects["managed-screen"].path = "objects/screen/dsg-managed-screen.apx";
+  const pathDiff = await core.makeDiff({ inspectScene: async () => ({ objects: [{ id: "fresh-uid", type: "screen", path: "objects/screen/dsg-managed-screen.apx", managed: true }], floorY: 0 }) }, "update");
+  assert.equal(pathDiff.unchanged.length, 1);
+  assert.equal(pathDiff.unchanged[0].designerId, "fresh-uid");
+  assert.equal(pathDiff.create.length, 0);
+
+  core.state.sync.objects["managed-screen"].designerId = "managed-uid";
   const unchangedDiff = await core.makeDiff({ inspectScene: async () => ({ objects: [{ id: "managed-uid", type: "screen", path: "objects/screen/dsg-managed-screen.apx", managed: true }], floorY: 0 }) }, "update");
   assert.equal(unchangedDiff.unchanged.length, 1);
   assert.equal(unchangedDiff.create.length, 0);

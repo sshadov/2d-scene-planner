@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 - 2026-08-17
+
+- Centred room coordinates on the Designer origin and migrated v2/v3 browser state to v4.
+- Added negative `X/Z` plan bounds, centre axes, centred generation, and origin placement for new objects.
+- Made repeat synchronization recover managed resources by UID or path and persist mappings after each successful operation.
+- Added object-level errors and Designer HTTP response bodies for failed Python operations.
+
 ## 0.3.0 - 2026-08-17
 
 - Replaced ambiguous plan coordinates with native Designer `X/Y/Z`.
@@ -16,4 +23,3 @@
 ## 0.1.0
 
 - Added the standalone room planner and fixed 1 m canvas grid.
-

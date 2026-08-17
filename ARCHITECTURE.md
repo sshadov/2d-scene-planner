@@ -28,6 +28,8 @@ Designer coordinates are authoritative:
 | `position.y` | `Vec.y` vertical | not projected |
 | `position.z` | `Vec.z` depth | vertical canvas axis |
 
+The room is centred on the Designer world origin. Its plan bounds are `X = -width/2 ... +width/2` and `Z = -depth/2 ... +depth/2`; `X=0, Z=0` is the visual centre of the 2D plan. The grid interval is always 1 m.
+
 Dragging updates `position.x` and `position.z` only. `stage.floor_pos.y` is recorded during inspection. Absolute `position.y` remains the saved truth even when `verticalRef` describes floor/podium and bottom/center/top intent.
 
 Screen and surface scale is `Vec(width, thickness, height)`. Plan yaw is Designer `rotation.y`; the inspector also exposes `rotation.x` and `rotation.z`.
@@ -44,9 +46,8 @@ planner state -> inspect Designer -> classify -> diff -> confirm -> selective AP
 
 Update mode may adopt a same-type standard object and update it in place. Clean mode creates a new managed set and exposes remaining standards in the deletion checklist. Orphans are reported but never automatically deleted.
 
-The adapter repeats the default/managed check before deletion. API errors stop the operation and remain visible; the UI never reports a false successful sync.
+The adapter repeats the default/managed check before deletion. Repeat sync resolves a managed object by Designer UID, saved resource path, or its `dsg-*` path. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful sync.
 
 ## Persistence
 
-Browser state uses localStorage key `disguise-scene-generator-state-v3`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2 localStorage key is read only as a migration source.
-
+Browser state uses localStorage key `disguise-scene-generator-state-v4`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2 and v3 localStorage keys are read only as migration sources.

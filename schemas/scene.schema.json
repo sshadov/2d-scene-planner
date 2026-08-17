@@ -6,9 +6,9 @@
   "additionalProperties": false,
   "required": ["version", "units", "coordinateSystem", "room", "objects"],
   "properties": {
-    "version": { "const": 3 },
+    "version": { "const": 4 },
     "units": { "const": "metres" },
-    "coordinateSystem": { "const": "Designer XYZ; top view X/Z" },
+    "coordinateSystem": { "const": "Designer XYZ; origin at room centre; top view X/Z" },
     "room": {
       "type": "object",
       "additionalProperties": false,
@@ -59,4 +59,3 @@
     }
   }
 }
-

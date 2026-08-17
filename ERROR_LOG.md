@@ -35,3 +35,21 @@
 - Cause: scene inspection did not classify standard, managed, and manual objects.
 - Fix: update mode adopts a same-type recognized standard object; clean mode lists defaults for separately confirmed removal. Manual objects are never candidates.
 - Regression test: use the standard-scene fixture and verify adopt/update counts, no duplicate create for adopted types, and protected manual objects.
+
+## ERR-005: Room coordinates used a corner origin
+
+- Date: 2026-08-17
+- Symptom: axes were named `X/Y/Z`, but exported objects appeared offset into one quadrant of the Designer scene.
+- Evidence: generated values were constrained to `X = 0 ... width` and `Z = 0 ... depth`, while the Designer room origin is expected at its centre.
+- Cause: the axis-order correction did not also correct the planner's spatial origin.
+- Fix: use centred bounds `X = -width/2 ... +width/2` and `Z = -depth/2 ... +depth/2`; migrate v2/v3 saves to v4 by subtracting half the room dimensions.
+- Regression test: `toScreen(0, 0)` maps to the room centre, `toWorld(room centre)` returns zero, and generated screens span negative and positive `X`.
+
+## ERR-006: Repeat export HTTP 500 lacked actionable diagnostics
+
+- Date: 2026-08-17
+- Symptom: the first export succeeded and the next stopped with only `HTTP 500`.
+- Evidence: the adapter discarded the response body, and repeat lookup depended primarily on the previously returned UID.
+- Cause: the actual Designer Python exception was hidden; resource identity recovery was too narrow for a reloaded or stale UID.
+- Fix: include the Designer response body and failing object name in errors, resolve managed resources by UID or saved/stable path, pass the path to update scripts, and persist each completed mapping immediately.
+- Regression test: a stale UID plus matching saved path resolves to the existing object, sends its path to `updateObject`, and produces no duplicate create.

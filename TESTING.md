@@ -59,12 +59,15 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 
 ## Coordinate scenarios
 
-1. Select an object and note its position on canvas.
-2. Change `Y`; the canvas position must not move.
-3. Change `Z`; the object must move along plan depth.
-4. Drag the object; only `X/Z` may change.
-5. Set `Rx/Ry/Rz`, export, and inspect the payload order.
-6. For a screen/surface verify Designer scale is width/thickness/height.
+1. Verify the highlighted `X=0` and `Z=0` axes cross at the centre of the room.
+2. Verify generated screens include negative and positive `X` values.
+3. Add an object: it must appear at `X=0, Z=0`.
+4. Select an object and note its position on canvas.
+5. Change `Y`; the canvas position must not move.
+6. Change `Z`; the object must move along plan depth and accept negative values.
+7. Drag the object; only `X/Z` may change, within centred half-room bounds.
+8. Set `Rx/Ry/Rz`, export, and inspect the payload order.
+9. For a screen/surface verify Designer scale is width/thickness/height.
 
 ## Safe synchronization scenarios
 
@@ -76,4 +79,5 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 6. Delete a planner object: its Designer counterpart remains as an orphan.
 7. Clean mode: defaults appear in the checklist; deletion requires checkboxes and browser confirmation.
 8. Reload the page: plugin-to-Designer mappings are restored from local persistence.
-
+9. Replace a stored UID with a stale value while retaining its path: repeat export must recover the existing object by path and must not create a duplicate.
+10. Force a Designer Python error: the modal must show the failing object name and the HTTP response body instead of a bare `500`.
