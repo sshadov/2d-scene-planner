@@ -93,6 +93,8 @@ select { width: 100%; min-width: 0; border: 1px solid #344250; border-radius: 3p
 .unit-label { color: var(--muted); font-size: 11px; }
 .field { margin-top: 10px; display: grid; grid-template-columns: minmax(0, 1fr) 86px; gap: 10px; align-items: center; color: #c8d1db; font-size: 13px; }
 .field:first-of-type { margin-top: 0; }
+.checkbox-field { margin-top: 13px; display: flex; align-items: center; gap: 8px; color: #c8d1db; font-size: 12px; line-height: 1.3; cursor: pointer; }
+.checkbox-field input { width: 15px; height: 15px; flex: 0 0 auto; accent-color: var(--cyan); }
 .coordinate-note { margin: 11px 0 3px; padding: 7px 8px; border-left: 2px solid var(--cyan); background: rgba(61, 217, 212, .06); color: var(--muted); font-size: 11px; }
 .advanced-settings { margin-top: 13px; border-top: 1px solid var(--line); padding-top: 10px; }
 .advanced-settings summary { color: var(--muted); font-size: 12px; cursor: pointer; }
@@ -120,10 +122,13 @@ input:focus { border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(61, 217, 212
 .object-entry { border-bottom: 1px solid #212b35; background: #10171e; }
 .object-entry:last-child { border-bottom: 0; }
 .object-entry.selected { box-shadow: inset 2px 0 var(--cyan); }
-.object-summary { min-height: 38px; padding: 0 12px 0 26px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #c5ced7; font-size: 12px; cursor: pointer; }
+.object-summary { position: relative; min-height: 38px; padding: 0 12px 0 26px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #c5ced7; font-size: 12px; cursor: pointer; }
 .object-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .object-remove { width: 24px; height: 24px; border: 0; background: transparent; color: #768493; font-size: 17px; }
 .object-remove:hover { color: var(--danger); }
+.delete-popover { position: absolute; z-index: 3; top: 30px; right: 8px; display: flex; align-items: center; gap: 7px; padding: 7px 8px; border: 1px solid #75433f; border-radius: 4px; background: #24191a; color: #ffd4d0; box-shadow: 0 8px 22px rgba(0, 0, 0, .35); font-size: 11px; white-space: nowrap; }
+.delete-popover button { min-height: 24px; padding: 0 7px; border: 1px solid #75433f; border-radius: 3px; background: #38201f; color: #ffaca5; font-size: 11px; cursor: pointer; }
+.delete-popover button:last-child { border-color: var(--line); background: #1a232d; color: var(--ink); }
 .object-properties { padding: 4px 12px 14px 26px; display: grid; gap: 7px; }
 .object-field { display: grid; grid-template-columns: minmax(0, 1fr) 112px; gap: 8px; align-items: center; color: var(--muted); font-size: 11px; }
 .input-shell { position: relative; display: block; }

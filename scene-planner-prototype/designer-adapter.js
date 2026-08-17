@@ -4,19 +4,28 @@
   const EXECUTE_PATH = "/api/session/python/execute";
   const STATUS_PATH = "/api/session/status/session";
   const typeCollections = { screen: "ledScreens", surface: "surfaces", camera: "cameras", projector: "projectors", light: "lights" };
-  const typeClasses = { screen: "LedScreen", surface: "Screen2", camera: "VirtualCamera", projector: "Projector", light: "Light" };
-  const typeResourceFolders = { screen: "ledscreen", surface: "screen2", camera: "virtualcamera", projector: "projector", light: "light" };
+  const typeClasses = { screen: "LedScreen", surface: "Screen2", camera: "Camera", projector: "Projector", light: "Light" };
+  const typeResourceFolders = { screen: "ledscreen", surface: "screen2", camera: "camera", projector: "projector", light: "light" };
   const collectionTypes = Object.fromEntries(Object.entries(typeCollections).map(([type, collection]) => [collection, type]));
 
   function quote(value) { return JSON.stringify(value); }
   function payloadText(payload) { return quote(JSON.stringify(payload)); }
+  function resourceSlug(payload) {
+    const suffix = String(payload.name || "object").match(/(\d+)$/)?.[1] || "object";
+    return `${String(payload.type || "object").toLowerCase()}-${suffix}`;
+  }
   function parseReturnValue(value) {
     if (typeof value !== "string") return value;
     try { const parsed = JSON.parse(value); return typeof parsed === "string" ? JSON.parse(parsed) : parsed; } catch { return value; }
   }
+  async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try { return await fetch(url, { ...options, signal: controller.signal }); }
+    finally { clearTimeout(timer); }
+  }
   async function execute(script) {
     let response;
-    try { response = await fetch(`${API_ORIGIN}${EXECUTE_PATH}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script }) }); }
+    try { response = await fetchWithTimeout(`${API_ORIGIN}${EXECUTE_PATH}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script }) }); }
     catch (error) { throw new Error(`Нет соединения с Designer API по адресу ${API_ORIGIN}. Проверьте, что Designer запущен, а v2rayN обходит localhost. ${error.message || error}`); }
     const responseText = await response.text();
     if (!response.ok) throw new Error(`Designer API HTTP ${response.status}: ${responseText.slice(0, 800) || "пустой ответ"}`);
@@ -25,7 +34,7 @@
     if (body.status && body.status.code !== 0) throw new Error(body.status.message || "Designer отклонил Python-команду");
     return parseReturnValue(body.returnValue);
   }
-  async function sessionStatus() { const response = await fetch(`${API_ORIGIN}${STATUS_PATH}`); if (!response.ok) throw new Error(`Designer session status: HTTP ${response.status}`); return response.json(); }
+  async function sessionStatus() { const response = await fetchWithTimeout(`${API_ORIGIN}${STATUS_PATH}`, {}, 2500); if (!response.ok) throw new Error(`Designer session status: HTTP ${response.status}`); return response.json(); }
 
   function readbackHelpers() {
     return `def vec_data(value):
@@ -43,9 +52,14 @@ def readback(obj, kind):
             "geometry": {"width": float(size.x), "height": float(size.y)}
         }
     if kind == "projector":
-        return {"transform": {"position": vec_data(obj.configPosition), "rotation": vec_data(obj.configRotation)}}
+        # Projector orientation is represented by the optical target. Reading
+        # configRotation is unnecessary and is not available consistently in
+        # Designer builds, so keep the planner's rotation contract explicit.
+        return {"transform": {"position": vec_data(obj.configPosition), "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": vec_data(obj.configLookAt)}
     if kind == "camera":
-        return {"transform": {"position": vec_data(obj.posRelativeOrGlobal), "rotation": vec_data(obj.rotRelativeOrGlobal)}}
+        if hasattr(obj, "posRelativeOrGlobal"):
+            return {"transform": {"position": vec_data(obj.posRelativeOrGlobal), "rotation": vec_data(obj.rotRelativeOrGlobal)}}
+        return {"transform": {"position": vec_data(obj.offset), "rotation": vec_data(obj.rotation)}}
     return {"transform": {"position": vec_data(obj.offset), "rotation": vec_data(obj.rotation)}}`;
   }
   function assignHelpers() {
@@ -77,10 +91,11 @@ for collection_name in ${quote(Object.values(typeCollections))}:
             match = re.search(r"dsg-(.+?)\\.apx", path, re.IGNORECASE)
             standard = bool(re.search(r"(^|[/\\\\ _-])(surface|projector|camera|screen|light)[ _-]?1(?:\\.|$)", text))
             kind = collection_types[collection_name]
+            data = readback(obj, kind)
             objects.append({
                 "id": uid, "path": path, "description": description, "collection": collection_name, "type": kind,
-                "managed": "dsg-" in path.lower(), "pluginId": match.group(1) if match else None, "standard": standard,
-                "transform": readback(obj, kind)["transform"], "geometry": readback(obj, kind).get("geometry")
+                "className": type(obj).__name__, "managed": "dsg-" in path.lower(), "pluginId": match.group(1) if match else None, "standard": standard,
+                "transform": data["transform"], "geometry": data.get("geometry"), "lookAt": data.get("lookAt")
             })
         except Exception as error:
             warnings.append(collection_name + ": " + str(error))
@@ -93,7 +108,7 @@ return json.dumps({"objects": objects, "floorY": floor_y, "warnings": warnings})
 payload = json.loads(${payloadText(payload)})
 stage = state.stage
 kind = payload["type"]
-object_path = "objects/" + ${quote(typeResourceFolders[payload.type])} + "/dsg-" + payload["pluginId"] + ".apx"
+object_path = "objects/" + ${quote(typeResourceFolders[payload.type])} + "/dsg-${resourceSlug(payload)}.apx"
 obj = resourceManager.loadOrCreate(object_path, ${typeClasses[payload.type]})
 transform = payload["transform"]
 pos = transform["position"]
@@ -107,12 +122,12 @@ if kind in ["screen", "surface"]:
     assign("rotation", Vec(0.0, rot["y"], 0.0))
 elif kind == "projector":
     position_value = Vec(pos["x"], pos["y"], pos["z"])
-    rotation_value = Vec(rot["x"], rot["y"], rot["z"])
     assign("configPosition", position_value)
-    assign("configRotation", rotation_value)
+    look_at = payload.get("lookAt", {"x": pos["x"], "y": pos["y"], "z": pos["z"]})
+    assign("configLookAt", Vec(look_at["x"], look_at["y"], look_at["z"]))
 elif kind == "camera":
-    assign("posRelativeOrGlobal", Vec(pos["x"], pos["y"], pos["z"]))
-    assign("rotRelativeOrGlobal", Vec(rot["x"], rot["y"], rot["z"]))
+    assign("offset", Vec(pos["x"], pos["y"], pos["z"]))
+    assign("rotation", Vec(rot["x"], rot["y"], rot["z"]))
 else:
     assign("offset", Vec(pos["x"], pos["y"], pos["z"]))
     assign("rotation", Vec(rot["x"], rot["y"], rot["z"]))
@@ -170,20 +185,21 @@ if kind in ["screen", "surface"]:
         assign("rotation", Vec(0.0, yaw, 0.0))
 elif kind == "projector":
     current_pos = obj.configPosition
-    current_rot = obj.configRotation
     if position_change:
         value = Vec(position_change.get("x", current_pos.x), position_change.get("y", current_pos.y), position_change.get("z", current_pos.z))
         assign("configPosition", value)
-    if rotation_change:
-        value = Vec(rotation_change.get("x", current_rot.x), rotation_change.get("y", current_rot.y), rotation_change.get("z", current_rot.z))
-        assign("configRotation", value)
+    look_change = changed.get("lookAt", {})
+    if look_change:
+        current_look = obj.configLookAt
+        value = Vec(look_change.get("x", current_look.x), look_change.get("y", current_look.y), look_change.get("z", current_look.z))
+        assign("configLookAt", value)
 elif kind == "camera":
-    current_pos = obj.posRelativeOrGlobal
-    current_rot = obj.rotRelativeOrGlobal
+    current_pos = obj.offset
+    current_rot = obj.rotation
     if position_change:
-        assign("posRelativeOrGlobal", Vec(position_change.get("x", current_pos.x), position_change.get("y", current_pos.y), position_change.get("z", current_pos.z)))
+        assign("offset", Vec(position_change.get("x", current_pos.x), position_change.get("y", current_pos.y), position_change.get("z", current_pos.z)))
     if rotation_change:
-        assign("rotRelativeOrGlobal", Vec(rotation_change.get("x", current_rot.x), rotation_change.get("y", current_rot.y), rotation_change.get("z", current_rot.z)))
+        assign("rotation", Vec(rotation_change.get("x", current_rot.x), rotation_change.get("y", current_rot.y), rotation_change.get("z", current_rot.z)))
 else:
     current_pos = obj.offset
     current_rot = obj.rotation

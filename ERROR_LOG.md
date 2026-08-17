@@ -105,8 +105,8 @@
 - Symptom: projectors exported away from their X/Y/Z planner positions and could show unexplained values below the expected height.
 - Evidence: create/update first assigned `configPosition/configRotation`, then assigned the same values to inherited `offset/rotation`; readback of the config fields no longer matched the requested transform.
 - Cause: Designer derives the projector optical configuration relative to its body. Mutating both coordinate layers transformed the projector twice.
-- Fix: write and read only `configPosition/configRotation` for projectors. Do not mirror to `offset/rotation`.
-- Regression test: generated projector Python contains config assignments and no `assign("offset", position_value)`; a projector at `(3,2.5,-5)` reads back at exactly that config position.
+- Fix: initially removed body mirroring; v7 further replaced `configRotation` with the explicit `configLookAt` target contract.
+- Regression test: generated projector Python contains `configPosition/configLookAt` and no body or config-rotation assignment; a projector at `(3,2.5,-5)` reads back at exactly that position and target.
 
 ## ERR-013: Decimal comma collapsed room and stage sizes
 
@@ -124,4 +124,48 @@
 - Evidence: the v6 migration branch read legacy room fields even when a v5 save already contained a separate `stage` object.
 - Cause: v5 was the first version with a separate stage, but migration was keyed only on `sourceVersion < 6`.
 - Fix: preserve a non-empty saved stage for all source versions from v5 onward; only v2-v4 fall back to legacy room fields.
-- Regression test: a v5 stage `(centerX=3, centerZ=-2, floorY=1.1, width=10, depth=6, height=0.6)` survives load unchanged.
+- Regression test: a v5 stage with top `floorY=1.1` and height `0.6` migrates to base `floorY=0.5` while object world coordinates remain unchanged.
+
+## ERR-015: Projector Euler update failed readback
+
+- Date: 2026-08-17
+- Symptom: synchronization stopped on a projector position mismatch; deleting projectors allowed the rest of the scene to export.
+- Evidence: the installed r34 stubs expose writable `configLookAt` alongside `configPosition/configRotation`, while the planner tried to control orientation through Euler config rotation.
+- Cause: projector calibration orientation is target-based and Designer may recompute config values when Euler rotation changes, so a strict round-trip of the planner's generic rotation contract is not stable.
+- Fix: projectors now store a world Look At point, write `configPosition/configLookAt`, ignore generic rotation in validation, and read both values back.
+- Regression test: adapter source contains `configLookAt` create/update/readback, contains no `assign("configRotation", rotation_value)`, and projector readback validates position plus target.
+
+## ERR-016: Wrong camera class and unreadable resource names
+
+- Date: 2026-08-17
+- Symptom: exported cameras were `VirtualCamera`, faced incorrectly, and Designer displayed UUID-like resource names.
+- Evidence: the adapter mapped planner cameras to `VirtualCamera`, `virtualcamera`, and relative/global fields; resource paths were `dsg-<uuid>.apx`.
+- Cause: the generic virtual-camera implementation was chosen before the required Designer object type and naming contract were established.
+- Fix: create `Camera` in `objects/camera`, use `offset/rotation`, and generate readable stable paths such as `dsg-camera-1.apx`.
+- Regression test: generated adapter source maps camera to `Camera`/`camera`, contains camera offset/rotation writes, and does not create `VirtualCamera`.
+
+## ERR-017: Deleting an object could duplicate its display number
+
+- Date: 2026-08-17
+- Symptom: after deleting LED screen 1 from a list containing 2 and 3, the next screen was also named 3.
+- Evidence: naming used current object count plus one rather than existing numeric suffixes.
+- Cause: count-based numbering assumes no gaps and cannot distinguish remaining names.
+- Fix: the next name uses the maximum existing suffix plus one; local deletion now requires an inline confirmation beside the cross button.
+- Regression test: with screens 2 and 3 present, the next generated name is screen 4, and clicking the cross alone does not delete it.
+
+## ERR-018: Missing stage height stopped the whole interface
+
+- Date: 2026-08-17
+- Symptom: after reloading v7, all object groups and the plan appeared to disappear.
+- Evidence: the browser reported `Cannot read properties of null (reading 'dataset')` while binding `#stage-height`; the HTML no longer contained that required input.
+- Cause: the height label was removed together with the obsolete advanced stage-position controls.
+- Fix: restore the stage height input, bump all runtime asset query versions to v7, and keep migration fallback to the v6 local state.
+- Regression test: the HTML must contain `stage-height`, `measure-from-stage`, and v7 script URLs; the complete app harness must initialize without a missing element.
+
+## ERR-019: Adapter presence was mistaken for a live Designer session
+
+- Date: 2026-08-17
+- Symptom: the footer showed `Designer Python API` even when the local Designer endpoint was unavailable.
+- Cause: the UI checked only whether the browser adapter object was loaded, not whether `/api/session/status/session` answered.
+- Fix: probe the session endpoint at startup and distinguish `Designer доступен` from `Designer не отвечает · JSON доступен`.
+- Regression test: with the endpoint unavailable, the export dialog remains disabled and the footer reports the offline state.

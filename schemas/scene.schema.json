@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://local.disguise-scene-planner/schemas/scene.schema.json",
-  "title": "Disguise Scene Planner v6 plan",
+  "title": "Disguise Scene Planner v7 plan",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "units", "coordinateSystem", "room", "stage", "objects"],
   "properties": {
-    "version": { "const": 6 },
+    "version": { "const": 7 },
     "units": { "const": "metres" },
     "coordinateSystem": { "const": "Designer world XYZ; top view X/Z; no room-relative transform" },
     "room": {
@@ -15,10 +15,10 @@
     },
     "stage": {
       "type": "object", "additionalProperties": false,
-      "required": ["centerX", "centerZ", "floorY", "width", "depth", "height"],
+      "required": ["centerX", "centerZ", "floorY", "width", "depth", "height", "measureFromStage"],
       "properties": {
         "centerX": { "type": "number" }, "centerZ": { "type": "number" }, "floorY": { "type": "number" },
-        "width": { "type": "number", "exclusiveMinimum": 0 }, "depth": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "minimum": 0 }
+        "width": { "type": "number", "exclusiveMinimum": 0 }, "depth": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "minimum": 0 }, "measureFromStage": { "type": "boolean" }
       }
     },
     "objects": { "type": "array", "items": { "$ref": "#/$defs/sceneObject" } }
@@ -31,6 +31,10 @@
     "transform": {
       "type": "object", "additionalProperties": false, "required": ["position", "rotation"],
       "properties": { "position": { "$ref": "#/$defs/vector" }, "rotation": { "$ref": "#/$defs/vector" } }
+    },
+    "lookAt": {
+      "type": "object", "additionalProperties": false, "required": ["x", "y", "z"],
+      "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" } }
     },
     "geometry": {
       "type": "object", "additionalProperties": false, "required": ["width", "height"],
@@ -46,11 +50,12 @@
       "type": "object", "additionalProperties": false, "required": ["pluginId", "type", "name", "transform"],
       "properties": {
         "pluginId": { "type": "string", "minLength": 1 }, "type": { "enum": ["screen", "surface", "camera", "projector", "light"] },
-        "name": { "type": "string", "minLength": 1 }, "transform": { "$ref": "#/$defs/transform" }, "geometry": { "$ref": "#/$defs/geometry" }, "media": { "$ref": "#/$defs/media" }, "designer": { "type": "object" }
+        "name": { "type": "string", "minLength": 1 }, "transform": { "$ref": "#/$defs/transform" }, "lookAt": { "$ref": "#/$defs/lookAt" }, "geometry": { "$ref": "#/$defs/geometry" }, "media": { "$ref": "#/$defs/media" }, "designer": { "type": "object" }
       },
       "allOf": [
         { "if": { "properties": { "type": { "enum": ["screen", "surface"] } }, "required": ["type"] }, "then": { "required": ["geometry"] }, "else": { "not": { "required": ["geometry"] } } },
-        { "if": { "properties": { "type": { "enum": ["screen", "projector"] } }, "required": ["type"] }, "then": { "required": ["media"] } }
+        { "if": { "properties": { "type": { "enum": ["screen", "surface", "projector"] } }, "required": ["type"] }, "then": { "required": ["media"] } }
+        ,{ "if": { "properties": { "type": { "const": "projector" } }, "required": ["type"] }, "then": { "required": ["lookAt"] } }
       ]
     }
   }

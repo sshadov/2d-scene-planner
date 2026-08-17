@@ -1,26 +1,25 @@
 (() => {
-  const VERSION = 6;
-  const STORAGE_KEY = "disguise-scene-generator-state-v6";
+  const VERSION = 7;
+  const STORAGE_KEY = "disguise-scene-generator-state-v7";
   const PLANAR_TYPES = new Set(["screen", "surface"]);
   const GROUP_ORDER = ["screen", "projector", "light", "surface", "camera"];
   const defaults = {
     room: { width: 20, depth: 12 },
-    stage: { centerX: 0, centerZ: 0, floorY: 0.8, width: 12, depth: 8, height: 0.8 },
+    stage: { centerX: 0, centerZ: 0, floorY: 0, width: 12, depth: 8, height: 0.8, measureFromStage: false },
     counts: { screen: 3, projector: 1, light: 4, surface: 0, camera: 0 }
   };
   const typeConfig = {
     screen: { label: "LED-экран", group: "LED-экраны", color: "#3dd9d4", geometry: { width: 4, height: 2 }, media: { resolutionX: 1920, resolutionY: 1080, pixelPitchMm: 2.6 } },
     projector: { label: "Проектор", group: "Проекторы", color: "#c084fc", radius: 0.38, defaultHeight: 2.5, media: { resolutionX: 1920, resolutionY: 1080 } },
     light: { label: "Световой прибор", group: "Световые приборы", color: "#f8c84d", radius: 0.23, defaultHeight: 3 },
-    surface: { label: "Поверхность", group: "Поверхности", color: "#4e9cff", geometry: { width: 3, height: 2 } },
+    surface: { label: "Поверхность", group: "Поверхности", color: "#4e9cff", geometry: { width: 3, height: 2 }, media: { resolutionX: 1920, resolutionY: 1080, pixelPitchMm: 2.6 } },
     camera: { label: "Камера", group: "Камеры", color: "#ff7d62", radius: 0.36, defaultHeight: 1.6 }
   };
   const roomInputs = {
     width: document.querySelector("#room-width"), depth: document.querySelector("#room-depth")
   };
   const stageInputs = {
-    width: document.querySelector("#stage-width"), depth: document.querySelector("#stage-depth"), height: document.querySelector("#stage-height"),
-    centerX: document.querySelector("#stage-center-x"), centerZ: document.querySelector("#stage-center-z"), floorY: document.querySelector("#stage-floor-y")
+    width: document.querySelector("#stage-width"), depth: document.querySelector("#stage-depth"), height: document.querySelector("#stage-height"), measureFromStage: document.querySelector("#measure-from-stage")
   };
   const canvas = document.querySelector("#scene-canvas");
   const ctx = canvas.getContext("2d");
@@ -44,6 +43,10 @@
   function makeId() { return globalThis.crypto?.randomUUID?.() || `dsg-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
   function roomBounds() { return { minX: -state.room.width / 2, maxX: state.room.width / 2, minZ: -state.room.depth / 2, maxZ: state.room.depth / 2 }; }
   function stageBounds() { return { minX: state.stage.centerX - state.stage.width / 2, maxX: state.stage.centerX + state.stage.width / 2, minZ: state.stage.centerZ - state.stage.depth / 2, maxZ: state.stage.centerZ + state.stage.depth / 2 }; }
+  function stageTopY() { return state.stage.floorY + state.stage.height; }
+  function lookAtFromRotation(position, rotation) {
+    const yaw = finite(rotation?.y); return { x: position.x + Math.sin(yaw * Math.PI / 180), y: position.y, z: position.z + Math.cos(yaw * Math.PI / 180) };
+  }
   function formatValue(value, step = .1) { const digits = step >= 1 ? 0 : step >= .1 ? 1 : 2; return finite(value).toFixed(digits).replace(".", ","); }
   function modelSnapshot() { return { version: VERSION, room: state.room, stage: state.stage, objects: state.objects, sync: state.sync }; }
   function snapshot() { return JSON.stringify(modelSnapshot()); }
@@ -52,13 +55,19 @@
 
   function normalizedRoom(room = {}) { return { width: Math.max(2, finite(room.width, defaults.room.width)), depth: Math.max(2, finite(room.depth, defaults.room.depth)) }; }
   function normalizedStage(saved = {}, room = {}, sourceVersion = VERSION) {
-    if (sourceVersion >= 5 && saved && typeof saved === "object" && Object.keys(saved).length) return {
-      centerX: finite(saved.centerX), centerZ: finite(saved.centerZ), floorY: finite(saved.floorY, defaults.stage.floorY),
-      width: Math.max(.5, finite(saved.width, defaults.stage.width)), depth: Math.max(.5, finite(saved.depth, defaults.stage.depth)), height: Math.max(0, finite(saved.height, defaults.stage.height))
-    };
+    if (sourceVersion >= 5 && saved && typeof saved === "object" && Object.keys(saved).length) {
+      const savedHeight = Math.max(0, finite(saved.height, defaults.stage.height));
+      const legacyTopY = finite(saved.floorY, defaults.stage.floorY);
+      return {
+        centerX: finite(saved.centerX), centerZ: finite(saved.centerZ),
+        floorY: sourceVersion >= VERSION ? legacyTopY : Number((legacyTopY - savedHeight).toFixed(3)),
+        width: Math.max(.5, finite(saved.width, defaults.stage.width)), depth: Math.max(.5, finite(saved.depth, defaults.stage.depth)), height: savedHeight,
+        measureFromStage: Boolean(saved.measureFromStage)
+      };
+    }
     return {
       centerX: finite(room.centerX), centerZ: finite(room.centerZ), floorY: finite(room.floorY, defaults.stage.floorY),
-      width: Math.min(finite(room.width, defaults.room.width), defaults.stage.width), depth: Math.min(finite(room.depth, defaults.room.depth), defaults.stage.depth), height: defaults.stage.height
+      width: Math.min(finite(room.width, defaults.room.width), defaults.stage.width), depth: Math.min(finite(room.depth, defaults.room.depth), defaults.stage.depth), height: defaults.stage.height, measureFromStage: false
     };
   }
   function normalizeObject(object, index, sourceVersion = VERSION) {
@@ -75,6 +84,7 @@
     }
     const type = object.type || "surface"; const config = typeConfig[type];
     if (PLANAR_TYPES.has(type)) { rotation.x = 0; rotation.z = 0; }
+    if (type === "projector") rotation = { x: 0, y: 0, z: 0 };
     const normalized = { id: Number(object.id) || index + 1, pluginId: object.pluginId || makeId(), type, name: object.name || `${config.label} ${index + 1}`, transform: { position, rotation } };
     if (config.geometry) normalized.geometry = {
       width: Math.max(.1, finite(object.geometry?.width ?? object.dimensions?.width, config.geometry.width)),
@@ -83,14 +93,15 @@
     if (config.media) normalized.media = {
       resolutionX: Math.max(1, Math.round(finite(object.media?.resolutionX, config.media.resolutionX))),
       resolutionY: Math.max(1, Math.round(finite(object.media?.resolutionY, config.media.resolutionY))),
-      ...(type === "screen" ? { pixelPitchMm: Math.max(.1, finite(object.media?.pixelPitchMm, config.media.pixelPitchMm)) } : {})
+      ...(PLANAR_TYPES.has(type) ? { pixelPitchMm: Math.max(.1, finite(object.media?.pixelPitchMm, config.media.pixelPitchMm)) } : {})
     };
+    if (type === "projector") normalized.lookAt = vector(object.lookAt || lookAtFromRotation(position, rotation));
     if (object.designer) normalized.designer = object.designer;
     return normalized;
   }
   function loadPersisted() {
     try {
-      const keys = [STORAGE_KEY, "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
+      const keys = [STORAGE_KEY, "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
       const saved = JSON.parse(keys.map(key => localStorage.getItem(key)).find(Boolean) || "null"); if (!saved) return false;
       const sourceVersion = Number(saved.version) || (saved.objects?.some(object => object.position) ? 3 : 2);
       state.room = normalizedRoom(saved.room); state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion);
@@ -107,15 +118,21 @@
   }
   function applyHistory(direction) { const source = direction === "undo" ? state.history : state.future; if (!source.length) return; const target = direction === "undo" ? state.future : state.history; target.push(snapshot()); restore(source.pop()); }
 
+  function nextObjectName(type) {
+    const label = typeConfig[type].label; const numbers = state.objects.filter(object => object.type === type).map(object => Number(String(object.name).match(/(\d+)$/)?.[1] || 0));
+    return `${label} ${Math.max(0, ...numbers) + 1}`;
+  }
   function newObject(type, x = state.stage.centerX, z = state.stage.centerZ, rotation = {}) {
     const config = typeConfig[type]; const object = {
-      id: nextId++, pluginId: makeId(), type, name: `${config.label} ${state.objects.filter(item => item.type === type).length + 1}`,
+      id: nextId++, pluginId: makeId(), type, name: nextObjectName(type),
       transform: {
-        position: { x: Number(x.toFixed(3)), y: Number((PLANAR_TYPES.has(type) ? state.stage.floorY : (config.defaultHeight ?? state.stage.floorY)).toFixed(3)), z: Number(z.toFixed(3)) },
-        rotation: { x: PLANAR_TYPES.has(type) ? 0 : finite(rotation.x), y: finite(rotation.y), z: PLANAR_TYPES.has(type) ? 0 : finite(rotation.z) }
+        position: { x: Number(x.toFixed(3)), y: Number((PLANAR_TYPES.has(type) ? stageTopY() : (config.defaultHeight ?? stageTopY())).toFixed(3)), z: Number(z.toFixed(3)) },
+        rotation: { x: PLANAR_TYPES.has(type) || type === "projector" ? 0 : finite(rotation.x), y: PLANAR_TYPES.has(type) || type === "projector" ? 0 : finite(rotation.y), z: PLANAR_TYPES.has(type) || type === "projector" ? 0 : finite(rotation.z) }
       }
     };
-    if (config.geometry) object.geometry = clone(config.geometry); if (config.media) object.media = clone(config.media); return object;
+    if (config.geometry) object.geometry = clone(config.geometry); if (config.media) object.media = clone(config.media);
+    if (type === "projector") object.lookAt = { x: state.stage.centerX, y: stageTopY(), z: state.stage.centerZ };
+    return object;
   }
   function generate() {
     syncModelsFromInputs(); saveHistory(); state.objects = []; const bounds = stageBounds(); const counts = defaults.counts; const margin = .6;
@@ -129,15 +146,21 @@
 
   function syncStaticInputs() {
     Object.entries(state.room).forEach(([key, value]) => { if (roomInputs[key]) roomInputs[key].value = formatValue(value); });
-    Object.entries(state.stage).forEach(([key, value]) => { if (stageInputs[key]) stageInputs[key].value = formatValue(value); });
+    Object.entries(state.stage).forEach(([key, value]) => { if (stageInputs[key] && typeof value !== "boolean") stageInputs[key].value = formatValue(value); });
+    if (stageInputs.measureFromStage) stageInputs.measureFromStage.checked = Boolean(state.stage.measureFromStage);
   }
   function syncModelsFromInputs() {
     state.room.width = clamp(finite(roomInputs.width.value, state.room.width), 2, 100); state.room.depth = clamp(finite(roomInputs.depth.value, state.room.depth), 2, 100);
     state.stage.width = clamp(finite(stageInputs.width.value, state.stage.width), .5, 100); state.stage.depth = clamp(finite(stageInputs.depth.value, state.stage.depth), .5, 100); state.stage.height = clamp(finite(stageInputs.height.value, state.stage.height), 0, 20);
-    state.stage.centerX = finite(stageInputs.centerX.value, state.stage.centerX); state.stage.centerZ = finite(stageInputs.centerZ.value, state.stage.centerZ); state.stage.floorY = finite(stageInputs.floorY.value, state.stage.floorY); syncStaticInputs();
+    syncStaticInputs();
   }
   function bindScrub(input, getter, setter, step = .1) {
     input.dataset.step = step; input.classList.add("scrub-input");
+    input.addEventListener("keydown", event => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      event.preventDefault(); saveHistory(); const direction = event.key === "ArrowUp" ? 1 : -1; const multiplier = event.shiftKey ? 10 : 1;
+      setter(Number((getter() + direction * step * multiplier).toFixed(3))); input.value = formatValue(getter(), step); persist(); drawScene();
+    });
     input.addEventListener("input", () => {
       const parsed = finite(input.value, Number.NaN); if (!Number.isFinite(parsed)) return;
       setter(parsed); persist(); drawScene();
@@ -150,7 +173,8 @@
   }
   function setupStaticInputs() {
     Object.entries(roomInputs).forEach(([key, input]) => bindScrub(input, () => state.room[key], value => { state.room[key] = clamp(value, 2, 100); }, .1));
-    Object.entries(stageInputs).forEach(([key, input]) => bindScrub(input, () => state.stage[key], value => { state.stage[key] = ["width", "depth"].includes(key) ? clamp(value, .5, 100) : key === "height" ? clamp(value, 0, 20) : value; }, .1));
+    ["width", "depth", "height"].forEach(key => bindScrub(stageInputs[key], () => state.stage[key], value => { state.stage[key] = ["width", "depth"].includes(key) ? clamp(value, .5, 100) : clamp(value, 0, 20); }, .1));
+    stageInputs.measureFromStage.addEventListener("change", () => { state.stage.measureFromStage = stageInputs.measureFromStage.checked; persist(); render(); });
   }
 
   function sizing() {
@@ -168,14 +192,21 @@
     state.guides.forEach(guide => { ctx.strokeStyle = "rgba(248,200,77,.75)"; ctx.setLineDash([5, 4]); ctx.beginPath(); if (guide.axis === "x") { const p = toScreen(guide.value, 0, frame); ctx.moveTo(p.x, frame.top); ctx.lineTo(p.x, frame.top + frame.roomHeight); } else { const p = toScreen(0, guide.value, frame); ctx.moveTo(frame.left, p.y); ctx.lineTo(frame.left + frame.roomWidth, p.y); } ctx.stroke(); ctx.setLineDash([]); });
     ctx.restore(); ctx.strokeStyle = "#92a0ae"; ctx.lineWidth = 2; ctx.strokeRect(frame.left, frame.top, frame.roomWidth, frame.roomHeight);
   }
-  function drawDirection(config, frame, length, spread) { ctx.globalAlpha = .25; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(length * frame.scale, -spread * frame.scale); ctx.lineTo(length * frame.scale, spread * frame.scale); ctx.closePath(); ctx.fillStyle = config.color; ctx.fill(); ctx.globalAlpha = 1; }
+  function directionAngle(object) {
+    const position = object.transform.position;
+    if (object.type === "projector" && object.lookAt) return Math.atan2(object.lookAt.x - position.x, object.lookAt.z - position.z);
+    return finite(object.transform.rotation.y) * Math.PI / 180;
+  }
+  function drawDirection(config, frame, object, length, spread) {
+    ctx.save(); ctx.rotate(directionAngle(object)); ctx.globalAlpha = .25; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-spread * frame.scale, -length * frame.scale); ctx.lineTo(spread * frame.scale, -length * frame.scale); ctx.closePath(); ctx.fillStyle = config.color; ctx.fill(); ctx.restore(); ctx.globalAlpha = 1;
+  }
   function drawObject(object, frame) {
     const position = toScreen(object.transform.position.x, object.transform.position.z, frame); const config = typeConfig[object.type]; const selected = object.id === state.selectedId;
-    ctx.save(); ctx.translate(position.x, position.y); ctx.rotate(-object.transform.rotation.y * Math.PI / 180); ctx.fillStyle = config.color; ctx.strokeStyle = selected ? "#fff" : config.color; ctx.lineWidth = selected ? 2.5 : 1.2;
+    ctx.save(); ctx.translate(position.x, position.y); if (PLANAR_TYPES.has(object.type)) ctx.rotate(object.transform.rotation.y * Math.PI / 180); ctx.fillStyle = config.color; ctx.strokeStyle = selected ? "#fff" : config.color; ctx.lineWidth = selected ? 2.5 : 1.2;
     if (PLANAR_TYPES.has(object.type)) { const w = object.geometry.width * frame.scale; const t = Math.max(5, .1 * frame.scale); if (object.type === "surface") ctx.globalAlpha = .42; ctx.fillRect(-w / 2, -t / 2, w, t); ctx.globalAlpha = 1; ctx.strokeRect(-w / 2, -t / 2, w, t); }
-    if (object.type === "projector") { drawDirection(config, frame, 4, 1.8); const r = config.radius * frame.scale; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#10161c"; ctx.beginPath(); ctx.arc(frame.scale * .25, 0, Math.max(2, r * .28), 0, Math.PI * 2); ctx.fill(); }
-    if (object.type === "light") { drawDirection(config, frame, 3, 1.1); const r = Math.max(5, config.radius * frame.scale); ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#10161c"; ctx.beginPath(); ctx.arc(0, 0, Math.max(2, r * .32), 0, Math.PI * 2); ctx.fill(); }
-    if (object.type === "camera") { drawDirection(config, frame, 3, 1.4); const r = config.radius * frame.scale; ctx.beginPath(); ctx.moveTo(r, 0); ctx.lineTo(-r * .8, -r * .75); ctx.lineTo(-r * .8, r * .75); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    if (object.type === "projector") { drawDirection(config, frame, object, 4, 1.8); const r = config.radius * frame.scale; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#10161c"; ctx.beginPath(); ctx.arc(0, -r * .25, Math.max(2, r * .28), 0, Math.PI * 2); ctx.fill(); }
+    if (object.type === "light") { drawDirection(config, frame, object, 3, 1.1); const r = Math.max(5, config.radius * frame.scale); ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#10161c"; ctx.beginPath(); ctx.arc(0, -r * .32, Math.max(2, r * .32), 0, Math.PI * 2); ctx.fill(); }
+    if (object.type === "camera") { drawDirection(config, frame, object, 3, 1.4); const r = config.radius * frame.scale; ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(-r * .75, r * .8); ctx.lineTo(r * .75, r * .8); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     ctx.restore(); if (selected) { ctx.fillStyle = "#fff"; ctx.font = "12px Inter,sans-serif"; ctx.textAlign = "center"; ctx.fillText(object.name, position.x, position.y - 16); }
   }
   function drawScene() { const frame = sizing(); drawGrid(frame); state.objects.forEach(object => drawObject(object, frame)); emptyHint.hidden = state.objects.length > 0; document.querySelector("#zoom-level").textContent = `${Math.round(state.zoom * 100)}%`; document.querySelector("#scene-summary").textContent = `Помещение ${state.room.width.toFixed(1)} × ${state.room.depth.toFixed(1)} м · сцена ${state.stage.width.toFixed(1)} × ${state.stage.depth.toFixed(1)} × ${state.stage.height.toFixed(1)} м`; }
@@ -191,19 +222,37 @@
   }
 
   function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
+  function objectHeightValue(object) { return state.stage.measureFromStage ? object.transform.position.y - stageTopY() : object.transform.position.y; }
+  function setObjectHeight(object, value) { object.transform.position.y = state.stage.measureFromStage ? stageTopY() + value : value; }
   function fieldDefinition(object) {
     const fields = [];
     if (object.geometry) fields.push(["Ширина", "geometry.width", object.geometry.width, .1, "м"], ["Высота", "geometry.height", object.geometry.height, .1, "м"]);
-    fields.push(["X", "transform.position.x", object.transform.position.x, .1, "м"], [PLANAR_TYPES.has(object.type) ? "Y нижнего края" : ["projector", "camera"].includes(object.type) ? "Y объектива" : "Y", "transform.position.y", object.transform.position.y, .1, "м"], ["Z", "transform.position.z", object.transform.position.z, .1, "м"]);
-    if (PLANAR_TYPES.has(object.type)) fields.push(["Поворот по плану", "transform.rotation.y", object.transform.rotation.y, .1, "°"]); else fields.push(["Наклон X", "transform.rotation.x", object.transform.rotation.x, .1, "°"], ["Направление Y", "transform.rotation.y", object.transform.rotation.y, .1, "°"], ["Наклон Z", "transform.rotation.z", object.transform.rotation.z, .1, "°"]);
-    if (object.media) fields.push(["Разрешение X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Разрешение Y", "media.resolutionY", object.media.resolutionY, 1, "px"]); if (object.type === "screen") fields.push(["Шаг пикселя", "media.pixelPitchMm", object.media.pixelPitchMm, .1, "мм"]);
+    const heightLabel = state.stage.measureFromStage ? "Высота от сцены" : PLANAR_TYPES.has(object.type) ? "Y нижнего края" : object.type === "projector" ? "Y линзы" : object.type === "camera" ? "Y камеры" : "Y прибора";
+    fields.push(["X", "transform.position.x", object.transform.position.x, .1, "м"], [heightLabel, "transform.position.y", objectHeightValue(object), .1, "м"], ["Z", "transform.position.z", object.transform.position.z, .1, "м"]);
+    if (object.type === "projector") fields.push(["Look at X", "lookAt.x", object.lookAt?.x ?? state.stage.centerX, .1, "м"], ["Look at Y", "lookAt.y", object.lookAt?.y ?? stageTopY(), .1, "м"], ["Look at Z", "lookAt.z", object.lookAt?.z ?? state.stage.centerZ, .1, "м"]);
+    else if (PLANAR_TYPES.has(object.type)) fields.push(["Поворот по плану", "transform.rotation.y", object.transform.rotation.y, 1, "°"]);
+    else fields.push(["Наклон X", "transform.rotation.x", object.transform.rotation.x, 1, "°"], ["Направление Y", "transform.rotation.y", object.transform.rotation.y, 1, "°"]);
+    if (object.media) fields.push(["Разрешение X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Разрешение Y", "media.resolutionY", object.media.resolutionY, 1, "px"]); if (PLANAR_TYPES.has(object.type)) fields.push(["Шаг пикселя", "media.pixelPitchMm", object.media.pixelPitchMm, .1, "мм"]);
     return fields;
   }
   function getPath(object, path) { return path.split(".").reduce((value, key) => value[key], object); }
-  function setPath(object, path, value) { const keys = path.split("."); const last = keys.pop(); const target = keys.reduce((current, key) => current[key], object); target[last] = path.startsWith("media.resolution") ? Math.max(1, Math.round(value)) : Number(value.toFixed(3)); if (PLANAR_TYPES.has(object.type)) { object.transform.rotation.x = 0; object.transform.rotation.z = 0; } }
+  function getFieldValue(object, path) { return path === "transform.position.y" ? objectHeightValue(object) : getPath(object, path); }
+  function setPath(object, path, value) {
+    if (path === "transform.position.y") { setObjectHeight(object, value); return; }
+    const keys = path.split("."); const last = keys.pop(); const target = keys.reduce((current, key) => current[key] ||= {}, object); target[last] = path.startsWith("media.resolution") ? Math.max(1, Math.round(value)) : Number(value.toFixed(3));
+    if (PLANAR_TYPES.has(object.type)) { object.transform.rotation.x = 0; object.transform.rotation.z = 0; }
+  }
   function makeObjectField(object, definition) {
     const [labelText, path, value, step, unit] = definition; const label = element("label", "object-field"); label.append(element("span", "object-field-label", labelText)); const shell = element("span", "input-shell"); const input = document.createElement("input"); input.type = "text"; input.inputMode = "decimal"; input.value = formatValue(value, step); input.dataset.field = path; input.setAttribute("aria-label", `${object.name}: ${labelText}`); shell.append(input, element("i", "input-unit", unit)); label.append(shell);
-    bindScrub(input, () => getPath(object, path), next => setPath(object, path, next), step); return label;
+    bindScrub(input, () => getFieldValue(object, path), next => setPath(object, path, next), step); return label;
+  }
+  function showDeletePopover(object, anchor) {
+    if ([...(anchor.children || [])].some(child => child.className?.split?.(" ").includes("delete-popover"))) return;
+    const popover = element("span", "delete-popover"); popover.append(element("span", "", "Удалить?"));
+    const yes = element("button", "", "Да"); const no = element("button", "", "Нет"); yes.type = "button"; no.type = "button";
+    yes.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); deleteObject(object.id); });
+    no.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); popover.remove?.(); });
+    popover.append(yes, no); anchor.append(popover);
   }
   function renderObjectGroups() {
     objectGroups.replaceChildren();
@@ -212,7 +261,7 @@
       const summary = element("summary", "object-group-summary"); const title = element("span", "group-title"); title.append(element("span", "group-swatch"), document.createTextNode(config.group), element("b", "group-count", String(objects.length))); title.querySelector(".group-swatch").style.background = config.color; const add = element("button", "group-add", "+"); add.type = "button"; add.title = `Добавить: ${config.label}`; add.setAttribute("aria-label", `Добавить ${config.label}`); add.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); addObject(type); }); summary.append(title, add); group.append(summary);
       const list = element("div", "object-list"); objects.forEach(object => {
         const entry = element("details", "object-entry"); entry.open = state.expandedIds.has(object.id); if (object.id === state.selectedId) entry.classList.add("selected"); entry.addEventListener("toggle", () => entry.open ? state.expandedIds.add(object.id) : state.expandedIds.delete(object.id));
-        const objectSummary = element("summary", "object-summary"); const name = element("span", "object-name", object.name); const remove = element("button", "object-remove", "×"); remove.type = "button"; remove.title = "Удалить объект"; remove.setAttribute("aria-label", `Удалить ${object.name}`); remove.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); deleteObject(object.id); }); objectSummary.append(name, remove); objectSummary.addEventListener("click", () => { state.selectedId = object.id; }); entry.append(objectSummary);
+        const objectSummary = element("summary", "object-summary"); const name = element("span", "object-name", object.name); const remove = element("button", "object-remove", "×"); remove.type = "button"; remove.title = "Удалить объект"; remove.setAttribute("aria-label", `Удалить ${object.name}`); remove.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); showDeletePopover(object, objectSummary); }); objectSummary.append(name, remove); objectSummary.addEventListener("click", () => { state.selectedId = object.id; }); entry.append(objectSummary);
         const body = element("div", "object-properties"); fieldDefinition(object).forEach(definition => body.append(makeObjectField(object, definition))); entry.append(body); list.append(entry);
       }); group.append(list); objectGroups.append(group);
     });
@@ -223,12 +272,12 @@
 
   function canonical(value) { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }
   function changedValue(previous, current) { if (previous && current && typeof previous === "object" && typeof current === "object" && !Array.isArray(previous) && !Array.isArray(current)) { const result = {}; Object.keys(current).forEach(key => { const change = changedValue(previous[key], current[key]); if (change !== undefined) result[key] = change; }); return Object.keys(result).length ? result : undefined; } return canonical(previous) === canonical(current) ? undefined : current; }
-  function objectPayload(object) { const payload = { pluginId: object.pluginId, type: object.type, name: object.name, transform: clone(object.transform) }; if (object.geometry) payload.geometry = clone(object.geometry); if (object.media) payload.media = clone(object.media); return payload; }
+  function objectPayload(object) { const payload = { pluginId: object.pluginId, type: object.type, name: object.name, transform: clone(object.transform) }; if (object.lookAt) payload.lookAt = clone(object.lookAt); if (object.geometry) payload.geometry = clone(object.geometry); if (object.media) payload.media = clone(object.media); return payload; }
   function validateReadback(expected, result, tolerance = .001) {
     const actual = result?.readback; if (!actual) throw new Error("Designer не вернул координаты объекта для проверки"); const mismatches = [];
     const compare = (path, wanted, got) => { if (!Number.isFinite(Number(got)) || Math.abs(Number(wanted) - Number(got)) > tolerance) mismatches.push(`${path}: ожидалось ${wanted}, получено ${got}`); };
     const compareAngle = (path, wanted, got) => { const difference = Math.abs((((Number(wanted) - Number(got)) % 360) + 540) % 360 - 180); if (!Number.isFinite(Number(got)) || difference > tolerance) mismatches.push(`${path}: ожидалось ${wanted}, получено ${got}`); };
-    ["x", "y", "z"].forEach(axis => compare(`position.${axis}`, expected.transform.position[axis], actual.transform?.position?.[axis])); ["x", "y", "z"].forEach(axis => compareAngle(`rotation.${axis}`, expected.transform.rotation[axis], actual.transform?.rotation?.[axis])); if (expected.geometry) { compare("geometry.width", expected.geometry.width, actual.geometry?.width); compare("geometry.height", expected.geometry.height, actual.geometry?.height); }
+    ["x", "y", "z"].forEach(axis => compare(`position.${axis}`, expected.transform.position[axis], actual.transform?.position?.[axis])); if (expected.type !== "projector") ["x", "y", "z"].forEach(axis => compareAngle(`rotation.${axis}`, expected.transform.rotation[axis], actual.transform?.rotation?.[axis])); if (expected.lookAt) ["x", "y", "z"].forEach(axis => compare(`lookAt.${axis}`, expected.lookAt[axis], actual.lookAt?.[axis])); if (expected.geometry) { compare("geometry.width", expected.geometry.width, actual.geometry?.width); compare("geometry.height", expected.geometry.height, actual.geometry?.height); }
     if (mismatches.length) throw new Error(`Проверка координат Designer не пройдена: ${mismatches.join("; ")}`); return true;
   }
   function getAdapter() { const adapter = globalThis.disguiseSceneAdapter; return adapter && ["inspectScene", "createObject", "updateObject"].every(method => typeof adapter[method] === "function") ? adapter : null; }
@@ -270,6 +319,12 @@
   canvas.addEventListener("pointermove", event => { if (!state.dragging) return; const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); const object = state.objects.find(item => item.id === state.dragging.id); if (!object) return; const bounds = roomBounds(); state.guides = []; object.transform.position.x = Number(clamp(snapCoordinate("x", point.x + state.dragging.offsetX, object), bounds.minX, bounds.maxX).toFixed(3)); object.transform.position.z = Number(clamp(snapCoordinate("z", point.z + state.dragging.offsetZ, object), bounds.minZ, bounds.maxZ).toFixed(3)); drawScene(); });
   canvas.addEventListener("pointerup", event => { state.dragging = null; state.guides = []; persist(); render(); if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId); }); canvas.addEventListener("pointercancel", () => { state.dragging = null; state.guides = []; persist(); render(); }); window.addEventListener("resize", drawScene);
 
-  setupStaticInputs(); if (!loadPersisted()) generate(); else { syncStaticInputs(); render(); } const adapter = getAdapter(); document.querySelector("#adapter-status").textContent = adapter ? `Designer API: ${adapter.capabilities?.source || "адаптер найден"}` : "Designer API: не подключён · JSON доступен";
+  setupStaticInputs(); if (!loadPersisted()) generate(); else { syncStaticInputs(); render(); }
+  const adapter = getAdapter(); const adapterStatus = document.querySelector("#adapter-status");
+  if (!adapter) adapterStatus.textContent = "Designer API: не подключён · JSON доступен";
+  else {
+    adapterStatus.textContent = "Designer API: проверка соединения…";
+    adapter.sessionStatus?.().then(() => { adapterStatus.textContent = "Designer API: Designer доступен"; }).catch(() => { adapterStatus.textContent = "Designer API: Designer не отвечает · JSON доступен"; });
+  }
   globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, objectPayload, validateReadback, canonical, changedValue, normalizeObject, roomBounds, stageBounds, toScreen, toWorld, snapCoordinate, typeConfig, finite, newObject };
 })();

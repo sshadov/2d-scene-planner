@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 - 2026-08-17
+
+- Added stage-relative height display without changing saved world Y.
+- Kept room and stage sections permanently visible and removed the unused stage-top field.
+- Restored keyboard ArrowUp/ArrowDown editing while retaining manual decimal input and mouse scrubbing.
+- Added inline delete confirmation beside each object remove button.
+- Fixed object numbering after deletion so a new LED screen cannot duplicate an existing number.
+- Replaced `VirtualCamera` creation with concrete `Camera` resources and readable `dsg-camera-N` paths.
+- Replaced projector Euler export with `configLookAt` and corrected top-view direction cones.
+- Restored the accidentally removed stage-height input and versioned all v7 runtime assets.
+- Added resolution and pixel-pitch planning fields to projection surfaces.
+- Added a real Designer session probe and request timeouts so an offline API is reported honestly.
+
 ## 0.7.0 - 2026-08-17
 
 - Added the v6 room/stage model and grouped Scene-style object sidebar.
@@ -8,9 +21,9 @@
 - Added screen resolution/pixel pitch and projector resolution fields.
 - Added visible projector, light, and camera direction cones plus grid/centre/edge/symmetry snapping.
 - Preserved the pointer offset during drag so selection no longer jumps an object under the cursor.
-- Stopped double-transforming projectors: only `configPosition/configRotation` are written.
+- Stopped double-transforming projectors: `configPosition/configLookAt` are written without body mirroring.
 - Fixed native number inputs clearing comma-formatted room/stage dimensions.
-- Preserved v5 stage metadata during v6 migration and kept generated equipment heights absolute.
+- Preserved v5 stage metadata during v7 migration and kept generated equipment heights absolute.
 
 ## 0.6.0 - 2026-08-17
 

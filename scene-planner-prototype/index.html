@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=6" />
+    <link rel="stylesheet" href="./styles.css?v=7" />
   </head>
   <body>
     <main class="app-shell">
@@ -50,21 +50,10 @@
             <label class="field"><span>Ширина</span><input id="stage-width" type="text" inputmode="decimal" value="12" /></label>
             <label class="field"><span>Длина</span><input id="stage-depth" type="text" inputmode="decimal" value="8" /></label>
             <label class="field"><span>Высота</span><input id="stage-height" type="text" inputmode="decimal" value="0.8" /></label>
-            <details class="advanced-settings">
-              <summary>Положение сцены</summary>
-            <label class="field">
-              <span>Центр X</span>
-                <input id="stage-center-x" type="text" inputmode="decimal" value="0" />
+            <label class="checkbox-field">
+              <input id="measure-from-stage" type="checkbox" />
+              <span>Отсчитывать высоту объектов от сцены</span>
             </label>
-            <label class="field">
-              <span>Центр Z</span>
-                <input id="stage-center-z" type="text" inputmode="decimal" value="0" />
-            </label>
-            <label class="field">
-                <span>Верх сцены Y</span>
-                <input id="stage-floor-y" type="text" inputmode="decimal" value="0.8" />
-            </label>
-            </details>
           </section>
 
           <section class="panel-section object-browser-section">
@@ -151,7 +140,7 @@
         </div>
       </section>
     </div>
-    <script src="./designer-adapter.js?v=6"></script>
-    <script src="./app.js?v=6"></script>
+    <script src="./designer-adapter.js?v=7"></script>
+    <script src="./app.js?v=7"></script>
   </body>
 </html>

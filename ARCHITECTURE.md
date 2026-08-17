@@ -8,7 +8,7 @@
 
 ```text
 room: { width, depth }
-stage: { centerX, centerZ, floorY, width, depth, height }
+stage: { centerX, centerZ, floorY, width, depth, height, measureFromStage }
 object:
   pluginId
   type, name
@@ -16,6 +16,8 @@ object:
     position: { x, y, z }
     rotation: { x, y, z }
   geometry: { width, height }  # screen/surface only
+  media: { resolutionX, resolutionY, pixelPitchMm }  # planar objects; projector omits pitch
+  lookAt: { x, y, z }  # projector only
 sync.objects[pluginId]:
   designerId, path
   lastExported, payload
@@ -32,9 +34,9 @@ Designer coordinates are authoritative:
 
 The room is a viewport frame centred on world `X=0, Z=0` and never changes object coordinates. Its bounds are `-width/2 ... +width/2` and `-depth/2 ... +depth/2`. The stage is a separate positioned rectangle. The grid interval is always 1 m and shows absolute Designer values.
 
-Dragging updates `transform.position.x/z` only. The numeric `Y` is always absolute. `floorY` initializes generated heights but is not an object-relative transform.
+Dragging updates `transform.position.x/z` only. The saved numeric `Y` is always absolute. `floorY` is the hidden Designer floor/base reference; the top of the stage is `floorY + height`. With `measureFromStage` enabled, object Y fields display and accept offsets from that top without changing the saved world coordinate.
 
-For screens and surfaces, position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and `rotation = Vec(0, yaw, 0)`. Projectors use only `configPosition/configRotation`; writing body `offset/rotation` as well changes the optical transform a second time. Cameras use `posRelativeOrGlobal/rotRelativeOrGlobal`. Lights use `offset/rotation`.
+For screens and surfaces, position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and `rotation = Vec(0, yaw, 0)`. Resolution and pixel pitch on planar objects are planning metadata until a matching Designer media property is explicitly mapped. Projectors use `configPosition/configLookAt`; setting inherited body transforms or `configRotation` changes the optical configuration unexpectedly. Cameras use the concrete `Camera` class with `offset/rotation`. Lights use `offset/rotation`.
 
 The sidebar groups objects by type. New objects open automatically; existing groups start collapsed. Numeric fields accept comma or dot, update the model while typing, and support horizontal pointer scrubbing in `0.1` steps. Projectors, cameras, and lights have direction cones in the X/Z view. Dragging preserves the pointer-to-object offset and optional snapping can use the 1 m grid, 0.1 m grid, stage centre/edges, same-type coordinates, and mirrored distances.
 
@@ -52,8 +54,8 @@ planner state -> inspect Designer -> classify -> diff -> confirm -> selective AP
 
 Update mode may adopt a same-type standard object and update it in place. Clean mode creates a new managed set and exposes remaining standards in the deletion checklist. Orphans are reported but never automatically deleted.
 
-The adapter repeats the default/managed check before deletion. Repeat sync resolves a managed object by Designer UID, saved resource path, or its `dsg-*` path. Dangling references left in Designer stage collections after deletion are skipped and reported as inspection warnings; a managed object absent from the valid inspection result is recreated. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful sync.
+The adapter repeats the default/managed check before deletion. Repeat sync resolves a managed object by Designer UID, saved resource path, or its `dsg-*` path. Dangling references left in Designer stage collections after deletion are skipped and reported as inspection warnings; a managed object absent from the valid inspection result is recreated. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful sync. Startup probes `/api/session/status/session` with a short timeout, while create/update calls have a longer timeout.
 
 ## Persistence
 
-Browser state uses localStorage key `disguise-scene-generator-state-v6`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v5 keys are read only as migration sources.
+Browser state uses localStorage key `disguise-scene-generator-state-v7`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v6 keys are read only as migration sources.

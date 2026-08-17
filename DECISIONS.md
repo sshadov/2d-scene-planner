@@ -58,16 +58,16 @@ The tracked source under `scene-planner-prototype` is authoritative. Designer lo
 - Date: 2026-08-17
 - Status: accepted
 
-Designer resources are created under folders derived from their Python class names (`ledscreen`, `screen2`, `virtualcamera`, `projector`, `light`). Before changing transform properties the adapter calls `markDirty(obj)`, and after mutation it calls `obj.save()`. Property assignment is wrapped so failures identify the exact field, runtime class, and resource path. Read-only `Resource.description` is not assigned.
+Designer resources are created under folders derived from their Python class names (`ledscreen`, `screen2`, `camera`, `projector`, `light`). Before changing transform properties the adapter calls `markDirty(obj)`, and after mutation it calls `obj.save()`. Property assignment is wrapped so failures identify the exact field, runtime class, and resource path. Read-only `Resource.description` is not assigned.
 
 ## ADR-009: v5 world transforms and type-specific Designer properties
 
 - Date: 2026-08-17
-- Status: superseded in part by ADR-010
+- Status: superseded by ADR-010 and ADR-012
 
 The room is a movable world-space frame (`centerX`, `centerZ`, `floorY`) and never acts as a hidden coordinate origin. Objects store `transform.position/rotation`; screens and surfaces also store editable `geometry.width/height` and use a fixed `0.1 m` thickness.
 
-Screen/surface `Y` is the bottom edge, converted only in the adapter to a centre pivot. Projectors use `configPosition/configRotation`, cameras use `posRelativeOrGlobal/rotRelativeOrGlobal`, and lights use `offset/rotation`. A write is accepted as synchronized only after type-specific readback matches within `0.001` metre/degree.
+This decision records the v5 contract. Its projector and camera fields are historical; the current contract is defined by ADR-010 and ADR-012. Screen/surface `Y` remains the bottom edge, converted only in the adapter to a centre pivot. A write is accepted as synchronized only after type-specific readback matches within `0.001` metre/degree.
 
 ## ADR-010: v6 event-building model and projector optical transform
 
@@ -76,7 +76,7 @@ Screen/surface `Y` is the bottom edge, converted only in the adapter to a centre
 
 The room stores only width/depth around the Designer world origin. The stage is an independent positioned footprint with width/depth/height and a top elevation. Objects are edited in grouped, collapsed type collections; screens add resolution and pixel pitch, projectors add resolution, and directional objects expose position plus `Rx/Ry/Rz`.
 
-Projector `configPosition/configRotation` are the sole authoritative writes. The adapter must not mirror them into inherited body `offset/rotation`, because Designer recalculates the projector config transform when the body transform changes. Light position/direction continue through `offset/rotation`, which are the writable transform properties exposed by the current Python stubs.
+Projector `configPosition/configLookAt` are the sole authoritative writes. The adapter must not write inherited body `offset/rotation` or `configRotation`, because Designer recalculates the projector optical configuration. Light position/direction continue through `offset/rotation`, which are the writable transform properties exposed by the current Python stubs.
 
 All numeric controls are text-backed decimal inputs so both comma and dot are valid. Empty or incomplete text never becomes zero. A click selects without changing coordinates; a drag preserves the original pointer offset and then applies the selected snapping policy.
 
@@ -85,4 +85,13 @@ All numeric controls are text-backed decimal inputs so both comma and dot are va
 - Date: 2026-08-17
 - Status: accepted
 
-Version 5 already stored a separate `stage` object. The v6 loader therefore preserves it when present and uses the legacy room fallback only for v2-v4 saves. This avoids silently moving existing stage bounds or vertical reference during a routine plugin update.
+Version 5 already stored a separate `stage` object. The v7 loader preserves it when present, converts the old stage-top `floorY` to a floor/base reference, and uses the legacy room fallback only for v2-v4 saves. This avoids silently moving existing stage bounds or vertical reference during a routine plugin update.
+
+## ADR-012: Concrete camera resources and human-readable resource paths
+
+- Date: 2026-08-17
+- Status: accepted
+
+The planner creates Designer `Camera` resources, not `VirtualCamera` resources. Camera transforms use inherited `offset/rotation`. Generated resource paths use stable human-readable names such as `dsg-camera-1.apx`; local `pluginId -> designerId/path` remains the ownership source and names are never the only identity.
+
+Projectors expose a world `lookAt` point. The adapter converts it to `configLookAt`, while the 2D view derives its cone from the vector between position and target.

@@ -21,7 +21,7 @@ Get-Content -Raw schemas/scene.schema.json | ConvertFrom-Json
 
 ## Designer plugin placement
 
-For local Designer discovery, place the contents of `scene-planner-prototype` in the open Designer project's `Plugins/DisguiseScenePlanner` folder, keeping `d3plugin.json` at the plugin root. Restart or refresh plugin discovery after file changes.
+For local Designer discovery, place the contents of `scene-planner-prototype` in the open Designer project's `plugins/scene-planner-prototype` folder, keeping `d3plugin.json` at the plugin root. Restart or refresh plugin discovery after file changes.
 
 For the current project layout, deploy the tracked source with hash verification:
 
@@ -68,16 +68,15 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 ## Coordinate scenarios
 
 1. With a `20 × 12 m` room, verify its bounds are `X=-10..10`, `Z=-6..6` and the world origin is at the centre.
-2. Move the independent stage centre to `X=4, Z=-2`; existing object coordinates must not change.
-3. Set a screen to width `4`, height `2`, `X=3`, bottom `Y=0`, `Z=-5`, yaw `0`.
-4. Export and verify Designer `offset=(3,1,-5)`, `scale=(4,2,0.1)`, `rotation=(0,0,0)`; readback bottom is `Y=0`.
-5. Set screen bottom `Y=1.5`; it must occupy the vertical range `1.5..3.5`.
-6. Change `Y`; the canvas position must not move. Click the object away from its centre; coordinates must not change. Drag it; only absolute `X/Z` may change and the original cursor offset must be preserved.
-7. Set a projector to `(3,2.5,-5)` and verify only `configPosition/configRotation` are written and read back. Its body `offset/rotation` are not mirrored.
-8. Verify a camera uses `posRelativeOrGlobal/rotRelativeOrGlobal`, and a light uses `offset/rotation`.
-9. Verify projector, camera, and light direction cones follow `Ry` in the top view.
-10. Force a readback difference above `0.001`; sync must stop and display the mismatched field.
-11. Load a v5 screen with `Y=0`; v6 must preserve it as bottom-edge `Y=0`.
+2. Set a screen to width `4`, height `2`, `X=3`, bottom `Y=0`, `Z=-5`, yaw `0`.
+3. Export and verify Designer `offset=(3,1,-5)`, `scale=(4,2,0.1)`, `rotation=(0,0,0)`; readback bottom is `Y=0`.
+4. Set screen bottom `Y=1.5`; it must occupy the vertical range `1.5..3.5`.
+5. Change `Y`; the canvas position must not move. Click the object away from its centre; coordinates must not change. Drag it; only absolute `X/Z` may change and the original cursor offset must be preserved.
+6. Set a projector to `(3,2.5,-5)` with Look At `(0,0.8,0)` and verify `configPosition/configLookAt` are written and read back. Its body `offset/rotation` and `configRotation` are not changed.
+7. Verify a camera resource is class `Camera` and uses `offset/rotation`; a light also uses `offset/rotation`.
+8. Verify the projector cone follows its Look At point and camera/light cones follow `Ry` in the top view.
+9. Force a readback difference above `0.001`; sync must stop and display the mismatched field.
+10. Load a v6 screen with `Y=0`; v7 must preserve its object world Y and convert the old stage-top floor reference correctly.
 
 ## Sidebar and numeric input scenarios
 
@@ -87,7 +86,8 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 4. Temporarily clear a field; the model must retain its previous value rather than writing zero.
 5. Hold the primary mouse button over a numeric field and move horizontally; every 8 px changes the value by `0.1 m` for metric fields.
 6. Add an object after entering comma-formatted room/stage values; the room/stage dimensions must remain unchanged.
-7. For an LED screen, verify width, height, resolution X/Y, and pixel pitch are editable. For a projector, verify resolution X/Y is editable.
+7. For an LED screen and projection surface, verify width, height, resolution X/Y, and pixel pitch are editable. For a projector, verify resolution X/Y is editable.
+8. Toggle "Отсчитывать высоту объектов от сцены": a screen at world Y `0.8` displays `0` when stage top is `0.8`, then returns to `0.8` when unchecked.
 
 ## Safe synchronization scenarios
 
