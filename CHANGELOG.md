@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0 - 2026-08-17
+
+- Aligned Designer resource paths with Python class names.
+- Added the documented `markDirty`/`save` lifecycle around resource mutations.
+- Removed assignment to read-only resource descriptions and added field-level Python errors.
+
 ## 0.4.2 - 2026-08-17
 
 - Added a verified deployment command for copying the tracked plugin into an active Designer project.

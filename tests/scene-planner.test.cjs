@@ -73,8 +73,11 @@ function sceneObject(type, pluginId, position = { x: 1, y: 2, z: 3 }) {
   assert.deepEqual(JSON.parse(JSON.stringify(payload.position)), { x: 1, y: 2, z: 3 });
   assert.deepEqual(JSON.parse(JSON.stringify(payload.rotation)), { x: 10, y: 20, z: 30 });
   assert.deepEqual(JSON.parse(JSON.stringify(payload.dimensions)), { width: 3.4, thickness: 0.1, height: 0.38, radius: 0 });
-  assert.match(adapterSource, /obj\.offset = Vec\(pos\["x"\], pos\["y"\], pos\["z"\]\)/);
-  assert.match(adapterSource, /obj\.scale = Vec\(dims\["width"\], dims\["thickness"\], dims\["height"\]\)/);
+  assert.match(adapterSource, /assign\("offset", Vec\(pos\["x"\], pos\["y"\], pos\["z"\]\)\)/);
+  assert.match(adapterSource, /assign\("scale", Vec\(dims\["width"\], dims\["thickness"\], dims\["height"\]\)\)/);
+  assert.match(adapterSource, /screen: "ledscreen", surface: "screen2", camera: "virtualcamera"/);
+  assert.match(adapterSource, /markDirty\(obj\)/);
+  assert.match(adapterSource, /obj\.save\(\)/);
 
   const migrated = createHarness({
     room: { width: 20, depth: 12, height: 6 }, nextId: 2,

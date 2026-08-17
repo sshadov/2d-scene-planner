@@ -5,6 +5,7 @@
   const STATUS_PATH = "/api/session/status/session";
   const typeCollections = { screen: "ledScreens", surface: "surfaces", camera: "cameras", projector: "projectors", light: "lights" };
   const typeClasses = { screen: "LedScreen", surface: "Screen2", camera: "VirtualCamera", projector: "Projector", light: "Light" };
+  const typeResourceFolders = { screen: "ledscreen", surface: "screen2", camera: "virtualcamera", projector: "projector", light: "light" };
   const collectionTypes = Object.fromEntries(Object.entries(typeCollections).map(([type, collection]) => [collection, type]));
 
   function quote(value) { return JSON.stringify(value); }
@@ -74,22 +75,25 @@ return json.dumps({"objects": objects, "floorY": floor_y, "warnings": warnings})
 payload = json.loads(${payloadText(payload)})
 stage = state.stage
 kind = payload["type"]
-path = "objects/" + kind + "/dsg-" + payload["pluginId"] + ".apx"
+path = "objects/" + ${quote(typeResourceFolders[payload.type])} + "/dsg-" + payload["pluginId"] + ".apx"
 obj = resourceManager.loadOrCreate(path, ${typeClasses[payload.type]})
 pos = payload["position"]
 rot = payload["rotation"]
-obj.offset = Vec(pos["x"], pos["y"], pos["z"])
-obj.rotation = Vec(rot["x"], rot["y"], rot["z"])
+markDirty(obj)
+def assign(field, value):
+    try:
+        setattr(obj, field, value)
+    except Exception as error:
+        raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, path, error))
+assign("offset", Vec(pos["x"], pos["y"], pos["z"]))
+assign("rotation", Vec(rot["x"], rot["y"], rot["z"]))
 if kind in ["screen", "surface"]:
     dims = payload["dimensions"]
-    obj.scale = Vec(dims["width"], dims["thickness"], dims["height"])
-try:
-    obj.description = payload["name"]
-except Exception:
-    pass
+    assign("scale", Vec(dims["width"], dims["thickness"], dims["height"]))
 collection = getattr(stage, ${quote(typeCollections[payload.type])})
 if obj not in collection:
     collection.append(obj)
+obj.save()
 return json.dumps({"designerId": str(obj.uid), "path": path})`;
   }
   function updateScript(designerId, changed, designerPath) {
@@ -113,14 +117,21 @@ for collection_name in ${quote(Object.values(typeCollections))}:
         break
 if obj is None:
     raise ValueError("Объект Designer с uid не найден: " + target_id)
+markDirty(obj)
+object_path = str(getattr(obj, "path", ""))
+def assign(field, value):
+    try:
+        setattr(obj, field, value)
+    except Exception as error:
+        raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, object_path, error))
 if "position" in changed:
     pos = changed["position"]
     current = obj.offset
-    obj.offset = Vec(pos.get("x", current.x), pos.get("y", current.y), pos.get("z", current.z))
+    assign("offset", Vec(pos.get("x", current.x), pos.get("y", current.y), pos.get("z", current.z)))
 if "rotation" in changed:
     rot = changed["rotation"]
     current = obj.rotation
-    obj.rotation = Vec(rot.get("x", current.x), rot.get("y", current.y), rot.get("z", current.z))
+    assign("rotation", Vec(rot.get("x", current.x), rot.get("y", current.y), rot.get("z", current.z)))
 if "dimensions" in changed:
     dims = changed["dimensions"]
     current = obj.scale
@@ -128,13 +139,9 @@ if "dimensions" in changed:
     thickness = dims.get("thickness", current.y)
     height = dims.get("height", current.z)
     if width and height:
-        obj.scale = Vec(width, thickness, height)
-if "name" in changed:
-    try:
-        obj.description = changed["name"]
-    except Exception:
-        pass
-return json.dumps({"designerId": target_id, "path": str(getattr(obj, "path", ""))})`;
+        assign("scale", Vec(width, thickness, height))
+obj.save()
+return json.dumps({"designerId": target_id, "path": object_path})`;
   }
   function deleteScript(designerIds) {
     return `import json

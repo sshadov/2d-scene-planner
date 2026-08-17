@@ -52,3 +52,10 @@ Scene inspection treats an entry that no longer exposes a valid `uid/path` as a 
 - Status: accepted
 
 The tracked source under `scene-planner-prototype` is authoritative. Designer loads a copied plugin from the active project's `plugins` directory and does not inherit changes from the standalone development server. Deployment uses `scripts/deploy-plugin.ps1`, verifies every copied file by SHA-256, and requires the embedded plugin window to be reopened.
+
+## ADR-008: Follow Designer resource mutation lifecycle
+
+- Date: 2026-08-17
+- Status: accepted
+
+Designer resources are created under folders derived from their Python class names (`ledscreen`, `screen2`, `virtualcamera`, `projector`, `light`). Before changing transform properties the adapter calls `markDirty(obj)`, and after mutation it calls `obj.save()`. Property assignment is wrapped so failures identify the exact field, runtime class, and resource path. Read-only `Resource.description` is not assigned.

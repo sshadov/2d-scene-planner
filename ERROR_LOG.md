@@ -71,3 +71,12 @@
 - Cause: source changes were served on port 4173 but were not deployed into the active Designer project's plugin directory.
 - Fix: deploy all runtime files to the active project and verify source/target SHA-256 hashes; provide a repeatable deployment script.
 - Regression test: run the deployment script, verify all hashes match, then reopen the embedded plugin and check for the current `Экспортировать изменения` label and detailed API errors.
+
+## ERR-009: New LED resource rejected direct mutation
+
+- Date: 2026-08-17
+- Symptom: creating `LED-экран 1` returned HTTP 500 with `AttributeError: can't set attribute` from the wrapped Designer Python script.
+- Evidence: the detailed response identified Designer's `userScript` line 24. Official environment docs specify a 10-line wrapper offset; resource docs require dirty/save lifecycle and class-derived resource folders.
+- Cause: resources were created in planner-type folders such as `objects/screen` and mutated without `markDirty`; the adapter also attempted to write read-only `Resource.description`.
+- Fix: use `objects/ledscreen`, `objects/screen2`, and `objects/virtualcamera`; call `markDirty` before transform updates and `save` afterwards; report the exact failing field/class/path.
+- Regression test: generated Python must use official class folders, `markDirty(obj)`, named-field assignment, and `obj.save()`.
