@@ -38,28 +38,36 @@
 import re
 stage = state.stage
 objects = []
+warnings = []
 collection_types = ${quote(collectionTypes)}
 for collection_name in ${quote(Object.values(typeCollections))}:
     collection = getattr(stage, collection_name, [])
     for obj in collection:
-        path = str(getattr(obj, "path", ""))
-        description = str(getattr(obj, "description", ""))
-        text = (path + " " + description).lower()
-        match = re.search(r"dsg-(.+?)\\.apx", path, re.IGNORECASE)
-        standard = bool(re.search(r"(^|[/\\\\ _-])(surface|projector|camera|screen|light)[ _-]?1(?:\\.|$)", text))
-        objects.append({
-            "id": str(obj.uid),
-            "path": path,
-            "description": description,
-            "collection": collection_name,
-            "type": collection_types[collection_name],
-            "managed": "dsg-" in path.lower(),
-            "pluginId": match.group(1) if match else None,
-            "standard": standard
-        })
+        try:
+            uid = str(getattr(obj, "uid", ""))
+            if not uid:
+                warnings.append(collection_name + ": empty object reference")
+                continue
+            path = str(getattr(obj, "path", ""))
+            description = str(getattr(obj, "description", ""))
+            text = (path + " " + description).lower()
+            match = re.search(r"dsg-(.+?)\\.apx", path, re.IGNORECASE)
+            standard = bool(re.search(r"(^|[/\\\\ _-])(surface|projector|camera|screen|light)[ _-]?1(?:\\.|$)", text))
+            objects.append({
+                "id": uid,
+                "path": path,
+                "description": description,
+                "collection": collection_name,
+                "type": collection_types[collection_name],
+                "managed": "dsg-" in path.lower(),
+                "pluginId": match.group(1) if match else None,
+                "standard": standard
+            })
+        except Exception as error:
+            warnings.append(collection_name + ": " + str(error))
 floor = getattr(stage, "floor_pos", None)
 floor_y = float(floor.y) if floor is not None else 0.0
-return json.dumps({"objects": objects, "floorY": floor_y})`;
+return json.dumps({"objects": objects, "floorY": floor_y, "warnings": warnings})`;
   }
   function createScript(payload) {
     return `import json
@@ -93,10 +101,14 @@ stage = state.stage
 obj = None
 for collection_name in ${quote(Object.values(typeCollections))}:
     for candidate in getattr(stage, collection_name, []):
-        candidate_path = str(getattr(candidate, "path", ""))
-        if str(candidate.uid) == target_id or (target_path and candidate_path == target_path):
-            obj = candidate
-            break
+        try:
+            candidate_path = str(getattr(candidate, "path", ""))
+            candidate_id = str(getattr(candidate, "uid", ""))
+            if candidate_id == target_id or (target_path and candidate_path == target_path):
+                obj = candidate
+                break
+        except Exception:
+            continue
     if obj is not None:
         break
 if obj is None:
@@ -134,7 +146,10 @@ skipped = []
 for collection_name in ${quote(Object.values(typeCollections))}:
     collection = getattr(stage, collection_name, [])
     for candidate in list(collection):
-        candidate_id = str(candidate.uid)
+        try:
+            candidate_id = str(getattr(candidate, "uid", ""))
+        except Exception:
+            continue
         if candidate_id not in target_ids:
             continue
         path = str(getattr(candidate, "path", ""))

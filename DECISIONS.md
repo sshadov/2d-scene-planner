@@ -38,3 +38,10 @@ Git at the workspace root is the durable history. Markdown documents, JSON Schem
 - Status: accepted
 
 A stored Designer UID is preferred but is not assumed to remain sufficient across reloads. Repeat sync may recover the same managed resource by its saved path or stable `dsg-<pluginId>.apx` path. Mappings are persisted after every successful create/update operation so a later failure cannot erase the identity of objects that were already written.
+
+## ADR-006: Deleted Designer references are non-fatal
+
+- Date: 2026-08-17
+- Status: accepted
+
+Scene inspection treats an entry that no longer exposes a valid `uid/path` as a dangling Designer reference. It records a warning and continues inspecting the remaining collections. If a planner-managed object is absent from the valid result, normal diff logic classifies it as `create`; stale local mappings never force an update call to a deleted resource.

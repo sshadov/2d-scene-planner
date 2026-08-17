@@ -182,7 +182,7 @@
   async function makeDiff(adapter, mode = "update") {
     const designerScene = adapter ? await adapter.inspectScene() : null; const inspected = designerScene?.objects || []; const records = state.sync.objects || {};
     const byId = new Map(inspected.map(item => [String(item.id || item.uid), item])); const usedIds = new Set(); const currentIds = new Set(state.objects.map(object => object.pluginId));
-    const diff = { create: [], update: [], adopt: [], unchanged: [], orphans: [], preserve: [], standardCandidates: inspected.filter(isStandardCandidate), deletionCandidates: inspected.filter(isStandardCandidate), designerCount: inspected.length, adapter, mode, floorY: designerScene?.floorY ?? 0 };
+    const diff = { create: [], update: [], adopt: [], unchanged: [], orphans: [], preserve: [], standardCandidates: inspected.filter(isStandardCandidate), deletionCandidates: inspected.filter(isStandardCandidate), designerCount: inspected.length, inspectionWarnings: designerScene?.warnings || [], adapter, mode, floorY: designerScene?.floorY ?? 0 };
     for (const object of state.objects) {
       const payload = objectPayload(object); const serialized = canonical(payload); let record = records[object.pluginId]; let designerId = record?.designerId;
       let designerObject = designerId ? byId.get(String(designerId)) : null;
@@ -220,7 +220,9 @@
     setDiffText(diff); renderStandardChecklist(diff); modal.hidden = false; modal._diff = diff;
     if (!adapter) { message.textContent = "Прямое подключение к Designer пока не найдено. Экспорт в проект не выполнен."; warning.textContent = "Подключите официальный Designer Plugin API через window.disguiseSceneAdapter. Для обмена планом используйте «Экспорт JSON»."; warning.hidden = false; confirm.disabled = true; return; }
     message.textContent = diff.designerCount ? `В текущей сцене обнаружено ${diff.designerCount} объект(ов). Ручные объекты (${diff.preserve.length}) останутся без изменений.` : "Текущая сцена пуста. Будут созданы только объекты этого плана.";
-    warning.textContent = diff.standardCandidates.length ? `Узнаваемые стандартные объекты: ${diff.standardCandidates.length}. Их можно отдельно удалить чекбоксами или принять на месте при экспорте.` : "Из Designer ничего автоматически удаляться не будет.";
+    const warningParts = [diff.standardCandidates.length ? `Узнаваемые стандартные объекты: ${diff.standardCandidates.length}. Их можно отдельно удалить чекбоксами или принять на месте при экспорте.` : "Из Designer ничего автоматически удаляться не будет."];
+    if (diff.inspectionWarnings.length) warningParts.push(`Пропущено повреждённых ссылок Designer: ${diff.inspectionWarnings.length}. Удалённые управляемые объекты будут созданы заново.`);
+    warning.textContent = warningParts.join(" ");
     warning.hidden = false; confirm.disabled = adapter.capabilities?.liveUpdate !== true; if (confirm.disabled) message.textContent += " Live-update не заявлен подключённым адаптером, поэтому экспорт отключён.";
   }
   async function syncToDesigner(diff) {

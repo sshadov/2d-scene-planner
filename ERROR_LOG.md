@@ -53,3 +53,12 @@
 - Cause: the actual Designer Python exception was hidden; resource identity recovery was too narrow for a reloaded or stale UID.
 - Fix: include the Designer response body and failing object name in errors, resolve managed resources by UID or saved/stable path, pass the path to update scripts, and persist each completed mapping immediately.
 - Regression test: a stale UID plus matching saved path resolves to the existing object, sends its path to `updateObject`, and produces no duplicate create.
+
+## ERR-007: Deleted stage entries could abort inspection
+
+- Date: 2026-08-17
+- Symptom: export returned HTTP 500 after many objects had been deleted from the Designer scene.
+- Evidence: inspection read `obj.uid` directly for every entry in each stage collection; deleted or invalid references were not isolated.
+- Cause: one dangling Designer reference could raise inside Python and abort the complete scene inspection.
+- Fix: inspect each entry inside its own exception boundary, skip empty/invalid references with warnings, and make update/delete lookup skip the same invalid entries.
+- Regression test: an inspection with a warning and no valid managed object classifies its planner counterpart as `create`, not `update`.

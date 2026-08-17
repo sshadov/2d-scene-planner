@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 - 2026-08-17
+
+- Made Designer inspection tolerate dangling collection references left after object deletion.
+- Reported skipped references in the export dialog and recreated missing managed objects instead of updating stale mappings.
+
 ## 0.4.0 - 2026-08-17
 
 - Centred room coordinates on the Designer origin and migrated v2/v3 browser state to v4.

@@ -46,7 +46,7 @@ planner state -> inspect Designer -> classify -> diff -> confirm -> selective AP
 
 Update mode may adopt a same-type standard object and update it in place. Clean mode creates a new managed set and exposes remaining standards in the deletion checklist. Orphans are reported but never automatically deleted.
 
-The adapter repeats the default/managed check before deletion. Repeat sync resolves a managed object by Designer UID, saved resource path, or its `dsg-*` path. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful sync.
+The adapter repeats the default/managed check before deletion. Repeat sync resolves a managed object by Designer UID, saved resource path, or its `dsg-*` path. Dangling references left in Designer stage collections after deletion are skipped and reported as inspection warnings; a managed object absent from the valid inspection result is recreated. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful sync.
 
 ## Persistence
 

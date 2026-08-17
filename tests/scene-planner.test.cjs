@@ -120,10 +120,18 @@ function sceneObject(type, pluginId, position = { x: 1, y: 2, z: 3 }) {
   assert.equal(pathDiff.unchanged[0].designerId, "fresh-uid");
   assert.equal(pathDiff.create.length, 0);
 
+  const deletedDiff = await core.makeDiff({ inspectScene: async () => ({ objects: [], floorY: 0, warnings: ["ledScreens: empty object reference"] }) }, "update");
+  assert.equal(deletedDiff.create.length, 1);
+  assert.equal(deletedDiff.update.length, 0);
+  assert.equal(deletedDiff.inspectionWarnings.length, 1);
+
   core.state.sync.objects["managed-screen"].designerId = "managed-uid";
   const unchangedDiff = await core.makeDiff({ inspectScene: async () => ({ objects: [{ id: "managed-uid", type: "screen", path: "objects/screen/dsg-managed-screen.apx", managed: true }], floorY: 0 }) }, "update");
   assert.equal(unchangedDiff.unchanged.length, 1);
   assert.equal(unchangedDiff.create.length, 0);
+
+  assert.match(adapterSource, /warnings\.append\(collection_name \+ ": empty object reference"\)/);
+  assert.match(adapterSource, /except Exception as error:/);
 
   console.log("scene-planner tests: ok");
 })().catch(error => { console.error(error); process.exitCode = 1; });
