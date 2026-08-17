@@ -1,0 +1,36 @@
+{
+  "objects": [
+    {
+      "id": "managed-screen-uid",
+      "path": "objects/screen/dsg-11111111-1111-4111-8111-111111111111.apx",
+      "description": "LED-экран 1",
+      "collection": "ledScreens",
+      "type": "screen",
+      "managed": true,
+      "pluginId": "11111111-1111-4111-8111-111111111111",
+      "standard": false
+    },
+    {
+      "id": "manual-camera-uid",
+      "path": "objects/cameras/FOH camera.apx",
+      "description": "FOH handheld camera",
+      "collection": "cameras",
+      "type": "camera",
+      "managed": false,
+      "pluginId": null,
+      "standard": false
+    },
+    {
+      "id": "default-projector-uid",
+      "path": "objects/projector 1.apx",
+      "description": "projector 1",
+      "collection": "projectors",
+      "type": "projector",
+      "managed": false,
+      "pluginId": null,
+      "standard": true
+    }
+  ],
+  "floorY": 0
+}
+

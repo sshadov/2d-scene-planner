@@ -1,0 +1,26 @@
+{
+  "objects": [
+    {
+      "id": "designer-surface-1",
+      "path": "objects/surface 1.apx",
+      "description": "surface 1",
+      "collection": "surfaces",
+      "type": "surface",
+      "managed": false,
+      "pluginId": null,
+      "standard": true
+    },
+    {
+      "id": "designer-projector-1",
+      "path": "objects/projector 1.apx",
+      "description": "projector 1",
+      "collection": "projectors",
+      "type": "projector",
+      "managed": false,
+      "pluginId": null,
+      "standard": true
+    }
+  ],
+  "floorY": 0
+}
+

@@ -69,7 +69,8 @@
       state.room = { ...defaults.room, ...saved.room };
       state.objects = Array.isArray(saved.objects) ? saved.objects.map(normalizeObject) : [];
       state.sync = { objects: {}, designerScene: null, lastSyncAt: null, ...(saved.sync || {}) };
-      nextId = Math.max(Number(saved.nextId) || 1, ...state.objects.map(object => Number(object.id) || 0), 1);
+      nextId = Math.max(Number(saved.nextId) || 1, ...state.objects.map(object => (Number(object.id) || 0) + 1), 1);
+      state.selectedId = state.objects[0]?.id ?? null;
       Object.entries(state.room).forEach(([key, value]) => { if (inputs[key]) inputs[key].value = value; }); persist(); return true;
     } catch (error) { console.warn("Не удалось загрузить локальный план", error); return false; }
   }
@@ -251,5 +252,5 @@
   canvas.addEventListener("pointermove", event => { if (!state.dragging) return; const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); const object = state.objects.find(item => item.id === state.dragging); if (!object) return; object.position.x = Number(clamp(point.x, 0, state.room.width).toFixed(2)); object.position.z = Number(clamp(point.z, 0, state.room.depth).toFixed(2)); render(); });
   canvas.addEventListener("pointerup", event => { state.dragging = null; persist(); if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId); }); window.addEventListener("resize", render);
   if (!loadPersisted()) generate(); if (getAdapter()) document.querySelector("#adapter-status").textContent = "Designer API: подключение проверяется при экспорте"; render();
-  globalThis.scenePlannerDebug = { state, makeDiff, objectPayload, toScreen, toWorld, typeConfig };
+  globalThis.scenePlannerDebug = { state, makeDiff, objectPayload, canonical, changedValue, normalizeObject, toScreen, toWorld, typeConfig };
 })();
