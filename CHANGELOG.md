@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2 - 2026-08-17
+
+- Added a verified deployment command for copying the tracked plugin into an active Designer project.
+- Documented that the standalone server and Designer's embedded plugin use separate file copies.
+
 ## 0.4.1 - 2026-08-17
 
 - Made Designer inspection tolerate dangling collection references left after object deletion.

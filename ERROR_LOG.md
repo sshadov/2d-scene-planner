@@ -62,3 +62,12 @@
 - Cause: one dangling Designer reference could raise inside Python and abort the complete scene inspection.
 - Fix: inspect each entry inside its own exception boundary, skip empty/invalid references with warnings, and make update/delete lookup skip the same invalid entries.
 - Regression test: an inspection with a warning and no valid managed object classifies its planner counterpart as `create`, not `update`.
+
+## ERR-008: Designer loaded a stale plugin copy
+
+- Date: 2026-08-17
+- Symptom: the standalone page contained the latest diagnostics, but the embedded Designer plugin still showed a bare `HTTP 500` and old button labels.
+- Evidence: `D:\Disguise\Projects\start\plugins\scene-planner-prototype\designer-adapter.js` was 3741 bytes while the tracked adapter was 7929 bytes; the embedded UI text matched the old copy.
+- Cause: source changes were served on port 4173 but were not deployed into the active Designer project's plugin directory.
+- Fix: deploy all runtime files to the active project and verify source/target SHA-256 hashes; provide a repeatable deployment script.
+- Regression test: run the deployment script, verify all hashes match, then reopen the embedded plugin and check for the current `Экспортировать изменения` label and detailed API errors.

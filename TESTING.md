@@ -23,6 +23,14 @@ Get-Content -Raw schemas/scene.schema.json | ConvertFrom-Json
 
 For local Designer discovery, place the contents of `scene-planner-prototype` in the open Designer project's `Plugins/DisguiseScenePlanner` folder, keeping `d3plugin.json` at the plugin root. Restart or refresh plugin discovery after file changes.
 
+For the current project layout, deploy the tracked source with hash verification:
+
+```powershell
+.\scripts\deploy-plugin.ps1 -ProjectPath 'D:\Disguise\Projects\start'
+```
+
+Close and reopen the plugin window after deployment. A page served from `127.0.0.1:4173` and the plugin embedded in Designer are separate copies; refreshing one does not update the other.
+
 The standalone server is useful for UI work. Actual API behavior must also be tested from the Designer plugin host because cross-origin policy can differ.
 
 ## Designer API smoke test

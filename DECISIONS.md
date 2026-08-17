@@ -45,3 +45,10 @@ A stored Designer UID is preferred but is not assumed to remain sufficient acros
 - Status: accepted
 
 Scene inspection treats an entry that no longer exposes a valid `uid/path` as a dangling Designer reference. It records a warning and continues inspecting the remaining collections. If a planner-managed object is absent from the valid result, normal diff logic classifies it as `create`; stale local mappings never force an update call to a deleted resource.
+
+## ADR-007: Source and deployed plugin are separate artifacts
+
+- Date: 2026-08-17
+- Status: accepted
+
+The tracked source under `scene-planner-prototype` is authoritative. Designer loads a copied plugin from the active project's `plugins` directory and does not inherit changes from the standalone development server. Deployment uses `scripts/deploy-plugin.ps1`, verifies every copied file by SHA-256, and requires the embedded plugin window to be reopened.
