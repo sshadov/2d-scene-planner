@@ -1,0 +1,33 @@
+# Dependencies and generated output
+node_modules/
+dist/
+coverage/
+*.tmp
+*.bak
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local.js
+scene-planner-prototype/local-config.js
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Browser/session data must never be versioned
+.browser-cache/
+browser-cache/
+user-data-dir/
+downloads/
+localStorage/
+
+# Python tooling
+__pycache__/
+*.py[cod]
+.venv/
+
