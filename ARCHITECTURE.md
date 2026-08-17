@@ -7,7 +7,8 @@
 ## Scene model
 
 ```text
-room: { centerX, centerZ, floorY, width, depth, height }
+room: { width, depth }
+stage: { centerX, centerZ, floorY, width, depth, height }
 object:
   pluginId
   type, name
@@ -29,11 +30,13 @@ Designer coordinates are authoritative:
 | `position.y` | `Vec.y` vertical | not projected |
 | `position.z` | `Vec.z` depth | vertical canvas axis |
 
-The room is a viewport frame and never changes object coordinates. Its bounds are `centerX +/- width/2` and `centerZ +/- depth/2`. The grid interval is always 1 m and its labels show absolute Designer values.
+The room is a viewport frame centred on world `X=0, Z=0` and never changes object coordinates. Its bounds are `-width/2 ... +width/2` and `-depth/2 ... +depth/2`. The stage is a separate positioned rectangle. The grid interval is always 1 m and shows absolute Designer values.
 
 Dragging updates `transform.position.x/z` only. The numeric `Y` is always absolute. `floorY` initializes generated heights but is not an object-relative transform.
 
-For screens and surfaces, position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and `rotation = Vec(0, yaw, 0)`. Projectors use `configPosition/configRotation` and mirror them to the body transform. Cameras use `posRelativeOrGlobal/rotRelativeOrGlobal`. Lights use `offset/rotation`.
+For screens and surfaces, position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and `rotation = Vec(0, yaw, 0)`. Projectors use only `configPosition/configRotation`; writing body `offset/rotation` as well changes the optical transform a second time. Cameras use `posRelativeOrGlobal/rotRelativeOrGlobal`. Lights use `offset/rotation`.
+
+The sidebar groups objects by type. New objects open automatically; existing groups start collapsed. Numeric fields accept comma or dot, update the model while typing, and support horizontal pointer scrubbing in `0.1` steps. Projectors, cameras, and lights have direction cones in the X/Z view. Dragging preserves the pointer-to-object offset and optional snapping can use the 1 m grid, 0.1 m grid, stage centre/edges, same-type coordinates, and mirrored distances.
 
 Every successful create/update returns a type-specific readback. The planner compares position, rotation, and planar geometry to the requested values with a `0.001` metre/degree tolerance before recording the sync version.
 
@@ -53,4 +56,4 @@ The adapter repeats the default/managed check before deletion. Repeat sync resol
 
 ## Persistence
 
-Browser state uses localStorage key `disguise-scene-generator-state-v5`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v4 keys are read only as migration sources.
+Browser state uses localStorage key `disguise-scene-generator-state-v6`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v5 keys are read only as migration sources.

@@ -17,6 +17,7 @@ Verified/used conclusions for this project:
 - Python exposes the current stage as `state.stage`.
 - Relevant stage collections are `ledScreens`, `surfaces`, `cameras`, `projectors`, and `lights`.
 - Used transform properties are `offset/rotation/scale`, projector `configPosition/configRotation`, and camera `posRelativeOrGlobal/rotRelativeOrGlobal`.
+- Projector config and body transforms are not interchangeable: writing inherited `offset/rotation` after `configPosition/configRotation` changes the optical config again. Projectors therefore write config fields only.
 - `stage.floor_pos` is a `Vec`; this project uses `stage.floor_pos.y` as the floor vertical reference.
 - Python execution errors are offset by 10 wrapper lines; Designer line 24 refers to approximately line 14 of the submitted script.
 - Resources are marked with `markDirty(resource)` before mutation and saved with `resource.save()` afterwards.

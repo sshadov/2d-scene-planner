@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=5" />
+    <link rel="stylesheet" href="./styles.css?v=6" />
   </head>
   <body>
     <main class="app-shell">
@@ -34,81 +34,45 @@
             </div>
             <label class="field">
               <span>Ширина</span>
-              <input id="room-width" type="number" min="2" max="100" step="0.5" value="20" />
+              <input id="room-width" type="text" inputmode="decimal" value="20" />
             </label>
             <label class="field">
-              <span>Глубина</span>
-              <input id="room-depth" type="number" min="2" max="100" step="0.5" value="12" />
-            </label>
-            <label class="field">
-              <span>Высота</span>
-              <input id="room-height" type="number" min="2" max="40" step="0.1" value="6" />
-            </label>
-            <label class="field">
-              <span>Центр X</span>
-              <input id="room-center-x" type="number" step="0.1" value="0" />
-            </label>
-            <label class="field">
-              <span>Центр Z</span>
-              <input id="room-center-z" type="number" step="0.1" value="0" />
-            </label>
-            <label class="field">
-              <span>Уровень пола Y</span>
-              <input id="room-floor-y" type="number" step="0.1" value="0" />
+              <span>Длина</span>
+              <input id="room-depth" type="text" inputmode="decimal" value="12" />
             </label>
           </section>
 
           <section class="panel-section">
             <div class="section-heading">
-              <h2>Объекты</h2>
-              <button class="text-button" id="reset-button" type="button">Сбросить</button>
+              <h2>Сцена</h2>
+              <span class="unit-label">метры</span>
             </div>
-            <div class="object-actions">
-              <button class="button secondary compact" id="add-object-button" type="button">+ Добавить объект</button>
-              <select id="add-object-type" aria-label="Тип нового объекта">
-                <option value="screen">LED-экран</option>
-                <option value="surface">Поверхность</option>
-                <option value="camera">Камера</option>
-                <option value="projector">Проектор</option>
-                <option value="light">Световой прибор</option>
-              </select>
-            </div>
+            <label class="field"><span>Ширина</span><input id="stage-width" type="text" inputmode="decimal" value="12" /></label>
+            <label class="field"><span>Длина</span><input id="stage-depth" type="text" inputmode="decimal" value="8" /></label>
+            <label class="field"><span>Высота</span><input id="stage-height" type="text" inputmode="decimal" value="0.8" /></label>
+            <details class="advanced-settings">
+              <summary>Положение сцены</summary>
             <label class="field">
-              <span>LED-экраны</span>
-              <input id="screen-count" type="number" min="0" max="20" value="3" />
+              <span>Центр X</span>
+                <input id="stage-center-x" type="text" inputmode="decimal" value="0" />
             </label>
             <label class="field">
-              <span>Поверхности</span>
-              <input id="surface-count" type="number" min="0" max="20" value="2" />
+              <span>Центр Z</span>
+                <input id="stage-center-z" type="text" inputmode="decimal" value="0" />
             </label>
             <label class="field">
-              <span>Камеры</span>
-              <input id="camera-count" type="number" min="0" max="20" value="2" />
+                <span>Верх сцены Y</span>
+                <input id="stage-floor-y" type="text" inputmode="decimal" value="0.8" />
             </label>
-            <label class="field">
-              <span>Проекторы</span>
-              <input id="projector-count" type="number" min="0" max="20" value="1" />
-            </label>
-            <label class="field">
-              <span>Световые приборы</span>
-              <input id="light-count" type="number" min="0" max="40" value="4" />
-            </label>
+            </details>
           </section>
 
-          <section class="panel-section detail-panel" id="selection-panel" hidden>
+          <section class="panel-section object-browser-section">
             <div class="section-heading">
-              <h2 id="selection-title">Объект</h2>
-              <button class="text-button destructive" id="delete-button" type="button">Удалить</button>
+              <h2>Объекты</h2>
+              <button class="text-button" id="reset-button" type="button">Расставить</button>
             </div>
-            <label class="field" id="object-width-field"><span>Ширина</span><input id="object-width" type="number" min="0.1" step="0.1" /></label>
-            <label class="field" id="object-height-field"><span>Высота</span><input id="object-height" type="number" min="0.1" step="0.1" /></label>
-            <label class="field"><span>X</span><input id="object-x" type="number" step="0.1" /></label>
-            <label class="field"><span id="object-y-label">Y</span><input id="object-y" type="number" step="0.1" /></label>
-            <label class="field"><span>Z</span><input id="object-z" type="number" step="0.1" /></label>
-            <div class="coordinate-note">Абсолютные Designer XYZ · вид сверху X/Z</div>
-            <label class="field" id="object-rx-field"><span>Rx</span><input id="object-rx" type="number" step="1" /></label>
-            <label class="field"><span id="object-ry-label">Ry</span><input id="object-ry" type="number" step="1" /></label>
-            <label class="field" id="object-rz-field"><span>Rz</span><input id="object-rz" type="number" step="1" /></label>
+            <div id="object-groups" class="object-groups"></div>
           </section>
 
           <section class="legend" aria-label="Условные обозначения">
@@ -123,6 +87,15 @@
         <section class="stage-panel">
           <div class="stage-toolbar">
             <span class="view-label"><i></i>Вид сверху</span>
+            <div class="snap-controls" aria-label="Привязка объектов">
+              <select id="snap-mode" aria-label="Режим привязки">
+                <option value="free">Без привязки</option>
+                <option value="grid-01">Сетка 0,1 м</option>
+                <option value="grid-1" selected>Сетка 1 м</option>
+              </select>
+              <button class="tool-button" id="align-x" type="button" title="Выровнять выбранный объект по центру сцены X">X=центр</button>
+              <button class="tool-button" id="align-z" type="button" title="Выровнять выбранный объект по центру сцены Z">Z=центр</button>
+            </div>
             <div class="zoom-controls">
               <button class="icon-button" id="zoom-out" type="button" aria-label="Уменьшить масштаб" title="Уменьшить масштаб">−</button>
               <span id="zoom-level">100%</span>
@@ -131,7 +104,7 @@
           </div>
           <div class="canvas-wrap" id="canvas-wrap">
             <canvas id="scene-canvas" aria-label="План сцены, вид сверху"></canvas>
-            <div class="empty-hint" id="empty-hint">Добавьте объект через кнопку «+ Добавить объект»</div>
+            <div class="empty-hint" id="empty-hint">Добавьте объект через «+» в нужной группе</div>
           </div>
           <footer class="stage-footer">
             <span id="scene-summary">Помещение 20.0 × 12.0 × 6.0 м</span>
@@ -178,7 +151,7 @@
         </div>
       </section>
     </div>
-    <script src="./designer-adapter.js?v=5"></script>
-    <script src="./app.js?v=5"></script>
+    <script src="./designer-adapter.js?v=6"></script>
+    <script src="./app.js?v=6"></script>
   </body>
 </html>

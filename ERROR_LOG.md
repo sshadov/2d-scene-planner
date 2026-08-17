@@ -88,7 +88,7 @@
 - Evidence: all types were written through generic `offset/rotation`; screen `Y` was sent as a centre pivot and screen dimensions were assigned to the wrong physical axes.
 - Cause: the planner had one generic transform contract although Designer exposes different authoritative properties for screens, projectors, and cameras.
 - Fix: v5 stores absolute world transforms with type-specific anchor semantics. Screens convert bottom-edge `Y` to centre pivot and use `scale=(width,height,0.1)`; projectors use config transforms; cameras use relative/global transforms. Every write is read back and checked.
-- Regression test: verify a `4x2 m` screen at bottom `Y=0` reads back at bottom `0`, projector config/body positions match, camera relative/global transform matches, and a mismatch over `0.001` stops synchronization.
+- Regression test: verify a `4x2 m` screen at bottom `Y=0` reads back at bottom `0`, projector config fields match without body mirroring, camera relative/global transform matches, and a mismatch over `0.001` stops synchronization.
 
 ## ERR-011: Browser mixed v5 HTML with cached v4 runtime files
 
@@ -98,3 +98,30 @@
 - Cause: static `styles.css`, `app.js`, and `designer-adapter.js` URLs did not change between deployments.
 - Fix: version all runtime asset URLs with `?v=5`; retain the global `[hidden]` rule so type-specific fields cannot be made visible by `.field { display:grid }`.
 - Regression test: reload after deployment, verify `window.scenePlannerDebug` exists, screen `Rx/Rz` are hidden, and projector geometry fields are hidden.
+
+## ERR-012: Projector config transform was applied twice
+
+- Date: 2026-08-17
+- Symptom: projectors exported away from their X/Y/Z planner positions and could show unexplained values below the expected height.
+- Evidence: create/update first assigned `configPosition/configRotation`, then assigned the same values to inherited `offset/rotation`; readback of the config fields no longer matched the requested transform.
+- Cause: Designer derives the projector optical configuration relative to its body. Mutating both coordinate layers transformed the projector twice.
+- Fix: write and read only `configPosition/configRotation` for projectors. Do not mirror to `offset/rotation`.
+- Regression test: generated projector Python contains config assignments and no `assign("offset", position_value)`; a projector at `(3,2.5,-5)` reads back at exactly that config position.
+
+## ERR-013: Decimal comma collapsed room and stage sizes
+
+- Date: 2026-08-17
+- Symptom: after adding an object, a `20 × 12 m` room became `2 × 2 m` and the stage dropped to minimum dimensions.
+- Evidence: the UI formatted `20` as `20,0` inside `input[type=number]`; Chromium rejected the comma and exposed an empty value. `Number("")` then produced zero before clamping.
+- Cause: native number inputs and the Russian decimal format used incompatible parsing rules, and the fallback parser treated empty text as a valid zero.
+- Fix: use text inputs with `inputmode=decimal`, parse comma/dot explicitly, treat blank/incomplete text as invalid, and update valid values live.
+- Regression test: both `1,5` and `1.5` parse as `1.5`, blank text preserves the fallback, and adding an object does not change room/stage dimensions.
+
+## ERR-014: v5 stage metadata was dropped during v6 migration
+
+- Date: 2026-08-17
+- Symptom: opening a v5 plan could restore its objects but reset the stage footprint and elevation to defaults.
+- Evidence: the v6 migration branch read legacy room fields even when a v5 save already contained a separate `stage` object.
+- Cause: v5 was the first version with a separate stage, but migration was keyed only on `sourceVersion < 6`.
+- Fix: preserve a non-empty saved stage for all source versions from v5 onward; only v2-v4 fall back to legacy room fields.
+- Regression test: a v5 stage `(centerX=3, centerZ=-2, floorY=1.1, width=10, depth=6, height=0.6)` survives load unchanged.

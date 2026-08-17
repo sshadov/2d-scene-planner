@@ -8,7 +8,7 @@
 - Projector lens presets, throw ratio, lens offset, and projector-to-lens binding.
 - Camera sensor/lens presets, field of view, target, and frustum visualization.
 - LED cabinet/module presets and automatic screen assembly.
-- Alignment, distribution, snapping, grouping, duplication, and multi-selection.
+- Distribution, dimension-aware edge snapping, grouping, duplication, and multi-selection.
 - Room walls, stage origin, audience area, truss, and scenic models.
 
 ## Integration work

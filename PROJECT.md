@@ -14,11 +14,15 @@ The project helps a video engineer create the first usable layout of an event in
 
 The planner owns only objects identified by a stable plugin ID or explicitly adopted known defaults. It never silently edits or deletes manual Designer objects. In this version, "new scene" means a clean object set in the current `stage`, not a new Designer project.
 
-The current object set is LED screens, surfaces, cameras, projectors, and lights. Projector lenses, parent-child constraints, podium geometry, calibration, and content routing are future work.
+The current object set is LED screens, surfaces, cameras, projectors, and lights. Screens carry physical size, resolution, and pixel pitch; projectors carry position, direction, and resolution. Projector lenses, parent-child constraints, podium geometry, calibration, and content routing are future work.
 
 ## Definition of done for the current milestone
 
 - A 1 m top-view grid uses Designer `X/Z` axes.
+- Room width/depth and stage width/depth/height are independent.
+- Objects are grouped by type with per-group add controls and collapsed inspectors.
+- Numeric controls accept comma/dot and support horizontal `0.1` scrubbing.
+- Selecting on the plan preserves position; dragging preserves the pointer offset and offers basic alignment snapping.
 - Inspector and JSON preserve absolute Designer `X/Y/Z` and type-specific `Rx/Ry/Rz`.
 - Screens/surfaces use bottom-centre anchors with editable width/height and fixed thickness.
 - Existing v2-v4 local plans migrate without losing plan depth or height.

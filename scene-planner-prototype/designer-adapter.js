@@ -110,8 +110,6 @@ elif kind == "projector":
     rotation_value = Vec(rot["x"], rot["y"], rot["z"])
     assign("configPosition", position_value)
     assign("configRotation", rotation_value)
-    assign("offset", position_value)
-    assign("rotation", rotation_value)
 elif kind == "camera":
     assign("posRelativeOrGlobal", Vec(pos["x"], pos["y"], pos["z"]))
     assign("rotRelativeOrGlobal", Vec(rot["x"], rot["y"], rot["z"]))
@@ -176,11 +174,9 @@ elif kind == "projector":
     if position_change:
         value = Vec(position_change.get("x", current_pos.x), position_change.get("y", current_pos.y), position_change.get("z", current_pos.z))
         assign("configPosition", value)
-        assign("offset", value)
     if rotation_change:
         value = Vec(rotation_change.get("x", current_rot.x), rotation_change.get("y", current_rot.y), rotation_change.get("z", current_rot.z))
         assign("configRotation", value)
-        assign("rotation", value)
 elif kind == "camera":
     current_pos = obj.posRelativeOrGlobal
     current_rot = obj.rotRelativeOrGlobal

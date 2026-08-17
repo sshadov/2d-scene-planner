@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0 - 2026-08-17
+
+- Added the v6 room/stage model and grouped Scene-style object sidebar.
+- Added per-type `+` controls, collapsed object inspectors, and automatic expansion for newly added objects.
+- Added decimal comma/dot input, live numeric updates, and horizontal `0.1` scrubbing.
+- Added screen resolution/pixel pitch and projector resolution fields.
+- Added visible projector, light, and camera direction cones plus grid/centre/edge/symmetry snapping.
+- Preserved the pointer offset during drag so selection no longer jumps an object under the cursor.
+- Stopped double-transforming projectors: only `configPosition/configRotation` are written.
+- Fixed native number inputs clearing comma-formatted room/stage dimensions.
+- Preserved v5 stage metadata during v6 migration and kept generated equipment heights absolute.
+
 ## 0.6.0 - 2026-08-17
 
 - Added the v5 `transform`/`geometry` scene model and absolute room frame coordinates.

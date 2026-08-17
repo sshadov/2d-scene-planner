@@ -67,16 +67,27 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 
 ## Coordinate scenarios
 
-1. With room centre `X=0, Z=0`, verify the highlighted axes cross at its centre.
-2. Change room centre to `X=10, Z=-5`; grid labels and frame move to `X=0..20`, `Z=-11..1`, while existing object coordinates do not change.
+1. With a `20 × 12 m` room, verify its bounds are `X=-10..10`, `Z=-6..6` and the world origin is at the centre.
+2. Move the independent stage centre to `X=4, Z=-2`; existing object coordinates must not change.
 3. Set a screen to width `4`, height `2`, `X=3`, bottom `Y=0`, `Z=-5`, yaw `0`.
 4. Export and verify Designer `offset=(3,1,-5)`, `scale=(4,2,0.1)`, `rotation=(0,0,0)`; readback bottom is `Y=0`.
 5. Set screen bottom `Y=1.5`; it must occupy the vertical range `1.5..3.5`.
-6. Change `Y`; the canvas position must not move. Drag the object; only absolute `X/Z` may change.
-7. Set a projector to `(3,2.5,-5)` and verify `configPosition` and body `offset` receive those values.
+6. Change `Y`; the canvas position must not move. Click the object away from its centre; coordinates must not change. Drag it; only absolute `X/Z` may change and the original cursor offset must be preserved.
+7. Set a projector to `(3,2.5,-5)` and verify only `configPosition/configRotation` are written and read back. Its body `offset/rotation` are not mirrored.
 8. Verify a camera uses `posRelativeOrGlobal/rotRelativeOrGlobal`, and a light uses `offset/rotation`.
-9. Force a readback difference above `0.001`; sync must stop and display the mismatched field.
-10. Load a v4 screen with `Y=0`; v5 must preserve it as bottom-edge `Y=0`.
+9. Verify projector, camera, and light direction cones follow `Ry` in the top view.
+10. Force a readback difference above `0.001`; sync must stop and display the mismatched field.
+11. Load a v5 screen with `Y=0`; v6 must preserve it as bottom-edge `Y=0`.
+
+## Sidebar and numeric input scenarios
+
+1. Reload the page: all type groups and object properties start collapsed.
+2. Press a group `+`: exactly one object is added, its group opens, and the new object's properties open.
+3. Enter `1,5` and `1.5` in a coordinate field; both must store `1.5`.
+4. Temporarily clear a field; the model must retain its previous value rather than writing zero.
+5. Hold the primary mouse button over a numeric field and move horizontally; every 8 px changes the value by `0.1 m` for metric fields.
+6. Add an object after entering comma-formatted room/stage values; the room/stage dimensions must remain unchanged.
+7. For an LED screen, verify width, height, resolution X/Y, and pixel pitch are editable. For a projector, verify resolution X/Y is editable.
 
 ## Safe synchronization scenarios
 

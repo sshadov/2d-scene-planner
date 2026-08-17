@@ -15,5 +15,8 @@
 - **Top view**: 2D projection of X/Z; Y is intentionally invisible.
 - **Bottom-centre anchor**: planner position for a screen/surface; Designer receives a centre pivot calculated as `Y + height/2`.
 - **Optical centre**: planner position for a projector or camera, written to its type-specific Designer transform.
-- **Room frame**: visible plan boundary positioned by `centerX/centerZ`; it never offsets object coordinates.
+- **Room frame**: visible plan boundary centred on world `X=0, Z=0`; it never offsets object coordinates.
+- **Stage footprint**: positioned X/Z rectangle with physical width, depth, height, and top elevation used for initial object placement.
+- **Pixel pitch**: centre-to-centre LED pixel spacing in millimetres.
+- **Direction cone**: top-view indication of a projector, camera, or light heading derived from its `Ry` value.
 - **Diff**: classified operations computed before synchronization.

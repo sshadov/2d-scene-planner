@@ -63,8 +63,26 @@ Designer resources are created under folders derived from their Python class nam
 ## ADR-009: v5 world transforms and type-specific Designer properties
 
 - Date: 2026-08-17
-- Status: accepted
+- Status: superseded in part by ADR-010
 
 The room is a movable world-space frame (`centerX`, `centerZ`, `floorY`) and never acts as a hidden coordinate origin. Objects store `transform.position/rotation`; screens and surfaces also store editable `geometry.width/height` and use a fixed `0.1 m` thickness.
 
 Screen/surface `Y` is the bottom edge, converted only in the adapter to a centre pivot. Projectors use `configPosition/configRotation`, cameras use `posRelativeOrGlobal/rotRelativeOrGlobal`, and lights use `offset/rotation`. A write is accepted as synchronized only after type-specific readback matches within `0.001` metre/degree.
+
+## ADR-010: v6 event-building model and projector optical transform
+
+- Date: 2026-08-17
+- Status: accepted
+
+The room stores only width/depth around the Designer world origin. The stage is an independent positioned footprint with width/depth/height and a top elevation. Objects are edited in grouped, collapsed type collections; screens add resolution and pixel pitch, projectors add resolution, and directional objects expose position plus `Rx/Ry/Rz`.
+
+Projector `configPosition/configRotation` are the sole authoritative writes. The adapter must not mirror them into inherited body `offset/rotation`, because Designer recalculates the projector config transform when the body transform changes. Light position/direction continue through `offset/rotation`, which are the writable transform properties exposed by the current Python stubs.
+
+All numeric controls are text-backed decimal inputs so both comma and dot are valid. Empty or incomplete text never becomes zero. A click selects without changing coordinates; a drag preserves the original pointer offset and then applies the selected snapping policy.
+
+## ADR-011: Preserve v5 stage data during migration
+
+- Date: 2026-08-17
+- Status: accepted
+
+Version 5 already stored a separate `stage` object. The v6 loader therefore preserves it when present and uses the legacy room fallback only for v2-v4 saves. This avoids silently moving existing stage bounds or vertical reference during a routine plugin update.
