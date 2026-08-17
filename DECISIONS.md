@@ -115,3 +115,16 @@ LED density is stored as `pixelsPerInch`. Projection surfaces have resolution me
 Selected screens and projection surfaces expose a rotation handle outside their top-right plan corner. The handle edits only world yaw (`transform.rotation.y`); position, height, geometry, and media metadata remain unchanged. The pointer angle is measured from the object centre and corrected by the handle's local corner offset so grabbing the handle does not introduce an initial rotation jump.
 
 The canvas context menu creates either a plain copy or a mirrored copy around the stage centre planes. X mirroring maps `x` to `2 * stage.centerX - x` and negates yaw. Z mirroring maps `z` to `2 * stage.centerZ - z` and maps yaw to `180 - yaw`, normalized to `[-180, 180)`. Projector Look At points follow the same mirror and mirrored projectors drop any surface binding because a mirrored target is an independent world-space point. Every duplicate receives a new local ID, plugin ID, readable name, and no Designer mapping.
+
+## ADR-015: Physical-intent UI and adapter boundary
+
+- Date: 2026-08-17
+- Status: accepted
+
+The planner interface exposes physical event-building intent, not Designer implementation fields. A projector has lens position and a world/surface target; its hidden body rotation is normalized and any Designer `configRotation` derived from Look At remains adapter-owned. Screens and surfaces expose physical dimensions, bottom-centre position, and plan yaw. Cameras and lights expose position and horizontal direction.
+
+Object properties live in one fixed horizontal strip above the X/Z plan. The left rail is selection-only and cannot expand with object parameters. Metric and density inputs use `0.1` wheel steps, angles use `1°`, direct typing remains available, and wheel events over the free canvas control zoom. The v10 LIVE switch is an explicitly local UI state only; it does not send API requests until a separate debounced LiveUpdate adapter is implemented.
+
+LED input provenance is stored as `media.inputMode`: `resolution`, `ppi`, or `pitch`. Only the selected mode is shown. The other density/resolution values are recalculated so exports and later adapters can consume a complete physical description without forcing all values into the operator workflow.
+
+Creation is spatial and mouse-first: right-clicking empty plan space opens an equipment menu and creates the chosen object at that world X/Z. Screen and surface creation starts a width-then-height keyboard sequence. Projector creation starts a temporary target-placement mode in which the visible Look At point follows the cursor until the next primary click. Ctrl-drag creates an independent copy at the original position and immediately moves it; Shift-click selects every object of the same type, and dragging any member preserves all relative X/Z offsets.

@@ -76,34 +76,41 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 7. Verify a camera resource is class `Camera` and uses `offset/rotation`; a light also uses `offset/rotation`.
 8. Verify the projector cone and target marker follow its Look At point and camera/light cones follow `Ry` in the top view.
 9. Force a readback difference above `0.001`; sync must stop and display the mismatched field.
-10. Load a v6 screen with `Y=0`; v9 must preserve its object world Y and convert the old stage-top floor reference correctly.
-11. Load a v7 plan with base `floorY=0.4`; v9 must keep `0.4` rather than subtracting stage height again.
+10. Load a v6 screen with `Y=0`; v10 must preserve its object world Y and convert the old stage-top floor reference correctly.
+11. Load a v7 plan with base `floorY=0.4`; v10 must keep `0.4` rather than subtracting stage height again.
 
-## Sidebar and numeric input scenarios
+## Physical UI and numeric input scenarios
 
-1. Reload the page: all type groups and object properties start collapsed.
-2. Press a group `+`: exactly one object is added, its group opens, and the new object's properties open.
+1. Reload the page: the left rail contains grouped object names only; no object parameters appear inside it.
+2. Press each top `+` command: exactly one object is added, selected, and shown in the fixed active-object strip.
 3. Enter `1,5` and `1.5` in a coordinate field; both must store `1.5`.
 4. Temporarily clear a field; the model must retain its previous value rather than writing zero.
-5. Hold the primary mouse button over a numeric field and move horizontally; every 8 px changes the value by `0.1 m` for metric fields.
+5. Scroll over a metric or density field; each wheel event changes it by `0.1`. Scroll over an angle; it changes by `1°`. Horizontal pointer movement over an input must do nothing.
 6. Add an object after entering comma-formatted room/stage values; the room/stage dimensions must remain unchanged.
-7. For an LED screen, verify width, height, resolution X/Y, and PPI are editable. For a projection surface, verify the same fields except PPI. For a projector, verify resolution X/Y is editable.
+7. For an LED screen, switch between `Разрешение`, `PPI`, and `Шаг`; only the selected mode is visible and hidden values recalculate. For a projection surface, verify only size, position/yaw, and resolution. For a projector, verify only lens position, target/surface, and resolution with no rotation input.
 8. Toggle "Отсчитывать высоту объектов от сцены": a screen at world Y `0.8` displays `0` when stage top is `0.8`, then returns to `0.8` when unchecked.
-9. Expand and collapse an object inspector; the canvas bounding-box height must not change.
-10. Verify the `Размер`, `Положение`, and `Разрешение` section fields share one horizontal row whenever they fit.
+9. Select every object type; the canvas bounding-box height must not change.
+10. Verify the active strip stays one fixed-height horizontal row and scrolls horizontally when the host window is narrow.
 11. Verify lights and cameras expose no tilt field, only position and horizontal direction/rotation.
 12. Link a projector to a surface and move the surface; the projector target marker and exported Look At must follow its centre.
 13. Switch the projector to `Ручная точка на плане` and drag the marker; only Look At X/Z change.
+14. Scroll over empty canvas; zoom changes by 10% and object coordinates remain unchanged.
+15. Toggle LIVE; the footer must state that transmission is disabled and no Designer request is emitted.
 
 ## Direct manipulation scenarios
 
-1. Select an LED screen or projection surface; its rotation handle must appear outside the top-right corner with a connector line.
-2. Press the handle without moving it; yaw must not jump. Drag it to `30°`; X/Z, height, dimensions, and resolution must remain unchanged.
-3. Right-click an object; the menu must show plain duplicate, mirror by X, and mirror by Z commands.
-4. Plain duplicate adds `0.5 m` on X and receives a new readable name, plugin ID, and empty Designer mapping.
-5. Mirror a screen at `X=-6`, `Z=-3`, yaw `30°` around a stage centred at zero. X mirror must produce `(6,-3,-30°)`; Z mirror must produce `(-6,3,150°)`.
-6. Mirror a projector with a manual Look At point; position and target must mirror together. A projector linked to a surface must become an independent manual-target copy.
-7. Use Undo after every command; the original object and selection must be restored without leaving duplicate sync records.
+1. Right-click empty plan space and choose each equipment type; every object must be created at the clicked world X/Z.
+2. Create a screen or surface this way; width receives keyboard focus, and Enter commits it and moves focus to height.
+3. Create a projector; its visible Look At point must follow the cursor until the next left click fixes the target.
+4. Select an LED screen or projection surface; its rotation handle must appear outside the top-right corner with a connector line.
+5. Press the handle without moving it; yaw must not jump. Drag it to `30°`; X/Z, height, dimensions, and resolution must remain unchanged.
+6. Ctrl-drag an object; an independent copy starts at the same coordinate and follows the pointer while the original remains in place.
+7. Shift-click one object; all objects of that type must highlight. Drag any highlighted member; all selected objects retain their relative X/Z offsets and remain inside the room.
+8. Right-click an object; the menu must show duplicate, 90-degree rotation, mirror X/Z, and confirmed deletion. A projector with available surfaces also shows surface binding.
+9. Plain context-menu duplicate adds `0.5 m` on X and receives a new readable name, plugin ID, and empty Designer mapping.
+10. Mirror a screen at `X=-6`, `Z=-3`, yaw `30°` around a stage centred at zero. X mirror must produce `(6,-3,-30°)`; Z mirror must produce `(-6,3,150°)`.
+11. Mirror a projector with a manual Look At point; position and target must mirror together. A projector linked to a surface must become an independent manual-target copy.
+12. Use Undo after every command; the original object and selection must be restored without leaving duplicate sync records.
 
 ## Safe synchronization scenarios
 

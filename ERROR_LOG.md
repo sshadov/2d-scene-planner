@@ -194,3 +194,12 @@
 - Cause: angles measured from different origins were subtracted from each other.
 - Fix: store the handle's local corner-vector angle and subtract it from the pointer angle measured around the object centre.
 - Regression test: evaluating the handle at its rendered position reproduces the object's existing yaw within `0.001°`; a browser drag to `30°` changes only yaw and preserves X/Z.
+
+## ERR-023: Designer implementation details dominated the planner workflow
+
+- Date: 2026-08-17
+- Symptom: building a simple measured scene required expanding many object inspectors and reasoning about rotation/config fields that belong to Designer rather than to the physical event.
+- Evidence: the left rail contained all fields for every expanded object, numeric values used drag scrubbing, and screen resolution plus density were shown simultaneously.
+- Cause: the UI was structured around the internal scene object representation instead of the operator's paper measurements and mouse workflow.
+- Fix: make the left rail selection-only, put the active object's physical values in one fixed strip, remove projector rotation from the UI, replace scrubbing with wheel steps, show only the selected LED data mode, and make creation spatial through the empty-plan context menu. Screen dimensions continue width-to-height on Enter; projectors place their visible target immediately; Ctrl-drag copies and Shift-click creates a movable same-type selection.
+- Regression test: selecting a projector exposes only X/Z/height, target, and resolution; changing selection does not resize the canvas; PPI wheel input changes by `0.1` and recalculates resolution; no horizontal scrub state exists; all five equipment types exist in the empty-plan menu; positional creation, target-placement state, stationary duplication, and same-type selection are covered by the harness.

@@ -16,7 +16,7 @@ object:
     position: { x, y, z }
     rotation: { x, y, z }
   geometry: { width, height }  # screen/surface only
-  media: { resolutionX, resolutionY, pixelsPerInch }  # PPI is LED-only
+  media: { inputMode, resolutionX, resolutionY, pixelsPerInch, pixelPitchMm }  # density fields are LED-only
   lookAt: { x, y, z }  # projector only
   targetSurfacePluginId  # optional projector-to-surface relation
 sync.objects[pluginId]:
@@ -39,7 +39,9 @@ Dragging updates `transform.position.x/z` only. The saved numeric `Y` is always 
 
 For screens and surfaces, position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and `rotation = Vec(0, yaw, 0)`. Resolution and LED PPI are planning metadata until a matching Designer media property is explicitly mapped. Projectors use `configPosition/configLookAt`; setting inherited body transforms or `configRotation` changes the optical configuration unexpectedly. A projector may target a surface by stable plugin ID; its exported Look At is then recomputed from the surface centre. Cameras use the concrete `Camera` class with `offset/rotation`. Lights use `offset/rotation`.
 
-The sidebar groups objects by type. New objects open automatically; existing groups start collapsed. Each inspector uses compact titled rows so fields that belong together share one line. The application shell is fixed to the viewport; only the sidebar scrolls, so opening an inspector cannot resize the canvas. Numeric fields accept comma or dot, update the model while typing, and support horizontal pointer scrubbing in `0.1` steps. Projectors show a target marker and dashed source-to-target line in the X/Z view. Dragging a manual marker edits Look At X/Z; selecting a surface locks the marker to that surface centre. Dragging objects preserves the pointer offset and optional snapping can use the 1 m grid, 0.1 m grid, stage centre/edges, same-type coordinates, and mirrored distances. Selected screens and surfaces expose an external rotation handle that changes yaw only. The canvas context menu duplicates objects normally or mirrors them across the stage X/Z centre planes; duplicate identities and Designer mappings are never reused.
+The top toolbar creates objects at the stage centre. Right-clicking empty plan space opens the same equipment choices and creates at that world X/Z. New screens and surfaces focus width, then move to height on Enter. New projectors enter a temporary cursor-follow target-placement state until the next primary click. The left rail groups and selects objects but contains no property inspectors. A fixed strip above the plan shows only the selected object's physical values, so changing object type cannot resize the canvas. Numeric fields accept comma or dot, keyboard arrows, and wheel changes (`0.1` for metres/density and `1°` for angles); the old horizontal pointer scrubbing is removed. Wheel input over the free canvas controls zoom.
+
+Projectors expose lens position and a target marker/surface relation, never user-facing Euler rotation. Dragging a manual marker edits Look At X/Z; selecting a surface locks the marker to that surface centre. LED screens show one source mode at a time: resolution, PPI, or millimetre pitch. The model recalculates the hidden companion values after edits. Dragging objects preserves the pointer offset and optional snapping can use the 1 m grid, 0.1 m grid, stage centre/edges, same-type coordinates, and mirrored distances. Ctrl-drag first creates an independent copy without offset and then moves it. Shift-click selects the complete same-type set; group drag applies one clamped delta so relative positions stay unchanged. Selected screens and surfaces expose an external rotation handle that changes yaw only. The context menu supports duplication, 90-degree rotation/direction change, projector surface binding, mirrored copies, and confirmed deletion.
 
 Every successful create/update returns a type-specific readback. The planner compares position, rotation, and planar geometry to the requested values with a `0.001` metre/degree tolerance before recording the sync version.
 
@@ -59,4 +61,4 @@ The adapter repeats the default/managed check before deletion. Repeat sync resol
 
 ## Persistence
 
-Browser state uses localStorage key `disguise-scene-generator-state-v9`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v8 keys are read only as migration sources.
+Browser state uses localStorage key `disguise-scene-generator-state-v10`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v9 keys are read only as migration sources. `liveEnabled` is currently a UI-preview flag and performs no API transmission.

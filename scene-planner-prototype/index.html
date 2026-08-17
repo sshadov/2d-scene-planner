@@ -4,81 +4,78 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=9" />
+    <link rel="stylesheet" href="./styles.css?v=10" />
   </head>
   <body>
     <main class="app-shell">
       <header class="app-header">
-        <div>
-          <p class="eyebrow">LOCAL SCENE PLANNER</p>
-          <h1>Disguise Scene Planner</h1>
+        <div class="brand-block">
+          <p class="eyebrow">SCENE PLANNER</p>
+          <h1>Disguise</h1>
         </div>
+
+        <nav class="add-toolbar" aria-label="Добавить объект">
+          <button type="button" data-add-type="screen"><span>+</span> Экран</button>
+          <button type="button" data-add-type="surface"><span>+</span> Поверхность</button>
+          <button type="button" data-add-type="projector"><span>+</span> Проектор</button>
+          <button type="button" data-add-type="light"><span>+</span> Свет</button>
+          <button type="button" data-add-type="camera"><span>+</span> Камера</button>
+        </nav>
+
         <div class="header-actions">
-          <button class="icon-button" id="undo-button" type="button" aria-label="Отменить" title="Отменить">
-            <span aria-hidden="true">↶</span>
-          </button>
-          <button class="icon-button" id="redo-button" type="button" aria-label="Повторить" title="Повторить">
-            <span aria-hidden="true">↷</span>
-          </button>
-          <button class="button secondary" id="json-button" type="button">Экспорт JSON</button>
-          <button class="button primary" id="export-button" type="button">Экспортировать сцену</button>
+          <label class="live-toggle" title="Живая синхронизация по умолчанию выключена">
+            <span>LIVE</span>
+            <input id="live-toggle" type="checkbox" />
+            <i aria-hidden="true"></i>
+          </label>
+          <button class="icon-button" id="undo-button" type="button" aria-label="Отменить" title="Отменить">↶</button>
+          <button class="icon-button" id="redo-button" type="button" aria-label="Повторить" title="Повторить">↷</button>
+          <button class="button secondary" id="json-button" type="button">JSON</button>
+          <button class="button primary" id="export-button" type="button">Синхронизировать</button>
         </div>
       </header>
 
+      <section class="environment-bar" aria-label="Размеры помещения и сцены">
+        <div class="environment-group">
+          <b>Помещение</b>
+          <label>Ширина <span class="input-shell"><input id="room-width" type="text" inputmode="decimal" value="20" /><i>м</i></span></label>
+          <label>Длина <span class="input-shell"><input id="room-depth" type="text" inputmode="decimal" value="12" /><i>м</i></span></label>
+        </div>
+        <div class="environment-group">
+          <b>Сцена</b>
+          <label>Ширина <span class="input-shell"><input id="stage-width" type="text" inputmode="decimal" value="12" /><i>м</i></span></label>
+          <label>Длина <span class="input-shell"><input id="stage-depth" type="text" inputmode="decimal" value="8" /><i>м</i></span></label>
+          <label>Высота <span class="input-shell"><input id="stage-height" type="text" inputmode="decimal" value="0.8" /><i>м</i></span></label>
+          <label class="compact-checkbox"><input id="measure-from-stage" type="checkbox" /><span>Высота от сцены</span></label>
+        </div>
+        <button class="text-button" id="reset-button" type="button">Расставить заново</button>
+      </section>
+
       <section class="workspace" aria-label="Редактор сцены">
-        <aside class="sidebar controls-panel">
-          <section class="panel-section">
-            <div class="section-heading">
-              <h2>Помещение</h2>
-              <span class="unit-label">метры</span>
-            </div>
-            <div class="static-field-row room-field-row">
-              <label class="compact-field"><span>Ширина</span><input id="room-width" type="text" inputmode="decimal" value="20" /></label>
-              <label class="compact-field"><span>Длина</span><input id="room-depth" type="text" inputmode="decimal" value="12" /></label>
-            </div>
-          </section>
-
-          <section class="panel-section">
-            <div class="section-heading">
-              <h2>Сцена</h2>
-              <span class="unit-label">метры</span>
-            </div>
-            <div class="static-field-row stage-field-row">
-              <label class="compact-field"><span>Ширина</span><input id="stage-width" type="text" inputmode="decimal" value="12" /></label>
-              <label class="compact-field"><span>Длина</span><input id="stage-depth" type="text" inputmode="decimal" value="8" /></label>
-              <label class="compact-field"><span>Высота</span><input id="stage-height" type="text" inputmode="decimal" value="0.8" /></label>
-              <label class="compact-checkbox"><input id="measure-from-stage" type="checkbox" /><span>от сцены</span></label>
-            </div>
-          </section>
-
-          <section class="panel-section object-browser-section">
-            <div class="section-heading">
-              <h2>Объекты</h2>
-              <button class="text-button" id="reset-button" type="button">Расставить</button>
-            </div>
-            <div id="object-groups" class="object-groups"></div>
-          </section>
-
-          <section class="legend" aria-label="Условные обозначения">
+        <aside class="object-rail">
+          <div class="rail-heading"><h2>Объекты</h2><span id="object-count">0</span></div>
+          <div id="object-groups" class="object-groups"></div>
+          <div class="legend" aria-label="Условные обозначения">
             <span><i class="swatch screen"></i>Экран</span>
             <span><i class="swatch surface"></i>Поверхность</span>
-            <span><i class="swatch camera"></i>Камера</span>
             <span><i class="swatch projector"></i>Проектор</span>
             <span><i class="swatch light"></i>Свет</span>
-          </section>
+            <span><i class="swatch camera"></i>Камера</span>
+          </div>
         </aside>
 
         <section class="stage-panel">
+          <div class="active-object-strip" id="active-object-strip" aria-live="polite"></div>
           <div class="stage-toolbar">
-            <span class="view-label"><i></i>Вид сверху</span>
+            <span class="view-label"><i></i>План X/Z</span>
             <div class="snap-controls" aria-label="Привязка объектов">
               <select id="snap-mode" aria-label="Режим привязки">
                 <option value="free">Без привязки</option>
                 <option value="grid-01">Сетка 0,1 м</option>
                 <option value="grid-1" selected>Сетка 1 м</option>
               </select>
-              <button class="tool-button" id="align-x" type="button" title="Выровнять выбранный объект по центру сцены X">X=центр</button>
-              <button class="tool-button" id="align-z" type="button" title="Выровнять выбранный объект по центру сцены Z">Z=центр</button>
+              <button class="tool-button" id="align-x" type="button" title="По центру сцены X">X=центр</button>
+              <button class="tool-button" id="align-z" type="button" title="По центру сцены Z">Z=центр</button>
             </div>
             <div class="zoom-controls">
               <button class="icon-button" id="zoom-out" type="button" aria-label="Уменьшить масштаб" title="Уменьшить масштаб">−</button>
@@ -88,59 +85,64 @@
           </div>
           <div class="canvas-wrap" id="canvas-wrap">
             <canvas id="scene-canvas" aria-label="План сцены, вид сверху"></canvas>
-            <div class="empty-hint" id="empty-hint">Добавьте объект через «+» в нужной группе</div>
+            <div class="empty-hint" id="empty-hint">Добавьте первый объект сверху</div>
           </div>
           <footer class="stage-footer">
-            <span id="scene-summary">Помещение 20.0 × 12.0 × 6.0 м</span>
-            <span id="adapter-status">Designer API: не подключён · JSON доступен</span>
+            <div class="sync-counters">
+              <span class="status-chip synced">Синхронизировано <b id="status-synced">0</b></span>
+              <span class="status-chip changed">Изменено <b id="status-changed">0</b></span>
+              <span class="status-chip error" id="status-error-chip" hidden>Ошибки <b id="status-errors">0</b></span>
+            </div>
+            <span id="scene-summary">Помещение 20 × 12 м</span>
+            <span id="adapter-status">Designer API: не подключён</span>
           </footer>
         </section>
       </section>
     </main>
+
     <div class="modal-backdrop" id="sync-modal" hidden>
       <section class="sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-title">
-        <div class="section-heading">
-          <h2 id="sync-title">Синхронизация сцены</h2>
-          <button class="icon-button" id="close-sync" type="button" aria-label="Закрыть">×</button>
-        </div>
+        <div class="section-heading"><h2 id="sync-title">Синхронизация сцены</h2><button class="icon-button" id="close-sync" type="button" aria-label="Закрыть">×</button></div>
         <p class="modal-copy" id="sync-message"></p>
         <fieldset class="sync-modes">
           <legend>Режим работы с текущей сценой</legend>
-          <label>
-            <input type="radio" name="sync-mode" value="update" checked />
-            <span><b>Обновить текущую сцену</b><small>Принять узнаваемые стандартные объекты и не трогать ручные.</small></span>
-          </label>
-          <label>
-            <input type="radio" name="sync-mode" value="clean" />
-            <span><b>Создать новый чистый план</b><small>Создать новый набор; стандартные удаляются только отдельной кнопкой ниже.</small></span>
-          </label>
+          <label><input type="radio" name="sync-mode" value="update" checked /><span><b>Обновить текущую сцену</b><small>Принять узнаваемые стандартные объекты и не трогать ручные.</small></span></label>
+          <label><input type="radio" name="sync-mode" value="clean" /><span><b>Создать новый чистый план</b><small>Создать новый набор; стандартные удаляются только отдельной кнопкой ниже.</small></span></label>
         </fieldset>
         <div class="diff-grid">
-          <span>Создать <b id="diff-create">0</b></span>
-          <span>Обновить <b id="diff-update">0</b></span>
-          <span>Без изменений <b id="diff-unchanged">0</b></span>
-          <span>Ручные: оставить <b id="diff-preserve">0</b></span>
-          <span>Оставшиеся в Designer <b id="diff-orphans">0</b></span>
-          <span>Стандартные к очистке <b id="diff-delete">0</b></span>
+          <span>Создать <b id="diff-create">0</b></span><span>Обновить <b id="diff-update">0</b></span><span>Без изменений <b id="diff-unchanged">0</b></span><span>Ручные: оставить <b id="diff-preserve">0</b></span><span>Оставшиеся в Designer <b id="diff-orphans">0</b></span><span>Стандартные к очистке <b id="diff-delete">0</b></span>
         </div>
         <p class="modal-warning" id="sync-warning" hidden></p>
-        <details class="cleanup-panel">
-          <summary>Выбрать стандартные объекты для удаления</summary>
-          <div id="standard-checklist" class="standard-checklist"></div>
-          <button class="button danger" id="delete-standards" type="button">Удалить выбранные стандартные</button>
-        </details>
-        <div class="modal-actions">
-          <button class="button secondary" id="cancel-sync" type="button">Отмена</button>
-          <button class="button primary" id="confirm-sync" type="button">Экспортировать изменения</button>
-        </div>
+        <details class="cleanup-panel"><summary>Выбрать стандартные объекты для удаления</summary><div id="standard-checklist" class="standard-checklist"></div><button class="button danger" id="delete-standards" type="button">Удалить выбранные стандартные</button></details>
+        <div class="modal-actions"><button class="button secondary" id="cancel-sync" type="button">Отмена</button><button class="button primary" id="confirm-sync" type="button">Экспортировать изменения</button></div>
       </section>
     </div>
+
     <menu class="canvas-context-menu" id="canvas-context-menu" hidden>
-      <button type="button" data-action="duplicate">Дублировать</button>
-      <button type="button" data-action="mirror-x">Зеркальная копия по X</button>
-      <button type="button" data-action="mirror-z">Зеркальная копия по Z</button>
+      <div class="empty-context-actions" id="empty-context-actions" hidden>
+        <span class="context-title">Добавить в эту точку</span>
+        <div class="quick-add-grid">
+          <button type="button" data-create-type="screen">Экран</button>
+          <button type="button" data-create-type="surface">Поверхность</button>
+          <button type="button" data-create-type="projector">Проектор</button>
+          <button type="button" data-create-type="light">Свет</button>
+          <button type="button" data-create-type="camera">Камера</button>
+        </div>
+      </div>
+      <div id="object-context-actions">
+        <button type="button" data-action="duplicate">Дублировать</button>
+        <button type="button" data-action="rotate-90">Повернуть на 90°</button>
+        <button type="button" data-action="bind-surface" id="context-bind-surface" hidden>Привязать к поверхности ›</button>
+        <div class="surface-context-list" id="surface-context-list" hidden></div>
+        <div class="menu-separator"></div>
+        <button type="button" data-action="mirror-x">Зеркальная копия по X</button>
+        <button type="button" data-action="mirror-z">Зеркальная копия по Z</button>
+        <div class="menu-separator"></div>
+        <button class="danger-menu-item" type="button" data-action="delete">Удалить</button>
+        <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Удалить объект?</span><button type="button" id="context-delete-yes">Да</button><button type="button" id="context-delete-no">Нет</button></div>
+      </div>
     </menu>
-    <script src="./designer-adapter.js?v=9"></script>
-    <script src="./app.js?v=9"></script>
+    <script src="./designer-adapter.js?v=10"></script>
+    <script src="./app.js?v=10"></script>
   </body>
 </html>

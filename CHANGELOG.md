@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.0 - 2026-08-17
+
+- Replaced the expandable property sidebar with a compact grouped object list and one fixed active-object strip above the plan.
+- Added top-level object creation buttons, compact room/stage dimensions, a LIVE preview toggle, and synchronization counters.
+- Removed horizontal numeric scrubbing; numeric fields now support direct typing, arrow keys, and mouse-wheel steps.
+- Added wheel zoom over the free plan and kept the external screen/surface rotation handle.
+- Reduced projector controls to physical lens position, visible Look At target/surface, and resolution; no projector rotation is exposed.
+- Added LED input modes for resolution, PPI, or millimetre pixel pitch with automatic conversion of the hidden values.
+- Expanded the context menu with 90-degree rotation, surface binding, and inline-confirmed deletion while retaining mirrored duplication.
+- Added empty-plan right-click creation at the clicked world coordinate. New screens/surfaces focus width then height; new projectors enter cursor-follow Look At placement.
+- Added Ctrl-drag duplication and Shift-click same-type selection with relative-position-preserving group drag.
+- Added v10 persistence/schema migration and browser interaction coverage without changing the Designer export adapter.
+
 ## 0.10.0 - 2026-08-17
 
 - Added an external corner rotation handle for LED screens and projection surfaces.
