@@ -76,8 +76,8 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 7. Verify a camera resource is class `Camera` and uses `offset/rotation`; a light also uses `offset/rotation`.
 8. Verify the projector cone and target marker follow its Look At point and camera/light cones follow `Ry` in the top view.
 9. Force a readback difference above `0.001`; sync must stop and display the mismatched field.
-10. Load a v6 screen with `Y=0`; v8 must preserve its object world Y and convert the old stage-top floor reference correctly.
-11. Load a v7 plan with base `floorY=0.4`; v8 must keep `0.4` rather than subtracting stage height again.
+10. Load a v6 screen with `Y=0`; v9 must preserve its object world Y and convert the old stage-top floor reference correctly.
+11. Load a v7 plan with base `floorY=0.4`; v9 must keep `0.4` rather than subtracting stage height again.
 
 ## Sidebar and numeric input scenarios
 
@@ -94,6 +94,16 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 11. Verify lights and cameras expose no tilt field, only position and horizontal direction/rotation.
 12. Link a projector to a surface and move the surface; the projector target marker and exported Look At must follow its centre.
 13. Switch the projector to `Ручная точка на плане` and drag the marker; only Look At X/Z change.
+
+## Direct manipulation scenarios
+
+1. Select an LED screen or projection surface; its rotation handle must appear outside the top-right corner with a connector line.
+2. Press the handle without moving it; yaw must not jump. Drag it to `30°`; X/Z, height, dimensions, and resolution must remain unchanged.
+3. Right-click an object; the menu must show plain duplicate, mirror by X, and mirror by Z commands.
+4. Plain duplicate adds `0.5 m` on X and receives a new readable name, plugin ID, and empty Designer mapping.
+5. Mirror a screen at `X=-6`, `Z=-3`, yaw `30°` around a stage centred at zero. X mirror must produce `(6,-3,-30°)`; Z mirror must produce `(-6,3,150°)`.
+6. Mirror a projector with a manual Look At point; position and target must mirror together. A projector linked to a surface must become an independent manual-target copy.
+7. Use Undo after every command; the original object and selection must be restored without leaving duplicate sync records.
 
 ## Safe synchronization scenarios
 

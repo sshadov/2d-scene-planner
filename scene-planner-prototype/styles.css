@@ -166,6 +166,9 @@ input:focus { border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(61, 217, 212
 .canvas-wrap { position: relative; min-height: 360px; overflow: hidden; }
 #scene-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
 .empty-hint { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #718091; font-size: 13px; pointer-events: none; text-align: center; }
+.canvas-context-menu { position: fixed; z-index: 8; width: 190px; margin: 0; padding: 5px; border: 1px solid #3b4b5c; border-radius: 4px; background: #17202a; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); }
+.canvas-context-menu button { width: 100%; min-height: 31px; padding: 0 9px; border: 0; border-radius: 3px; background: transparent; color: #d7dfe7; font-size: 11px; text-align: left; cursor: pointer; }
+.canvas-context-menu button:hover { background: #22303c; color: var(--cyan); }
 
 @media (max-width: 760px) {
   .app-shell { height: auto; min-height: 100vh; overflow: visible; }

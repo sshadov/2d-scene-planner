@@ -185,3 +185,12 @@
 - Cause: Look At existed only as three inspector inputs without a plan marker or scene-object relation.
 - Fix: draw a target cross and dashed line, allow the cross to be dragged in X/Z, and add a surface selector that derives the target from the selected surface centre.
 - Regression test: a projector linked to a surface at `(4,1,-2)` with height `3` exports Look At `(4,2.5,-2)`; the inspector contains no raw Look At Z field.
+
+## ERR-022: Rotation handle jumped on first movement
+
+- Date: 2026-08-17
+- Symptom: grabbing the new external rotation handle could immediately rotate a screen by an unrelated large angle before the pointer had meaningfully moved.
+- Evidence: the stored handle base angle used absolute canvas coordinates (`atan2(handle.y, handle.x)`), while pointer movement used a vector relative to the object's centre.
+- Cause: angles measured from different origins were subtracted from each other.
+- Fix: store the handle's local corner-vector angle and subtract it from the pointer angle measured around the object centre.
+- Regression test: evaluating the handle at its rendered position reproduces the object's existing yaw within `0.001°`; a browser drag to `30°` changes only yaw and preserves X/Z.

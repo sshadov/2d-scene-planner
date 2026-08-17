@@ -1,6 +1,6 @@
 (() => {
-  const VERSION = 8;
-  const STORAGE_KEY = "disguise-scene-generator-state-v8";
+  const VERSION = 9;
+  const STORAGE_KEY = "disguise-scene-generator-state-v9";
   const PLANAR_TYPES = new Set(["screen", "surface"]);
   const GROUP_ORDER = ["screen", "projector", "light", "surface", "camera"];
   const defaults = {
@@ -25,16 +25,19 @@
   const ctx = canvas.getContext("2d");
   const objectGroups = document.querySelector("#object-groups");
   const emptyHint = document.querySelector("#empty-hint");
+  const canvasContextMenu = document.querySelector("#canvas-context-menu");
   const state = {
     room: { ...defaults.room }, stage: { ...defaults.stage }, objects: [], selectedId: null, zoom: 1,
     history: [], future: [], dragging: null, guides: [], openGroups: new Set(), expandedIds: new Set(), scrub: null,
     sync: { objects: {}, designerScene: null, lastSyncAt: null }
   };
   let nextId = 1;
+  let contextObjectId = null;
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  const normalizeYaw = value => Number(((((finite(value) + 180) % 360) + 360) % 360 - 180).toFixed(3));
   function finite(value, fallback = 0) {
     const normalized = typeof value === "string" ? value.trim().replace(",", ".") : value;
     if (normalized === "" || normalized === null || normalized === undefined) return fallback;
@@ -110,7 +113,7 @@
   }
   function loadPersisted() {
     try {
-      const keys = [STORAGE_KEY, "disguise-scene-generator-state-v7", "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
+      const keys = [STORAGE_KEY, "disguise-scene-generator-state-v8", "disguise-scene-generator-state-v7", "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
       const saved = JSON.parse(keys.map(key => localStorage.getItem(key)).find(Boolean) || "null"); if (!saved) return false;
       const sourceVersion = Number(saved.version) || (saved.objects?.some(object => object.position) ? 3 : 2);
       state.room = normalizedRoom(saved.room); state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion);
@@ -223,11 +226,19 @@
     ctx.save(); ctx.strokeStyle = selected ? "rgba(192,132,252,.95)" : "rgba(192,132,252,.38)"; ctx.lineWidth = selected ? 1.5 : 1; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(source.x, source.y); ctx.lineTo(point.x, point.y); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = targetSurface(object) ? "#4e9cff" : "#10161c"; ctx.strokeStyle = "#c084fc"; ctx.lineWidth = selected ? 2.5 : 1.5; ctx.beginPath(); ctx.arc(point.x, point.y, selected ? 7 : 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(point.x - 10, point.y); ctx.lineTo(point.x + 10, point.y); ctx.moveTo(point.x, point.y - 10); ctx.lineTo(point.x, point.y + 10); ctx.stroke(); ctx.restore();
   }
-  function drawScene() { const frame = sizing(); drawGrid(frame); state.objects.filter(object => object.type === "projector").forEach(object => drawProjectorTarget(object, frame)); state.objects.forEach(object => drawObject(object, frame)); emptyHint.hidden = state.objects.length > 0; document.querySelector("#zoom-level").textContent = `${Math.round(state.zoom * 100)}%`; document.querySelector("#scene-summary").textContent = `Помещение ${state.room.width.toFixed(1)} × ${state.room.depth.toFixed(1)} м · сцена ${state.stage.width.toFixed(1)} × ${state.stage.depth.toFixed(1)} × ${state.stage.height.toFixed(1)} м`; }
+  function rotateHandleGeometry(object, frame) {
+    if (!PLANAR_TYPES.has(object.type)) return null; const centre = toScreen(object.transform.position.x, object.transform.position.z, frame); const angle = object.transform.rotation.y * Math.PI / 180; const thickness = Math.max(5, .1 * frame.scale); const corner = { x: object.geometry.width * frame.scale / 2, y: -thickness / 2 }; const handle = { x: corner.x + 17, y: corner.y - 17 }; const transform = point => ({ x: centre.x + Math.cos(angle) * point.x - Math.sin(angle) * point.y, y: centre.y + Math.sin(angle) * point.x + Math.cos(angle) * point.y });
+    return { centre, corner: transform(corner), handle: transform(handle), handleAngleOffset: Math.atan2(handle.y, handle.x) };
+  }
+  function drawRotateHandle(object, frame) {
+    const geometry = rotateHandleGeometry(object, frame); if (!geometry) return; ctx.save(); ctx.strokeStyle = "#eef2f6"; ctx.fillStyle = "#17202a"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(geometry.corner.x, geometry.corner.y); ctx.lineTo(geometry.handle.x, geometry.handle.y); ctx.stroke(); ctx.beginPath(); ctx.arc(geometry.handle.x, geometry.handle.y, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#3dd9d4"; ctx.beginPath(); ctx.arc(geometry.handle.x, geometry.handle.y, 2.2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+  function drawScene() { const frame = sizing(); drawGrid(frame); state.objects.filter(object => object.type === "projector").forEach(object => drawProjectorTarget(object, frame)); state.objects.forEach(object => drawObject(object, frame)); const selected = selectedObject(); if (selected) drawRotateHandle(selected, frame); emptyHint.hidden = state.objects.length > 0; document.querySelector("#zoom-level").textContent = `${Math.round(state.zoom * 100)}%`; document.querySelector("#scene-summary").textContent = `Помещение ${state.room.width.toFixed(1)} × ${state.room.depth.toFixed(1)} м · сцена ${state.stage.width.toFixed(1)} × ${state.stage.depth.toFixed(1)} × ${state.stage.height.toFixed(1)} м`; }
   function selectedObject() { return state.objects.find(object => object.id === state.selectedId); }
   function objectRadius(object, frame) { return PLANAR_TYPES.has(object.type) ? object.geometry.width * frame.scale / 2 : Math.max(12, (typeConfig[object.type].radius || .3) * frame.scale * 1.8); }
   function hitTest(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { const p = toScreen(object.transform.position.x, object.transform.position.z, frame); return Math.hypot(point.x - p.x, point.y - p.y) < objectRadius(object, frame) + 7; }); }
   function hitTestProjectorTarget(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { if (object.type !== "projector") return false; const target = effectiveLookAt(object); const p = toScreen(target.x, target.z, frame); return Math.hypot(point.x - p.x, point.y - p.y) <= 12; }); }
+  function hitTestRotateHandle(clientX, clientY) { const object = selectedObject(); if (!object) return null; const rect = canvas.getBoundingClientRect(); const geometry = rotateHandleGeometry(object, sizing()); if (!geometry) return null; return Math.hypot(clientX - rect.left - geometry.handle.x, clientY - rect.top - geometry.handle.y) <= 12 ? object : null; }
   function snapCoordinate(axis, value, object) {
     const mode = document.querySelector("#snap-mode").value; let result = value; if (mode === "grid-1") result = Math.round(result); if (mode === "grid-01") result = Math.round(result * 10) / 10;
     const stage = stageBounds(); const center = axis === "x" ? state.stage.centerX : state.stage.centerZ; const min = axis === "x" ? stage.minX : stage.minZ; const max = axis === "x" ? stage.maxX : stage.maxZ;
@@ -303,6 +314,18 @@
   }
   function render() { syncStaticInputs(); drawScene(); renderObjectGroups(); }
   function addObject(type) { syncModelsFromInputs(); saveHistory(); const object = newObject(type); state.objects.push(object); state.selectedId = object.id; state.openGroups.add(type); state.expandedIds.add(object.id); persist(); render(); }
+  function duplicateObject(id, mirrorAxis = null) {
+    const source = state.objects.find(object => object.id === id); if (!source) return; saveHistory(); const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(source.type); delete copy.designer;
+    if (mirrorAxis === "x") { copy.transform.position.x = Number((state.stage.centerX * 2 - source.transform.position.x).toFixed(3)); copy.transform.rotation.y = normalizeYaw(-source.transform.rotation.y); }
+    else if (mirrorAxis === "z") { copy.transform.position.z = Number((state.stage.centerZ * 2 - source.transform.position.z).toFixed(3)); copy.transform.rotation.y = normalizeYaw(180 - source.transform.rotation.y); }
+    else copy.transform.position.x = Number((source.transform.position.x + .5).toFixed(3));
+    if (source.type === "projector" && mirrorAxis) { const target = effectiveLookAt(source); copy.lookAt = { ...target, [mirrorAxis]: Number(((mirrorAxis === "x" ? state.stage.centerX : state.stage.centerZ) * 2 - target[mirrorAxis]).toFixed(3)) }; delete copy.targetSurfacePluginId; }
+    state.objects.push(copy); state.selectedId = copy.id; state.openGroups.add(copy.type); state.expandedIds.add(copy.id); persist(); render();
+  }
+  function closeCanvasContextMenu() { if (!canvasContextMenu) return; canvasContextMenu.hidden = true; contextObjectId = null; }
+  function openCanvasContextMenu(event, object) {
+    if (!canvasContextMenu || !object) return; contextObjectId = object.id; state.selectedId = object.id; state.openGroups.add(object.type); const width = 190; const height = 108; canvasContextMenu.style.left = `${Math.max(6, Math.min(event.clientX, (window.innerWidth || 1280) - width - 6))}px`; canvasContextMenu.style.top = `${Math.max(6, Math.min(event.clientY, (window.innerHeight || 720) - height - 6))}px`; canvasContextMenu.hidden = false; render();
+  }
   function deleteObject(id) { const index = state.objects.findIndex(object => object.id === id); if (index < 0) return; saveHistory(); state.objects.splice(index, 1); state.expandedIds.delete(id); if (state.selectedId === id) state.selectedId = null; persist(); render(); }
 
   function canonical(value) { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }
@@ -351,15 +374,19 @@
   document.querySelector("#undo-button").addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button").addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in").addEventListener("click", () => { state.zoom = clamp(state.zoom + .15, .5, 2); drawScene(); }); document.querySelector("#zoom-out").addEventListener("click", () => { state.zoom = clamp(state.zoom - .15, .5, 2); drawScene(); });
   document.querySelector("#align-x").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.x = state.stage.centerX; persist(); render(); }); document.querySelector("#align-z").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.z = state.stage.centerZ; persist(); render(); });
   canvas.addEventListener("pointerdown", event => {
-    const targetOwner = hitTestProjectorTarget(event.clientX, event.clientY); const object = targetOwner || hitTest(event.clientX, event.clientY); state.selectedId = object?.id ?? null;
+    if (event.button !== 0) return; closeCanvasContextMenu(); const rotateOwner = hitTestRotateHandle(event.clientX, event.clientY); const targetOwner = rotateOwner ? null : hitTestProjectorTarget(event.clientX, event.clientY); const object = rotateOwner || targetOwner || hitTest(event.clientX, event.clientY); state.selectedId = object?.id ?? null;
     if (object) { const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); saveHistory();
-      if (targetOwner) { const target = effectiveLookAt(targetOwner); delete targetOwner.targetSurfacePluginId; targetOwner.lookAt = target; state.dragging = { kind: "lookAt", id: targetOwner.id, offsetX: target.x - point.x, offsetZ: target.z - point.z }; }
+      if (rotateOwner) state.dragging = { kind: "rotate", id: rotateOwner.id };
+      else if (targetOwner) { const target = effectiveLookAt(targetOwner); delete targetOwner.targetSurfacePluginId; targetOwner.lookAt = target; state.dragging = { kind: "lookAt", id: targetOwner.id, offsetX: target.x - point.x, offsetZ: target.z - point.z }; }
       else state.dragging = { kind: "object", id: object.id, offsetX: object.transform.position.x - point.x, offsetZ: object.transform.position.z - point.z };
       canvas.setPointerCapture(event.pointerId); state.openGroups.add(object.type); state.expandedIds.add(object.id);
     } render();
   });
-  canvas.addEventListener("pointermove", event => { if (!state.dragging) return; const rect = canvas.getBoundingClientRect(); const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); const object = state.objects.find(item => item.id === state.dragging.id); if (!object) return; const bounds = roomBounds(); state.guides = []; const x = Number(clamp(snapCoordinate("x", point.x + state.dragging.offsetX, object), bounds.minX, bounds.maxX).toFixed(3)); const z = Number(clamp(snapCoordinate("z", point.z + state.dragging.offsetZ, object), bounds.minZ, bounds.maxZ).toFixed(3)); if (state.dragging.kind === "lookAt") { object.lookAt.x = x; object.lookAt.z = z; } else { object.transform.position.x = x; object.transform.position.z = z; } drawScene(); });
+  canvas.addEventListener("pointermove", event => { if (!state.dragging) return; const rect = canvas.getBoundingClientRect(); const object = state.objects.find(item => item.id === state.dragging.id); if (!object) return; if (state.dragging.kind === "rotate") { const geometry = rotateHandleGeometry(object, sizing()); if (!geometry) return; const angle = Math.atan2(event.clientY - rect.top - geometry.centre.y, event.clientX - rect.left - geometry.centre.x); object.transform.rotation.y = normalizeYaw((angle - geometry.handleAngleOffset) * 180 / Math.PI); drawScene(); return; } const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing()); const bounds = roomBounds(); state.guides = []; const x = Number(clamp(snapCoordinate("x", point.x + state.dragging.offsetX, object), bounds.minX, bounds.maxX).toFixed(3)); const z = Number(clamp(snapCoordinate("z", point.z + state.dragging.offsetZ, object), bounds.minZ, bounds.maxZ).toFixed(3)); if (state.dragging.kind === "lookAt") { object.lookAt.x = x; object.lookAt.z = z; } else { object.transform.position.x = x; object.transform.position.z = z; } drawScene(); });
   canvas.addEventListener("pointerup", event => { state.dragging = null; state.guides = []; persist(); render(); if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId); }); canvas.addEventListener("pointercancel", () => { state.dragging = null; state.guides = []; persist(); render(); }); window.addEventListener("resize", drawScene);
+  canvas.addEventListener("contextmenu", event => { event.preventDefault(); const object = hitTestProjectorTarget(event.clientX, event.clientY) || hitTest(event.clientX, event.clientY); if (object) openCanvasContextMenu(event, object); else closeCanvasContextMenu(); });
+  document.querySelectorAll("#canvas-context-menu [data-action]").forEach(button => button.addEventListener("click", () => { const id = contextObjectId; const action = button.dataset.action; closeCanvasContextMenu(); if (!id) return; duplicateObject(id, action === "mirror-x" ? "x" : action === "mirror-z" ? "z" : null); }));
+  window.addEventListener("pointerdown", event => { if (!canvasContextMenu?.hidden && !canvasContextMenu.contains?.(event.target)) closeCanvasContextMenu(); });
 
   setupStaticInputs(); if (!loadPersisted()) generate(); else { syncStaticInputs(); render(); }
   const adapter = getAdapter(); const adapterStatus = document.querySelector("#adapter-status");
@@ -368,5 +395,5 @@
     adapterStatus.textContent = "Designer API: проверка соединения…";
     adapter.sessionStatus?.().then(() => { adapterStatus.textContent = "Designer API: Designer доступен"; }).catch(() => { adapterStatus.textContent = "Designer API: Designer не отвечает · JSON доступен"; });
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, objectPayload, validateReadback, canonical, changedValue, normalizeObject, roomBounds, stageBounds, toScreen, toWorld, snapCoordinate, typeConfig, finite, newObject, fieldSections, effectiveLookAt };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, objectPayload, validateReadback, canonical, changedValue, normalizeObject, roomBounds, stageBounds, toScreen, toWorld, snapCoordinate, typeConfig, finite, newObject, fieldSections, effectiveLookAt, duplicateObject, normalizeYaw, rotateHandleGeometry };
 })();

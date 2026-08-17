@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0 - 2026-08-17
+
+- Added an external corner rotation handle for LED screens and projection surfaces.
+- Added right-click duplication plus mirrored copies across the stage X and Z centre planes.
+- Kept duplicate identities independent by assigning new plugin IDs and clearing Designer mappings.
+- Mirrored projector Look At targets together with projector positions and detached mirrored copies from surface bindings.
+- Fixed rotation-handle angle calculation so the first pointer movement cannot make the object jump to an unrelated yaw.
+- Added v9 persistence, schema, browser interaction checks, and mirror/rotation regression coverage.
+
 ## 0.9.0 - 2026-08-17
 
 - Rebuilt object inspectors as compact titled rows to stop the sidebar from expanding the canvas.

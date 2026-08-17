@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=8" />
+    <link rel="stylesheet" href="./styles.css?v=9" />
   </head>
   <body>
     <main class="app-shell">
@@ -135,7 +135,12 @@
         </div>
       </section>
     </div>
-    <script src="./designer-adapter.js?v=8"></script>
-    <script src="./app.js?v=8"></script>
+    <menu class="canvas-context-menu" id="canvas-context-menu" hidden>
+      <button type="button" data-action="duplicate">Дублировать</button>
+      <button type="button" data-action="mirror-x">Зеркальная копия по X</button>
+      <button type="button" data-action="mirror-z">Зеркальная копия по Z</button>
+    </menu>
+    <script src="./designer-adapter.js?v=9"></script>
+    <script src="./app.js?v=9"></script>
   </body>
 </html>

@@ -35,4 +35,6 @@ The current object set is LED screens, surfaces, cameras, projectors, and lights
 - Object deletion requires an inline confirmation before changing the local plan.
 - Opening object controls must not resize or move the top-view canvas.
 - A projector target is visible on the plan and may follow a selected projection surface centre.
+- Selected screens and surfaces rotate from an external corner handle without changing position.
+- Right-click duplication supports independent plain, X-mirrored, and Z-mirrored copies.
 - Setup and tests can be followed from `TESTING.md`.

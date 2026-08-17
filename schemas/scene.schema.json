@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://local.disguise-scene-planner/schemas/scene.schema.json",
-  "title": "Disguise Scene Planner v8 plan",
+  "title": "Disguise Scene Planner v9 plan",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "units", "coordinateSystem", "room", "stage", "objects"],
   "properties": {
-    "version": { "const": 8 },
+    "version": { "const": 9 },
     "units": { "const": "metres" },
     "coordinateSystem": { "const": "Designer world XYZ; top view X/Z; no room-relative transform" },
     "room": {

@@ -106,3 +106,12 @@ Object properties are rendered as titled horizontal rows rather than one label/v
 The visible projector marker is the editable Look At source of truth. Manual markers store world X/Y/Z and may be dragged in X/Z. A projector may instead store `targetSurfacePluginId`; export then derives Look At from the current centre of that surface. Lights and cameras expose only position plus horizontal `Ry` until a proven vertical aiming contract is introduced.
 
 LED density is stored as `pixelsPerInch`. Projection surfaces have resolution metadata but no density field. v8 converts legacy LED `pixelPitchMm` using `25.4 / pixelPitchMm` and preserves the v7 stage base elevation unchanged.
+
+## ADR-014: Direct rotation and mirrored duplication
+
+- Date: 2026-08-17
+- Status: accepted
+
+Selected screens and projection surfaces expose a rotation handle outside their top-right plan corner. The handle edits only world yaw (`transform.rotation.y`); position, height, geometry, and media metadata remain unchanged. The pointer angle is measured from the object centre and corrected by the handle's local corner offset so grabbing the handle does not introduce an initial rotation jump.
+
+The canvas context menu creates either a plain copy or a mirrored copy around the stage centre planes. X mirroring maps `x` to `2 * stage.centerX - x` and negates yaw. Z mirroring maps `z` to `2 * stage.centerZ - z` and maps yaw to `180 - yaw`, normalized to `[-180, 180)`. Projector Look At points follow the same mirror and mirrored projectors drop any surface binding because a mirrored target is an independent world-space point. Every duplicate receives a new local ID, plugin ID, readable name, and no Designer mapping.
