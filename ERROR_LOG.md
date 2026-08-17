@@ -80,3 +80,21 @@
 - Cause: resources were created in planner-type folders such as `objects/screen` and mutated without `markDirty`; the adapter also attempted to write read-only `Resource.description`.
 - Fix: use `objects/ledscreen`, `objects/screen2`, and `objects/virtualcamera`; call `markDirty` before transform updates and `save` afterwards; report the exact failing field/class/path.
 - Regression test: generated Python must use official class folders, `markDirty(obj)`, named-field assignment, and `obj.save()`.
+
+## ERR-010: Plan coordinates did not describe the physical object anchors
+
+- Date: 2026-08-17
+- Symptom: projectors appeared away from their 2D positions, and screens could extend below the entered height.
+- Evidence: all types were written through generic `offset/rotation`; screen `Y` was sent as a centre pivot and screen dimensions were assigned to the wrong physical axes.
+- Cause: the planner had one generic transform contract although Designer exposes different authoritative properties for screens, projectors, and cameras.
+- Fix: v5 stores absolute world transforms with type-specific anchor semantics. Screens convert bottom-edge `Y` to centre pivot and use `scale=(width,height,0.1)`; projectors use config transforms; cameras use relative/global transforms. Every write is read back and checked.
+- Regression test: verify a `4x2 m` screen at bottom `Y=0` reads back at bottom `0`, projector config/body positions match, camera relative/global transform matches, and a mismatch over `0.001` stops synchronization.
+
+## ERR-011: Browser mixed v5 HTML with cached v4 runtime files
+
+- Date: 2026-08-17
+- Symptom: new v5 fields were visible but old selection behavior remained, and the debug scene model was absent.
+- Evidence: the loaded stylesheet contained only the old modal `[hidden]` rule although the tracked stylesheet had the new global rule.
+- Cause: static `styles.css`, `app.js`, and `designer-adapter.js` URLs did not change between deployments.
+- Fix: version all runtime asset URLs with `?v=5`; retain the global `[hidden]` rule so type-specific fields cannot be made visible by `.field { display:grid }`.
+- Regression test: reload after deployment, verify `window.scenePlannerDebug` exists, screen `Rx/Rz` are hidden, and projector geometry fields are hidden.

@@ -1,61 +1,67 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://local.disguise-scene-planner/schemas/scene.schema.json",
-  "title": "Disguise Scene Planner plan",
+  "title": "Disguise Scene Planner v5 plan",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "units", "coordinateSystem", "room", "objects"],
   "properties": {
-    "version": { "const": 4 },
+    "version": { "const": 5 },
     "units": { "const": "metres" },
-    "coordinateSystem": { "const": "Designer XYZ; origin at room centre; top view X/Z" },
+    "coordinateSystem": { "const": "Designer world XYZ; top view X/Z; no room-relative transform" },
     "room": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["width", "depth", "height"],
+      "required": ["centerX", "centerZ", "floorY", "width", "depth", "height"],
       "properties": {
+        "centerX": { "type": "number" },
+        "centerZ": { "type": "number" },
+        "floorY": { "type": "number" },
         "width": { "type": "number", "exclusiveMinimum": 0 },
         "depth": { "type": "number", "exclusiveMinimum": 0 },
         "height": { "type": "number", "exclusiveMinimum": 0 }
       }
     },
-    "objects": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/sceneObject" }
-    }
+    "objects": { "type": "array", "items": { "$ref": "#/$defs/sceneObject" } }
   },
   "$defs": {
     "vector": {
       "type": "object",
       "additionalProperties": false,
       "required": ["x", "y", "z"],
-      "properties": {
-        "x": { "type": "number" },
-        "y": { "type": "number" },
-        "z": { "type": "number" }
-      }
+      "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" } }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["position", "rotation"],
+      "properties": { "position": { "$ref": "#/$defs/vector" }, "rotation": { "$ref": "#/$defs/vector" } }
+    },
+    "geometry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": { "width": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "exclusiveMinimum": 0 } }
     },
     "sceneObject": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["pluginId", "type", "name", "position", "rotation", "verticalRef"],
+      "required": ["pluginId", "type", "name", "transform"],
       "properties": {
         "pluginId": { "type": "string", "minLength": 1 },
         "type": { "enum": ["screen", "surface", "camera", "projector", "light"] },
         "name": { "type": "string", "minLength": 1 },
-        "position": { "$ref": "#/$defs/vector" },
-        "rotation": { "$ref": "#/$defs/vector" },
-        "verticalRef": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["from", "to"],
-          "properties": {
-            "from": { "enum": ["floor", "stage"] },
-            "to": { "enum": ["bottom", "center", "top"] }
-          }
-        },
+        "transform": { "$ref": "#/$defs/transform" },
+        "geometry": { "$ref": "#/$defs/geometry" },
         "designer": { "type": "object" }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "enum": ["screen", "surface"] } }, "required": ["type"] },
+          "then": { "required": ["geometry"] },
+          "else": { "not": { "required": ["geometry"] } }
+        }
+      ]
     }
   }
 }

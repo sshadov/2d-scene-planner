@@ -16,12 +16,14 @@ Verified/used conclusions for this project:
 - Python execution uses `POST /api/session/python/execute` with JSON `{ "script": "return 1" }`.
 - Python exposes the current stage as `state.stage`.
 - Relevant stage collections are `ledScreens`, `surfaces`, `cameras`, `projectors`, and `lights`.
-- Used object properties are `offset`, `rotation`, `scale`, `uid`, `path`, and `description`.
+- Used transform properties are `offset/rotation/scale`, projector `configPosition/configRotation`, and camera `posRelativeOrGlobal/rotRelativeOrGlobal`.
 - `stage.floor_pos` is a `Vec`; this project uses `stage.floor_pos.y` as the floor vertical reference.
 - Python execution errors are offset by 10 wrapper lines; Designer line 24 refers to approximately line 14 of the submitted script.
 - Resources are marked with `markDirty(resource)` before mutation and saved with `resource.save()` afterwards.
 - Resource folders follow lower-case Python class names: `ledscreen`, `screen2`, `virtualcamera`, `projector`, and `light`.
 - `Object.offset`, `Object.rotation`, and `Object.scale` have setters in the r34 type stubs. `Resource.description` does not expose a setter, so the adapter does not assign it.
+- Screen/surface planner coordinates use a bottom-centre anchor; their Designer centre pivot and scale are converted at the adapter boundary and converted back during inspection.
+- Create/update returns a type-specific readback. Local sync state is advanced only when it matches the requested transform and geometry within `0.001`.
 
 Open questions that must be verified against the installed Designer version:
 

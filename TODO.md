@@ -3,7 +3,7 @@
 ## Next product functions
 
 - Preset manager: save, name, import, duplicate, and delete plans.
-- Editable object names and physical dimensions.
+- Editable object names and non-planar physical dimensions.
 - Podium object and resolved vertical anchors using podium geometry.
 - Projector lens presets, throw ratio, lens offset, and projector-to-lens binding.
 - Camera sensor/lens presets, field of view, target, and frustum visualization.
@@ -22,8 +22,7 @@
 ## Engineering
 
 - Extract pure scene/diff functions into testable modules.
-- Add automated unit tests for migration, coordinates, and diff categories.
+- Add browser-level drag and modal tests alongside the coordinate/diff unit suite.
 - Add integration test harness around mock Python API fixtures.
 - Add preset schema migrations and explicit import validation.
 - Add accessible inline errors instead of browser `confirm` when the cleanup flow is redesigned.
-

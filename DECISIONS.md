@@ -59,3 +59,12 @@ The tracked source under `scene-planner-prototype` is authoritative. Designer lo
 - Status: accepted
 
 Designer resources are created under folders derived from their Python class names (`ledscreen`, `screen2`, `virtualcamera`, `projector`, `light`). Before changing transform properties the adapter calls `markDirty(obj)`, and after mutation it calls `obj.save()`. Property assignment is wrapped so failures identify the exact field, runtime class, and resource path. Read-only `Resource.description` is not assigned.
+
+## ADR-009: v5 world transforms and type-specific Designer properties
+
+- Date: 2026-08-17
+- Status: accepted
+
+The room is a movable world-space frame (`centerX`, `centerZ`, `floorY`) and never acts as a hidden coordinate origin. Objects store `transform.position/rotation`; screens and surfaces also store editable `geometry.width/height` and use a fixed `0.1 m` thickness.
+
+Screen/surface `Y` is the bottom edge, converted only in the adapter to a centre pivot. Projectors use `configPosition/configRotation`, cameras use `posRelativeOrGlobal/rotRelativeOrGlobal`, and lights use `offset/rotation`. A write is accepted as synchronized only after type-specific readback matches within `0.001` metre/degree.

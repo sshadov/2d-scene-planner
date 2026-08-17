@@ -7,13 +7,14 @@
 ## Scene model
 
 ```text
-room: { width, depth, height }
+room: { centerX, centerZ, floorY, width, depth, height }
 object:
   pluginId
   type, name
-  position: { x, y, z }
-  rotation: { x, y, z }
-  verticalRef: { from, to }
+  transform:
+    position: { x, y, z }
+    rotation: { x, y, z }
+  geometry: { width, height }  # screen/surface only
 sync.objects[pluginId]:
   designerId, path
   lastExported, payload
@@ -28,11 +29,13 @@ Designer coordinates are authoritative:
 | `position.y` | `Vec.y` vertical | not projected |
 | `position.z` | `Vec.z` depth | vertical canvas axis |
 
-The room is centred on the Designer world origin. Its plan bounds are `X = -width/2 ... +width/2` and `Z = -depth/2 ... +depth/2`; `X=0, Z=0` is the visual centre of the 2D plan. The grid interval is always 1 m.
+The room is a viewport frame and never changes object coordinates. Its bounds are `centerX +/- width/2` and `centerZ +/- depth/2`. The grid interval is always 1 m and its labels show absolute Designer values.
 
-Dragging updates `position.x` and `position.z` only. `stage.floor_pos.y` is recorded during inspection. Absolute `position.y` remains the saved truth even when `verticalRef` describes floor/podium and bottom/center/top intent.
+Dragging updates `transform.position.x/z` only. The numeric `Y` is always absolute. `floorY` initializes generated heights but is not an object-relative transform.
 
-Screen and surface scale is `Vec(width, thickness, height)`. Plan yaw is Designer `rotation.y`; the inspector also exposes `rotation.x` and `rotation.z`.
+For screens and surfaces, position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and `rotation = Vec(0, yaw, 0)`. Projectors use `configPosition/configRotation` and mirror them to the body transform. Cameras use `posRelativeOrGlobal/rotRelativeOrGlobal`. Lights use `offset/rotation`.
+
+Every successful create/update returns a type-specific readback. The planner compares position, rotation, and planar geometry to the requested values with a `0.001` metre/degree tolerance before recording the sync version.
 
 ## Synchronization
 
@@ -50,4 +53,4 @@ The adapter repeats the default/managed check before deletion. Repeat sync resol
 
 ## Persistence
 
-Browser state uses localStorage key `disguise-scene-generator-state-v4`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2 and v3 localStorage keys are read only as migration sources.
+Browser state uses localStorage key `disguise-scene-generator-state-v5`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v4 keys are read only as migration sources.

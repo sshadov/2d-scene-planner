@@ -13,6 +13,7 @@
 - **X/Y/Z**: Designer position axes: width, vertical height, and depth.
 - **Rx/Ry/Rz**: rotations around Designer X, Y, and Z axes.
 - **Top view**: 2D projection of X/Z; Y is intentionally invisible.
-- **Vertical reference**: intent metadata describing floor/podium and bottom/center/top while absolute Designer Y remains authoritative.
+- **Bottom-centre anchor**: planner position for a screen/surface; Designer receives a centre pivot calculated as `Y + height/2`.
+- **Optical centre**: planner position for a projector or camera, written to its type-specific Designer transform.
+- **Room frame**: visible plan boundary positioned by `centerX/centerZ`; it never offsets object coordinates.
 - **Diff**: classified operations computed before synchronization.
-

@@ -19,11 +19,12 @@ The current object set is LED screens, surfaces, cameras, projectors, and lights
 ## Definition of done for the current milestone
 
 - A 1 m top-view grid uses Designer `X/Z` axes.
-- Inspector and JSON preserve `X/Y/Z` and `Rx/Ry/Rz`.
-- Existing v2 local plans migrate without losing plan depth or height.
+- Inspector and JSON preserve absolute Designer `X/Y/Z` and type-specific `Rx/Ry/Rz`.
+- Screens/surfaces use bottom-centre anchors with editable width/height and fixed thickness.
+- Existing v2-v4 local plans migrate without losing plan depth or height.
 - Export inspects the current Designer stage and shows a diff before changes.
 - Managed/default/manual objects are classified; manual objects remain untouched.
 - Standard deletion requires selection plus explicit confirmation.
 - Repeated export does not create duplicates and changes only modified fields.
+- Create/update reads coordinates back from Designer and rejects a mismatch over `0.001`.
 - Setup and tests can be followed from `TESTING.md`.
-

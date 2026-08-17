@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0 - 2026-08-17
+
+- Added the v5 `transform`/`geometry` scene model and absolute room frame coordinates.
+- Made screen and surface `Y` mean bottom edge; fixed scale to width/height/thickness.
+- Added projector config transforms, camera relative/global transforms, and type-specific scene inspection.
+- Added post-write coordinate readback with a `0.001` tolerance.
+- Removed ambiguous vertical reference controls and added editable per-object screen dimensions.
+- Added v2-v4 migration into the v5 local storage and JSON schema.
+- Versioned runtime asset URLs so Designer cannot mix cached v4 JavaScript/CSS with v5 HTML.
+
 ## 0.5.0 - 2026-08-17
 
 - Aligned Designer resource paths with Python class names.
