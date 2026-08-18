@@ -14,6 +14,7 @@
 - Added an authority guard for local Planner writes and disabled LIVE in the standalone `127.0.0.1:4173` preview so it cannot compete with the embedded Designer plugin.
 - Reverted the experimental LIVE value queue and authority guard after identifying the duplicate-browser client as the source-of-truth problem. The protocol-required initial `valuesChanged` gate remains enabled so Starter does not receive `set` before subscription values are initialized.
 - Added an in-app LIVE diagnostics panel showing the protocol event ring buffer and close/error details.
+- Adopted Designer's `valuesChanged` readback as the LIVE baseline to prevent repeated `set` loops caused by numeric quantization; diagnostics now include returned values.
 
 ## 0.16.0 - 2026-08-18
 

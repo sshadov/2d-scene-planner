@@ -412,3 +412,11 @@
 - Cause: logs existed only in the browser console and were not visible in the Designer plugin UI.
 - Fix: add a LIVE diagnostics panel backed by the adapter ring buffer, including connect, subscribe, valuesChanged, set, error, and close events.
 - Regression test: HTML includes `live-log-button` and `live-log-output`; adapter exposes `getLiveLogs()`.
+
+## ERR-045: LIVE re-sent one quantized value indefinitely
+
+- Date: 2026-08-19
+- Symptom: after a successful handshake, the same `set` (for example `id: 289`) was emitted after every `valuesChanged` message.
+- Cause: Designer rounded the numeric readback, but the adapter kept the pre-rounding local value as the desired baseline and compared it byte-for-byte.
+- Fix: update the binding baseline from each incoming `valuesChanged` value before flushing pending sets; include returned values in the diagnostics panel.
+- Regression test: adapter source checks the `binding.value = change.value` baseline assignment.

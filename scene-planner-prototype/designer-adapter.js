@@ -413,7 +413,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   function liveHandleMessage(raw) {
     let message;
     try { message = JSON.parse(typeof raw === "string" ? raw : raw?.data || "{}"); } catch { return; }
-    liveLog("message", { keys: Object.keys(message), subscriptions: message.subscriptions?.length || 0, valuesChanged: message.valuesChanged?.length || 0, error: message.error || null });
+    liveLog("message", { keys: Object.keys(message), subscriptions: message.subscriptions?.length || 0, valuesChanged: message.valuesChanged?.length || 0, values: Array.isArray(message.valuesChanged) ? message.valuesChanged.slice(0, 50).map(change => ({ id: change.id, value: change.value })) : [], error: message.error || null });
     if (Array.isArray(message.subscriptions)) {
       message.subscriptions.forEach(subscription => {
         const binding = [...liveBindings.values()].find(candidate => candidate.id === subscription.id || (candidate.objectPath === subscription.objectPath && candidate.propertyPath === subscription.propertyPath));
@@ -426,6 +426,9 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       const binding = [...liveBindings.values()].find(candidate => candidate.id === change.id);
       if (!binding) return;
       binding.lastSent = change.value;
+      // Designer may quantize numeric fields on readback. Treat that value as
+      // the current LIVE baseline so the same rounded value is not re-sent.
+      binding.value = change.value;
       binding.initialized = true;
       liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath });
     });
