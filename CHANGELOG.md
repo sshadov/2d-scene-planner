@@ -127,6 +127,12 @@
 - Made Designer inspection tolerate dangling collection references left after object deletion.
 - Reported skipped references in the export dialog and recreated missing managed objects instead of updating stale mappings.
 
+## 0.4.2 - 2026-08-18
+
+- Added a pointer-movement threshold so selecting an off-grid object does not snap or move it.
+- Deferred Ctrl duplication until an actual drag begins; Ctrl-click alone only selects.
+- Made planar dimension entry advance `Width → Height → Position Y` after Enter, including delayed focus after the inspector refresh.
+
 ## 0.4.0 - 2026-08-17
 
 - Centred room coordinates on the Designer origin and migrated v2/v3 browser state to v4.

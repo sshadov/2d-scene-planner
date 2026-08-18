@@ -300,3 +300,27 @@
 - Cause: an old VirtualCamera-compatible branch remained in the generic reader.
 - Fix: concrete `Camera` inspection now reads only `offset/rotation`, matching create/update.
 - Regression test: adapter source contains no `posRelativeOrGlobal` or `rotRelativeOrGlobal` branch.
+
+## ERR-031: Selection click moved off-grid objects
+
+- Date: 2026-08-18
+- Symptom: clicking an object that was between grid lines could move it onto the grid before the user had dragged it.
+- Cause: the canvas entered the drag path on `pointerdown`; a tiny pointer move during a click ran snap-to-grid.
+- Fix: object and group drags remain pending until the pointer moves at least 4 px. A pending pointerup is selection only.
+- Regression test: source and unit checks cover the pending state and movement threshold.
+
+## ERR-032: Ctrl duplication happened before movement
+
+- Date: 2026-08-18
+- Symptom: Ctrl-click could duplicate an object even when the user intended only to select it.
+- Cause: duplication ran during `pointerdown`, before a drag was established.
+- Fix: duplicate only when a pending object drag crosses the movement threshold, then move the new copy.
+- Regression test: duplicate supports deferred history/render and the drag path contains the Ctrl branch.
+
+## ERR-033: Dimension Enter focus was timing-sensitive
+
+- Date: 2026-08-18
+- Symptom: pressing Enter after a planar object's width did not reliably move focus to height and then position Y.
+- Cause: focus was requested while the key event and inspector refresh were still in progress.
+- Fix: use one explicit planar focus sequence and defer the next focus request to the next task.
+- Regression test: `nextDimensionField` covers all three transitions and the key handler uses deferred focus.

@@ -198,3 +198,12 @@ The adapter never writes `stage.floor_size` because Free Designer Starter dispat
 The planner will not label debounced Python HTTP calls as LIVE. Official Live Update is the WebSocket endpoint `/api/session/liveupdate`, whose protocol uses `subscribe`, `valuesChanged`, and `set`. Until subscriptions for the planner's resource paths and writable properties are implemented and verified, the LIVE control is disabled while explicit HTTP synchronization remains available.
 
 Confirmed default deletion uses the ResourceManager lifecycle: `resource.saveOnDelete()` followed by `resourceManager.remove(resource.path)`. Removing an item from a Stage collection alone is not considered deletion.
+
+## ADR-024: Pointer gesture threshold and dimension focus
+
+- Date: 2026-08-18
+- Status: accepted
+
+Selection and movement are separate gestures. A canvas pointerdown selects an object and creates a pending drag; coordinates are changed only after 4 px of movement. This protects off-grid objects from accidental snap-to-grid changes. Ctrl duplication is also deferred until that threshold, so Ctrl-click remains a selection gesture.
+
+For screens and surfaces, Enter follows the physical setup order `geometry.width`, `geometry.height`, then `transform.position.y`. The next field is focused on the next task after the inspector has processed the current value.

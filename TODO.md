@@ -41,6 +41,7 @@
 
 - Extract pure scene/diff functions into testable modules.
 - Add browser-level drag and modal tests alongside the coordinate/diff unit suite.
+- Add browser-level pointer tests for click-without-drag and Ctrl-drag duplication.
 - Add integration test harness around mock Python API fixtures.
 - Add preset schema migrations and explicit import validation.
 - Add accessible inline errors instead of browser `confirm` when the cleanup flow is redesigned.
