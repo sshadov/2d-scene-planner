@@ -1,12 +1,12 @@
 :root {
   color-scheme: dark;
-  --ink: #eef2f6;
-  --muted: #93a0ad;
-  --line: #29333e;
-  --panel: #141b22;
-  --canvas: #0e141a;
-  --cyan: #3dd9d4;
-  --blue: #4e9cff;
+  --ink: #e8edf0;
+  --muted: #8c98a3;
+  --line: #2b343d;
+  --panel: #171d23;
+  --canvas: #0b1014;
+  --cyan: #00c2b3;
+  --blue: #6b9dff;
   --coral: #ff7d62;
   --yellow: #f8c84d;
   --purple: #c084fc;
@@ -21,7 +21,8 @@ button { cursor: pointer; }
 h1, h2, h3, p { margin: 0; }
 
 .app-shell { height: 100vh; min-height: 620px; display: grid; grid-template-rows: 62px 46px minmax(0, 1fr); overflow: hidden; }
-.app-header { min-width: 0; padding: 0 14px 0 18px; border-bottom: 1px solid var(--line); background: #111820; display: flex; align-items: center; gap: 18px; }
+.app-header { position: relative; min-width: 0; padding: 0 14px 0 18px; border-bottom: 1px solid var(--line); background: #12181e; display: flex; align-items: center; gap: 18px; }
+.app-header::after { content: ""; position: absolute; left: 0; bottom: -1px; width: 18%; height: 2px; background: var(--cyan); opacity: .8; }
 .brand-block { width: 132px; flex: 0 0 auto; }
 .eyebrow { color: var(--cyan); font-size: 9px; font-weight: 750; letter-spacing: 1.1px; }
 h1 { margin-top: 2px; font-size: 18px; line-height: 1; }
@@ -113,7 +114,7 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .stage-toolbar { border-bottom: 1px solid var(--line); }
 .stage-footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 9px; }
 .view-label { display: flex; gap: 7px; align-items: center; font-size: 11px; font-weight: 650; }
-.view-label i { width: 8px; height: 8px; border: 2px solid var(--cyan); border-radius: 50%; }
+.view-label i { width: 8px; height: 8px; border: 2px solid var(--cyan); border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,194,179,.12); }
 .snap-controls { min-width: 0; margin-left: auto; display: flex; align-items: center; gap: 5px; }
 .snap-controls select { width: 118px; height: 27px; border: 1px solid #344250; border-radius: 3px; background: #111820; color: #c6d0da; padding: 0 6px; font-size: 9px; }
 .tool-button { height: 27px; padding: 0 7px; border: 1px solid var(--line); border-radius: 3px; background: #17202a; color: #bac5d0; font-size: 9px; }

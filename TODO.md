@@ -6,6 +6,7 @@
 - Startup import now treats the open Designer project as authoritative and filters internal/non-physical helpers.
 - Projector readback preserves Designer optical rotation; scene-relative height uses `floorY`.
 - Stage movement is numeric-only and projector target surfaces are highlighted on the plan.
+- Look At selection previews surface highlights before commit; missing Designer objects are not resurrected; resource names are synchronized without `dsg-` paths.
 
 ## Confirmed user requests not fully implemented
 

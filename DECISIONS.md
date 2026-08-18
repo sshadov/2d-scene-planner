@@ -178,3 +178,14 @@ The Stage is optional. Its position is changed only through numeric `X/Z` fields
 The current Designer Python API exposes `Mesh.verts` and `Mesh.triangles` but does not expose a supported `Triangle` constructor or index setters. The managed cube therefore copies the valid topology from the built-in `LookAtManipulable` helper and replaces vertex positions before `updateMesh()`.
 
 Inspection ignores internal paths and non-physical helper resources. It keeps supported typed equipment and generic `Object`/`Prop` resources only when `needsMesh` is true. A projector's selected Look At surface is highlighted on the 2D plan so the relationship is visible without exposing Designer implementation rotations.
+
+## ADR-022: Designer names and non-resurrecting deletes
+
+- Date: 2026-08-18
+- Status: accepted
+
+Designer resource filenames are derived from the editable planner name (`objects/<type>/<name>.apx`) rather than an implementation prefix. Existing managed `dsg-*` resources are renamed on the next update through the supported `Resource.path` setter. Stable UID/path mappings remain internal and are never shown as the object name.
+
+If a mapped Designer object is missing during inspection, the planner reports `Missing in Designer` and does not classify it as `create`. This prevents LIVE from recreating an object the operator deliberately removed in Designer; recreation must be an explicit future command.
+
+The adapter never writes `stage.floor_size` because Free Designer Starter dispatches a broken `Screen2Editor` callback for that field. Room dimensions remain planner metadata while Stage dimensions are represented by the managed internal cube. `stage.floor_pos` is updated only when the environment actually changes.

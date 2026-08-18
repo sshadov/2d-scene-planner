@@ -33,7 +33,7 @@ Designer coordinates are authoritative:
 | `position.y` | `Vec.y` vertical | not projected |
 | `position.z` | `Vec.z` depth | vertical canvas axis |
 
-The room is a viewport frame centred on world `X=0, Z=0` and never changes object coordinates. Its bounds are `-width/2 ... +width/2` and `-depth/2 ... +depth/2`. The stage is a separate positioned rectangle. Stage position is edited numerically; it is deliberately not a draggable canvas object. The grid interval is always 1 m and shows absolute Designer values.
+The room is a viewport frame centred on world `X=0, Z=0` and never changes object coordinates. Its bounds are `-width/2 ... +width/2` and `-depth/2 ... +depth/2`. The stage is a separate positioned rectangle. Stage dimensions precede numeric position fields in the environment bar; Stage position is edited numerically and is deliberately not a draggable canvas object. The grid interval is always 1 m and shows absolute Designer values.
 
 Dragging updates `transform.position.x/z` only. The saved numeric `Y` is always absolute. `floorY` is the hidden Designer floor/base reference; the top of the stage is `floorY + height`. With `measureFromStage` enabled, object Y fields display and accept offsets from that top without changing the saved world coordinate.
 
@@ -67,8 +67,8 @@ The adapter repeats the default/managed check before deletion. Repeat sync resol
 
 Browser state uses localStorage key `disguise-scene-generator-state-v10`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v9 keys are read only as migration sources. `sync.objects` stores every imported UID/path mapping and `sync.sceneCube` stores the managed Scene cube mapping.
 
-## Current v10.4 Contract
+## Current v10.5 Contract
 
 The UI is English and uses Designer-facing type names. `stage.enabled` is derived from the inspected managed Stage cube at startup, so an empty local store does not create preset equipment or overwrite the open Designer project. When enabled, `syncEnvironment` writes `stage.floor_size` and `stage.floor_pos`, and maintains the managed real cube `objects/object/dsg-scene-cube.apx`. Its geometry reuses the valid 8-vertex/12-triangle topology of Designer's built-in `LookAtManipulable` helper; the plugin changes only vertex positions because the current API does not expose a supported `Triangle` constructor. Stage-relative object height is `position.y - stage.floorY`, never an offset from stage height.
 
-Startup inspection reads typed collections and `stage.children`, deduplicates by Designer UID, imports only physical user objects (`Object`/`Prop` with `needsMesh`) plus supported equipment, and ignores `internal/*` and non-physical Designer helpers. Projector config rotation is read as Designer data and is never normalized or exposed as a user input. Selecting a projector target surface highlights that surface's name and outline on the plan. Strict readback comparison uses no tolerance. The Synchronize button is disabled while LIVE is enabled.
+Startup inspection reads typed collections and `stage.children`, deduplicates by Designer UID, imports only physical user objects (`Object`/`Prop` with `needsMesh`) plus supported equipment, and ignores `internal/*` and non-physical Designer helpers. Projector config rotation is read as Designer data and is never normalized or exposed as a user input. Selecting or previewing a projector target surface highlights that surface's name and outline on the plan. A mapped object missing from Designer is reported rather than recreated. Strict readback comparison uses no tolerance. The Synchronize button is disabled while LIVE is enabled.

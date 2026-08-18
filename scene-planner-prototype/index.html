@@ -7,7 +7,7 @@
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=10.4" />
+    <link rel="stylesheet" href="./styles.css?v=10.5" />
   </head>
   <body>
     <main class="app-shell">
@@ -38,11 +38,11 @@
         </div>
         <div class="environment-group">
           <label class="compact-checkbox scene-toggle"><input id="stage-enabled" type="checkbox" checked /><b>Stage</b></label>
-          <label>X <span class="input-shell"><input id="stage-center-x" type="text" inputmode="decimal" value="0" /><i>m</i></span></label>
-          <label>Z <span class="input-shell"><input id="stage-center-z" type="text" inputmode="decimal" value="0" /><i>m</i></span></label>
           <label>Width <span class="input-shell"><input id="stage-width" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
           <label>Depth <span class="input-shell"><input id="stage-depth" type="text" inputmode="decimal" value="8" /><i>m</i></span></label>
           <label>Height <span class="input-shell"><input id="stage-height" type="text" inputmode="decimal" value="0.8" /><i>m</i></span></label>
+          <label>X <span class="input-shell"><input id="stage-center-x" type="text" inputmode="decimal" value="0" /><i>m</i></span></label>
+          <label>Z <span class="input-shell"><input id="stage-center-z" type="text" inputmode="decimal" value="0" /><i>m</i></span></label>
           <label class="compact-checkbox"><input id="measure-from-stage" type="checkbox" /><span>Y relative to Stage</span></label>
         </div>
         <div class="environment-actions">
@@ -110,7 +110,7 @@
           <label><input type="radio" name="sync-mode" value="clean" /><span><b>Create a clean set</b><small>Create a new managed set; defaults are removed only below.</small></span></label>
         </fieldset>
         <div class="diff-grid">
-          <span>Create <b id="diff-create">0</b></span><span>Update <b id="diff-update">0</b></span><span>Unchanged <b id="diff-unchanged">0</b></span><span>Preserve <b id="diff-preserve">0</b></span><span>Orphans <b id="diff-orphans">0</b></span><span>Defaults to clean <b id="diff-delete">0</b></span>
+          <span>Create <b id="diff-create">0</b></span><span>Update <b id="diff-update">0</b></span><span>Unchanged <b id="diff-unchanged">0</b></span><span>Missing in Designer <b id="diff-missing">0</b></span><span>Preserve <b id="diff-preserve">0</b></span><span>Orphans <b id="diff-orphans">0</b></span><span>Defaults to clean <b id="diff-delete">0</b></span>
         </div>
         <p class="modal-warning" id="sync-warning" hidden></p>
         <details class="cleanup-panel"><summary>Select defaults to delete</summary><div id="standard-checklist" class="standard-checklist"></div><button class="button danger" id="delete-standards" type="button">Delete selected defaults</button></details>
@@ -142,7 +142,7 @@
          <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Delete object?</span><button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button></div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=10.4"></script>
-    <script src="./app.js?v=10.4"></script>
+    <script src="./designer-adapter.js?v=10.5"></script>
+    <script src="./app.js?v=10.5"></script>
   </body>
 </html>

@@ -130,7 +130,7 @@ The `Очистить сцену` button requires confirmation, removes planner 
 10. Force a Designer Python error: the modal must show the failing object name and the HTTP response body instead of a bare `500`.
 11. After every successful write, verify the status says that coordinates were checked.
 
-## Current v10.4 checks
+## Current v10.5 checks
 
 1. Reload the planner with an open Designer project. The room floor size/position and supported physical objects in typed collections or `stage.children` must appear in the 2D model. `internal/*`, `LookAtManipulable`, `Puck`, and other non-physical helpers must not appear.
 2. Toggle `Stage`. When checked, a managed `dsg-scene-cube.apx` appears in Designer with stage dimensions and is visible. When unchecked, no automatic deletion occurs. Change Stage `X/Z` fields and verify the cube moves; dragging the Stage outline does nothing.
@@ -141,3 +141,7 @@ The `Очистить сцену` button requires confirmation, removes planner 
 7. Change an object name in the active property strip, reload, and verify the local name remains associated with the stored Designer UID/path.
 8. Verify strict readback: a `0.0001` coordinate mismatch is reported rather than accepted by tolerance.
 9. Select a projector, choose a named surface in `Look At surface`, and verify that the surface name and outline are highlighted on the plan.
+10. Open the Look At selector and move through surfaces before committing; the corresponding surface name and outline must preview immediately, then revert on blur if no choice was committed.
+11. Delete a mapped object in Designer while it remains in the planner. The next inspection must show `Missing in Designer: 1`, send no create call, and leave the planner object untouched.
+12. Rename a planner object to `surface1`, synchronize, and verify the Designer resource description/path is `surface1`, not `dsg-*`.
+13. Synchronize with a changed Stage and verify no `stage.floor_size =` script is sent; `stage.floor_pos` succeeds without the Starter `Field` exception.

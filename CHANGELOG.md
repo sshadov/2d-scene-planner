@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.0 - 2026-08-18
+
+- Look At surface selection now previews the target surface highlight before the choice is committed, including context-menu hover.
+- Objects deleted in Designer are reported as missing and are never recreated automatically by LIVE.
+- Designer resource names now follow planner names without the `dsg-` prefix; legacy managed paths are renamed on update.
+- Removed the unsafe `stage.floor_size` write that caused Free Designer Starter `Field` errors; reordered Stage controls to dimensions before position.
+- Refined the dark Disguise-style visual tokens and active-plan accent.
+
 ## 0.14.0 - 2026-08-18
 
 - Fixed the managed Stage cube by reusing Designer's valid cube topology instead of undocumented Triangle field assignments.

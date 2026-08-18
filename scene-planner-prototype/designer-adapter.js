@@ -11,8 +11,10 @@
   function quote(value) { return JSON.stringify(value); }
   function payloadText(payload) { return quote(JSON.stringify(payload)); }
   function resourceSlug(payload) {
-    return String(payload.pluginId || `${String(payload.type || "object").toLowerCase()}-object`).replace(/[^a-zA-Z0-9_-]/g, "-");
+    const source = String(payload.name || payload.pluginId || `${String(payload.type || "object").toLowerCase()}-object`).trim();
+    return (source || String(payload.pluginId || "object")).replace(/[\\/:*?"<>|]/g, "-");
   }
+  function resourcePath(payload) { return `objects/${typeResourceFolders[payload.type]}/${resourceSlug(payload)}.apx`; }
   function parseReturnValue(value) {
     if (typeof value !== "string") return value;
     try { const parsed = JSON.parse(value); return typeof parsed === "string" ? JSON.parse(parsed) : parsed; } catch { return value; }
@@ -37,7 +39,10 @@
   function environmentScript(environment) {
     return `import json
 stage = state.stage
-stage.floor_size = Vec(${Number(environment.room.width)}, ${Number(environment.room.depth)})
+# Do not write stage.floor_size from the plugin. In Free Designer Starter this
+# fires Screen2Editor.handleStageDisplaysChanged, which receives a Field proxy
+# and raises "Access to object of type 'Field' is not allowed". Room dimensions
+# remain planner metadata; the managed Stage cube carries the physical size.
 stage.floor_pos = Vec(${Number(environment.stage.centerX || 0)}, ${Number(environment.stage.floorY || 0)}, ${Number(environment.stage.centerZ || 0)})
 scene_path = "objects/object/dsg-scene-cube.apx"
 scene_enabled = ${Boolean(environment.stage.enabled) ? "True" : "False"}
@@ -85,7 +90,8 @@ try:
     stage.save()
 except Exception:
     pass
-return json.dumps({"roomFloor": {"width": float(stage.floor_size.x), "depth": float(stage.floor_size.y)}, "floorY": float(stage.floor_pos.y), "sceneEnabled": scene_enabled, "sceneCube": {"designerId": str(scene_obj.uid), "path": scene_path} if scene_obj is not None else None})`;
+floor_size = getattr(stage, "floor_size", None)
+return json.dumps({"roomFloor": {"width": float(floor_size.x), "depth": float(floor_size.y)} if floor_size is not None else {"width": float(${Number(environment.room.width)}), "depth": float(${Number(environment.room.depth)})}, "floorY": float(stage.floor_pos.y), "sceneEnabled": scene_enabled, "sceneCube": {"designerId": str(scene_obj.uid), "path": scene_path} if scene_obj is not None else None})`;
   }
 
   function readbackHelpers() {
@@ -185,7 +191,7 @@ return json.dumps({"objects": objects, "floorY": floor_y, "floorPosition": vec_d
 payload = json.loads(${payloadText(payload)})
 stage = state.stage
 kind = payload["type"]
-object_path = "objects/" + ${quote(typeResourceFolders[payload.type])} + "/dsg-${resourceSlug(payload)}.apx"
+object_path = ${quote(resourcePath(payload))}
 obj = resourceManager.loadOrCreate(object_path, ${typeClasses[payload.type]})
 transform = payload["transform"]
 pos = transform["position"]
@@ -217,6 +223,7 @@ return json.dumps({"designerId": str(obj.uid), "path": object_path, "readback": 
   }
   function updateScript(designerId, changed, designerPath, kind) {
     return `import json
+import re
 target_id = ${quote(String(designerId))}
 target_path = ${quote(String(designerPath || ""))}
 kind = ${quote(kind)}
@@ -240,6 +247,17 @@ if obj is None:
 markDirty(obj)
 object_path = str(getattr(obj, "path", ""))
 ${assignHelpers()}
+name_change = changed.get("name")
+if name_change:
+    safe_name = re.sub(r"[\\\\/:*?\"<>|]", "-", str(name_change)).strip() or "object"
+    folder = object_path.rsplit("/", 1)[0] if "/" in object_path else "objects"
+    desired_path = folder + "/" + safe_name + ".apx"
+    if desired_path != object_path:
+        try:
+            assign("path", desired_path)
+            object_path = desired_path
+        except Exception as error:
+            raise RuntimeError("Cannot rename Designer resource to {}: {}".format(desired_path, error))
 transform_change = changed.get("transform", {})
 position_change = transform_change.get("position", {})
 rotation_change = transform_change.get("rotation", {})

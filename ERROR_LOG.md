@@ -260,3 +260,19 @@
 - Cause: the adapter copied a floor mesh and assigned undocumented `Triangle.a/b/c` fields. The wrapped Designer API does not persist those fields.
 - Fix: copy the valid 8-vertex/12-triangle topology from the built-in `LookAtManipulable` helper, update only `Vert.pos`, call `updateMesh()`, set the Stage offset, and save.
 - Regression test: the environment script contains the helper-mesh lookup and no `triangle.a`, `triangle.b`, or `triangle.c` assignments.
+
+## ERR-026: Designer object was resurrected and names drifted
+
+- Date: 2026-08-18
+- Symptom: deleting an object in Designer made LIVE recreate it; planner names such as `surface1` appeared in Designer as `dsg-dsg-....apx`.
+- Cause: a stored mapping with a missing Designer UID fell through to the normal `create` branch, and resource paths were generated from plugin IDs instead of editable names.
+- Fix: classify missing mapped objects separately and never recreate them automatically; generate new resource paths from the planner name and rename legacy `dsg-*` resources through `Resource.path`.
+- Regression test: a missing mapping yields `missing: 1, create: 0`; path rename returns a matching `description`.
+
+## ERR-027: Free Designer Starter rejected stage.floor_size writes
+
+- Date: 2026-08-18
+- Symptom: Designer repeatedly logged `Access to object of type 'Field' is not allowed` from `Screen2Editor.handleStageDisplaysChanged` after plugin sync.
+- Cause: the plugin wrote `stage.floor_size`, which triggers a Starter callback that receives a protected Field proxy.
+- Fix: stop writing `stage.floor_size`; keep room size in the planner and only update `stage.floor_pos` when the environment changes.
+- Regression test: generated environment Python contains no `stage.floor_size =` assignment and direct `floor_pos` update returns HTTP 200.
