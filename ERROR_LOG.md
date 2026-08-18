@@ -364,3 +364,11 @@
 - Cause: `set` was sent as soon as subscription IDs arrived, before the initial `valuesChanged` notification completed.
 - Fix: each binding is marked `initialized` only after its first `valuesChanged`; `set` is suppressed until then.
 - Regression test: adapter source checks the initialized guard and the deployed Designer endpoint accepts the subscription/value sequence.
+
+## ERR-039: LIVE values rendered one property at a time
+
+- Date: 2026-08-19
+- Symptom: screens appeared to jump in the 2D plan when LIVE was enabled, although Designer readback coordinates remained stable.
+- Cause: each `valuesChanged` property immediately called `render()`, so a multi-property update showed transient geometry/position combinations.
+- Fix: queue values by object and field, apply the batch, and render once per animation frame.
+- Regression test: app source contains the live value queue and single flush renderer.

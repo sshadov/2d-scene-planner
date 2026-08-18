@@ -41,6 +41,8 @@
   let liveSyncInFlight = false;
   let liveSyncQueued = false;
   let activeFieldRefs = new Map();
+  let liveValueQueue = new Map();
+  let liveValueFrame = null;
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -370,13 +372,23 @@
     else if (update.status === "closed") { status.textContent = `LIVE: ${update.detail || "WebSocket closed"}`; if (state.liveEnabled) { state.liveEnabled = false; document.querySelector("#live-toggle").checked = false; persist(false); renderStatus(); } }
     else if (update.status === "error") { status.textContent = `LIVE: WebSocket error · ${update.detail || "unknown error"}`; state.liveEnabled = false; document.querySelector("#live-toggle").checked = false; persist(false); renderStatus(); }
   }
+  function flushLiveValues() {
+    liveValueFrame = null;
+    const changes = [...liveValueQueue.values()]; liveValueQueue.clear();
+    changes.forEach(change => {
+      const object = state.objects.find(item => item.pluginId === change.pluginId); if (!object) return;
+      if (change.field === "name") object.name = String(change.value || object.name);
+      else if (change.field.includes("resolution") || change.field.includes("geometry") || change.field.startsWith("lookAt.") || change.field.startsWith("transform.")) setPath(object, change.field, finite(change.value, getFieldValue(object, change.field)));
+      const record = state.sync.objects?.[object.pluginId];
+      if (record) { record.payload = objectPayload(object); record.lastExported = canonical(record.payload); }
+    });
+    if (changes.length) { persist(false); render(); }
+  }
   function applyLiveValue(change) {
-    const object = state.objects.find(item => item.pluginId === change.pluginId); if (!object) return;
-    if (change.field === "name") object.name = String(change.value || object.name);
-    else if (change.field.includes("resolution") || change.field.includes("geometry") || change.field.startsWith("lookAt.") || change.field.startsWith("transform.")) setPath(object, change.field, finite(change.value, getFieldValue(object, change.field)));
-    const record = state.sync.objects?.[object.pluginId];
-    if (record) { record.payload = objectPayload(object); record.lastExported = canonical(record.payload); }
-    persist(false); render();
+    liveValueQueue.set(`${change.pluginId}:${change.field}`, change);
+    if (liveValueFrame !== null) return;
+    if (globalThis.requestAnimationFrame) liveValueFrame = globalThis.requestAnimationFrame(flushLiveValues);
+    else liveValueFrame = setTimeout(flushLiveValues, 0);
   }
   async function runLiveSync() {
     if (liveSyncInFlight || !state.liveEnabled) return;
