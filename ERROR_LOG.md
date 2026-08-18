@@ -372,3 +372,11 @@
 - Cause: each `valuesChanged` property immediately called `render()`, so a multi-property update showed transient geometry/position combinations.
 - Fix: queue values by object and field, apply the batch, and render once per animation frame.
 - Regression test: app source contains the live value queue and single flush renderer.
+
+## ERR-040: LIVE startup raced a manual toggle
+
+- Date: 2026-08-19
+- Symptom: after reopening a page with LIVE persisted on, quickly turning it off could leave a late connection result active or close a replacement socket.
+- Cause: `startLive()` always enabled the state after its asynchronous connection promise resolved, even when a newer stop/start intent had superseded it.
+- Fix: sequence LIVE start/stop operations with an intent token and invalidate stale results.
+- Regression test: app source contains the intent guard around `liveStart()` and invalidation in `stopLive()`.

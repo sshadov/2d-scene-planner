@@ -43,6 +43,7 @@
   let activeFieldRefs = new Map();
   let liveValueQueue = new Map();
   let liveValueFrame = null;
+  let liveIntent = 0;
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -411,10 +412,12 @@
   }
   async function startLive() {
     const adapter = getAdapter(); if (!adapter?.liveStart) throw new Error("WebSocket Live Update is not available");
+    const intent = ++liveIntent;
     await adapter.liveStart({ onStatus: liveStatus, onValuesChanged: applyLiveValue });
+    if (intent !== liveIntent) { adapter.liveStop?.(); return; }
     state.liveEnabled = true; persist(false); renderStatus(); scheduleLiveSync(0);
   }
-  function stopLive() { getAdapter()?.liveStop?.(); state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; persist(false); renderStatus(); }
+  function stopLive() { liveIntent += 1; state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; persist(false); getAdapter()?.liveStop?.(); renderStatus(); }
   function importedObject(item, index) {
     const knownType = ["screen", "surface", "projector", "light", "camera"].includes(item.type) ? item.type : "designer";
     const existingRecord = Object.values(state.sync.objects || {}).find(record => String(record.designerId || "") === String(item.id || item.uid));
