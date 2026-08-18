@@ -207,3 +207,10 @@ Confirmed default deletion uses the ResourceManager lifecycle: `resource.saveOnD
 Selection and movement are separate gestures. A canvas pointerdown selects an object and creates a pending drag; coordinates are changed only after 4 px of movement. This protects off-grid objects from accidental snap-to-grid changes. Ctrl duplication is also deferred until that threshold, so Ctrl-click remains a selection gesture.
 
 For screens and surfaces, Enter follows the physical setup order `geometry.width`, `geometry.height`, then `transform.position.y`. The next field is focused on the next task after the inspector has processed the current value.
+
+## ADR-025: Official WebSocket Live Update transport
+
+- Date: 2026-08-18
+- Status: accepted
+
+LIVE now uses the documented `ws://<director>/api/session/liveupdate` endpoint. The adapter subscribes to `getByUID("<designer uid>")` scalar properties and maps the returned subscription IDs to planner fields. Local changes send `set` messages after a short debounce; Designer `valuesChanged` messages update the local plan without triggering an HTTP export loop. If the plugin host does not expose `WebSocket` or the endpoint rejects the connection, LIVE returns to off and explicit Python HTTP synchronization remains available.

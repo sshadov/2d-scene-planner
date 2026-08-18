@@ -324,3 +324,11 @@
 - Cause: focus was requested while the key event and inspector refresh were still in progress.
 - Fix: use one explicit planar focus sequence and defer the next focus request to the next task.
 - Regression test: `nextDimensionField` covers all three transitions and the key handler uses deferred focus.
+
+## ERR-034: LIVE had no official transport
+
+- Date: 2026-08-18
+- Symptom: the LIVE control was disabled because the previous implementation had no WebSocket transport.
+- Cause: HTTP polling had been removed to avoid misrepresenting the official API, but no `subscribe`/`set` client existed yet.
+- Fix: add a WebSocket adapter for `/api/session/liveupdate`, scalar transform subscriptions, `valuesChanged` readback, and debounced `set` writes. HTTP remains explicit-only.
+- Regression test: adapter source contains the endpoint, subscribe, valuesChanged, and set protocol; browser focus and status checks run against the deployed page.

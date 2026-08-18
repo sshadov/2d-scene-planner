@@ -95,11 +95,11 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 12. Link a projector to a surface and move the surface; the projector target marker and exported Look At must follow its centre.
 13. Switch the projector to `Ручная точка на плане` and drag the marker; only Look At X/Z change.
 14. Scroll over empty canvas; zoom changes by 10% and object coordinates remain unchanged.
-15. Verify LIVE is disabled. The footer must state that the official WebSocket transport is unavailable; no HTTP polling loop is started.
+15. Enable LIVE and verify a WebSocket connection to `ws://127.0.0.1/api/session/liveupdate`; no HTTP polling loop is started. If the host has no WebSocket runtime, LIVE must revert to off with a clear error and manual Synchronize must remain available.
 
 ## Direct manipulation scenarios
 
-Before these scenarios, verify the numeric workflow: screen/surface `Ширина -> Высота -> Высота от пола/сцены` advances on Enter, clicking an input selects all text, `4` displays as `4`, `1.5` as `1,5`, and negative world heights remain negative. LIVE must be disabled until the official WebSocket adapter is implemented; manual synchronization remains available.
+Before these scenarios, verify the numeric workflow: screen/surface `Ширина -> Высота -> Высота от пола/сцены` advances on Enter, clicking an input selects all text, `4` displays as `4`, `1.5` as `1,5`, and negative world heights remain negative. LIVE should connect through the official WebSocket when the host supports it; manual synchronization remains available.
 
 The `Очистить сцену` button requires confirmation, removes planner objects and keeps their Designer mappings as orphans; it must never call Designer deletion automatically.
 
@@ -130,13 +130,13 @@ The `Очистить сцену` button requires confirmation, removes planner 
 10. Force a Designer Python error: the modal must show the failing object name and the HTTP response body instead of a bare `500`.
 11. After every successful write, verify the status says that coordinates were checked.
 
-## Current v10.6 checks
+## Current v10.8 checks
 
 1. Reload the planner with an open Designer project. The room floor size/position and supported physical objects in typed collections or `stage.children` must appear in the 2D model. `internal/*`, `LookAtManipulable`, `Puck`, and other non-physical helpers must not appear.
 2. Toggle `Stage`. When checked, a managed `dsg-scene-cube.apx` appears in Designer with stage dimensions and is visible. When unchecked, no automatic deletion occurs. Change Stage `X/Z` fields and verify the cube moves; dragging the Stage outline does nothing.
 3. Set stage `floorY=1` and an object world `Y=1`. With `Y relative to Scene` enabled it displays `0`; entering `-3` stores world `Y=-2`. Turning the checkbox off shows `-2`.
 4. Import a projector with non-zero Designer `configRotation`; the 2D model preserves it, while the projector inspector still exposes only position, Look At, and resolution.
-5. Confirm LIVE is disabled with a tooltip explaining that official WebSocket Live Update is not connected. `Synchronize` remains enabled for explicit HTTP/Python export.
+5. Enable LIVE and confirm the status reports a WebSocket connection. If the host rejects WebSocket, confirm LIVE returns to off with the error visible and `Synchronize` remains enabled.
 6. A narrow screen or surface is selectable only inside its rendered rectangle/thickness. A click 10 CSS pixels outside is not a hit.
 7. Change an object name in the active property strip, reload, and verify the local name remains associated with the stored Designer UID/path.
 8. Verify strict readback: a `0.0001` coordinate mismatch is reported rather than accepted by tolerance.

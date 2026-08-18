@@ -3,10 +3,18 @@
   const API_ORIGIN = window.DISGUISE_API_ORIGIN || (localTest ? "http://127.0.0.1" : window.location.origin);
   const EXECUTE_PATH = "/api/session/python/execute";
   const STATUS_PATH = "/api/session/status/session";
+  const LIVE_PATH = "/api/session/liveupdate";
+  const LIVE_URL = `${API_ORIGIN.replace(/^http/i, "ws")}${LIVE_PATH}`;
   const typeCollections = { screen: "ledScreens", surface: "surfaces", camera: "cameras", projector: "projectors", light: "lights", designer: "displays" };
   const typeClasses = { screen: "LedScreen", surface: "Screen2", camera: "Camera", projector: "Projector", light: "Light" };
   const typeResourceFolders = { screen: "ledscreen", surface: "screen2", camera: "camera", projector: "projector", light: "light" };
   const collectionTypes = Object.fromEntries(Object.entries(typeCollections).map(([type, collection]) => [collection, type]));
+  let liveSocket = null;
+  let liveConnectPromise = null;
+  let liveBindings = new Map();
+  let livePendingSubscriptions = new Set();
+  let liveOnStatus = () => {};
+  let liveOnValuesChanged = () => {};
 
   function quote(value) { return JSON.stringify(value); }
   function payloadText(payload) { return quote(JSON.stringify(payload)); }
@@ -345,14 +353,122 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
 return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
 
+  function liveDescriptorKey(pluginId, field) { return `${pluginId}:${field}`; }
+  function liveObjectPath(designerId) { return `getByUID(${quote(String(designerId))})`; }
+  function liveFieldValue(payload, field) {
+    if (field === "name") return payload.name;
+    if (field === "transform.position.y" && ["screen", "surface"].includes(payload.type)) return Number(payload.transform.position.y) + Number(payload.geometry?.height || 0) / 2;
+    return field.split(".").reduce((value, key) => value?.[key], payload);
+  }
+  function liveDefinitions(payload) {
+    const type = payload.type;
+    const definitions = [{ field: "name", property: "object.description", encode: value => String(value ?? ""), decode: value => String(value ?? "") }];
+    const add = (field, property, encode = value => value, decode = value => value) => definitions.push({ field, property, encode, decode });
+    const transformPrefix = type === "projector" ? "configPosition" : "offset";
+    ["x", "y", "z"].forEach(axis => add(`transform.position.${axis}`, `object.${transformPrefix}.${axis}`));
+    if (["screen", "surface"].includes(type)) {
+      add("geometry.width", "object.scale.x"); add("geometry.height", "object.scale.y", value => value, value => value);
+      add("transform.position.y", "object.offset.y", value => Number(value) + Number(payload.geometry?.height || 0) / 2, value => Number(value) - Number(payload.geometry?.height || 0) / 2);
+      add("transform.rotation.y", "object.rotation.y");
+    } else if (type === "projector") {
+      ["x", "y", "z"].forEach(axis => add(`lookAt.${axis}`, `object.configLookAt.${axis}`));
+    } else {
+      ["x", "y", "z"].forEach(axis => add(`transform.rotation.${axis}`, `object.rotation.${axis}`));
+    }
+    return definitions;
+  }
+  function liveSend(message) {
+    if (!liveSocket || liveSocket.readyState !== 1) return false;
+    try { liveSocket.send(JSON.stringify(message)); return true; } catch (error) { liveOnStatus({ status: "error", detail: error.message || String(error) }); return false; }
+  }
+  function liveFlushSets() {
+    const changes = [];
+    for (const binding of liveBindings.values()) {
+      if (binding.id === null || binding.value === undefined) continue;
+      if (binding.lastSent !== undefined && JSON.stringify(binding.lastSent) === JSON.stringify(binding.value)) continue;
+      changes.push({ id: binding.id, value: binding.value });
+      binding.lastSent = binding.value;
+    }
+    if (changes.length) liveSend({ set: changes });
+  }
+  function liveHandleMessage(raw) {
+    let message;
+    try { message = JSON.parse(typeof raw === "string" ? raw : raw?.data || "{}"); } catch { return; }
+    if (Array.isArray(message.subscriptions)) {
+      message.subscriptions.forEach(subscription => {
+        const binding = [...liveBindings.values()].find(candidate => candidate.id === subscription.id || (candidate.objectPath === subscription.objectPath && candidate.propertyPath === subscription.propertyPath));
+        if (!binding) return;
+        binding.id = subscription.id;
+        livePendingSubscriptions.delete(`${binding.objectPath}|${binding.propertyPath}`);
+      });
+      liveFlushSets();
+    }
+    if (Array.isArray(message.valuesChanged)) message.valuesChanged.forEach(change => {
+      const binding = [...liveBindings.values()].find(candidate => candidate.id === change.id);
+      if (!binding) return;
+      binding.lastSent = change.value;
+      liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath });
+    });
+    if (message.error) liveOnStatus({ status: "error", detail: typeof message.error === "string" ? message.error : JSON.stringify(message.error) });
+  }
+  function liveSubscribeBindings() {
+    if (!liveSocket || liveSocket.readyState !== 1) return;
+    const grouped = new Map();
+    for (const binding of liveBindings.values()) {
+      if (binding.id !== null) continue;
+      const key = `${binding.objectPath}|${binding.propertyPath}`;
+      if (livePendingSubscriptions.has(key)) continue;
+      livePendingSubscriptions.add(key);
+      const properties = grouped.get(binding.objectPath) || [];
+      properties.push(binding.propertyPath); grouped.set(binding.objectPath, properties);
+    }
+    grouped.forEach((properties, object) => liveSend({ subscribe: { object, properties } }));
+  }
+  function liveSync(entries = []) {
+    const nextBindings = new Map();
+    entries.forEach(entry => {
+      const payload = entry?.payload || entry;
+      const designerId = entry?.record?.designerId || entry?.designerId;
+      if (!payload?.pluginId || !designerId) return;
+      const objectPath = liveObjectPath(designerId);
+      liveDefinitions(payload).forEach(definition => {
+        const key = liveDescriptorKey(payload.pluginId, definition.field);
+        const previous = liveBindings.get(key);
+        nextBindings.set(key, { ...(previous || {}), ...definition, key, pluginId: payload.pluginId, objectPath, propertyPath: definition.property, id: previous?.id ?? null, value: definition.encode(liveFieldValue(payload, definition.field)) });
+      });
+    });
+    liveBindings = nextBindings;
+    liveSubscribeBindings();
+    liveFlushSets();
+  }
+  function liveStart(callbacks = {}) {
+    liveOnStatus = callbacks.onStatus || (() => {}); liveOnValuesChanged = callbacks.onValuesChanged || (() => {});
+    if (liveSocket?.readyState === 1) return Promise.resolve();
+    if (liveConnectPromise) return liveConnectPromise;
+    if (typeof WebSocket !== "function") return Promise.reject(new Error("WebSocket is not available in this plugin window"));
+    liveConnectPromise = new Promise((resolve, reject) => {
+      let opened = false;
+      const socket = new WebSocket(LIVE_URL); liveSocket = socket;
+      socket.onopen = () => { opened = true; liveConnectPromise = null; liveOnStatus({ status: "open", detail: LIVE_URL }); liveSubscribeBindings(); liveFlushSets(); resolve(); };
+      socket.onmessage = event => liveHandleMessage(event.data);
+      socket.onerror = () => { const error = new Error(`Live Update WebSocket connection failed: ${LIVE_URL}`); liveOnStatus({ status: "error", detail: error.message }); if (!opened) { liveConnectPromise = null; reject(error); } };
+      socket.onclose = () => { liveSocket = null; livePendingSubscriptions.clear(); liveConnectPromise = null; liveOnStatus({ status: "closed", detail: "Live Update connection closed" }); };
+    });
+    return liveConnectPromise;
+  }
+  function liveStop() { if (liveSocket) { try { liveSocket.close(); } catch {} } liveSocket = null; liveConnectPromise = null; livePendingSubscriptions.clear(); liveBindings = new Map(); liveOnStatus({ status: "closed", detail: "Live Update disabled" }); }
+
   window.disguiseSceneAdapter = {
-    capabilities: { liveUpdate: false, liveTransport: "websocket-required", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API", apiOrigin: API_ORIGIN },
+    capabilities: { liveUpdate: true, liveTransport: "websocket", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API + Live Update WebSocket", apiOrigin: API_ORIGIN, liveUrl: LIVE_URL },
     sessionStatus,
     syncEnvironment: environment => execute(environmentScript(environment)),
     inspectScene: () => execute(inspectScript()),
     createObject: payload => execute(createScript(payload)),
     updateObject: (designerId, changed, designerPath, kind) => execute(updateScript(designerId, changed, designerPath, kind)),
     deleteObjects: designerIds => execute(deleteScript(designerIds)),
+    liveStart,
+    liveStop,
+    liveSync,
     debugScripts: { inspectScript, createScript, updateScript }
   };
 })();

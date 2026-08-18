@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.0 - 2026-08-18
+
+- Implemented the official Live Update WebSocket transport with `subscribe`, `valuesChanged`, and `set` messages for mapped object names and scalar transforms.
+- Kept Python HTTP synchronization for explicit create/update/inspect/delete operations; LIVE no longer uses polling.
+- Made dimension focus use direct input references and verified `Width -> Height -> Position Y` in the browser.
+
 ## 0.16.0 - 2026-08-18
 
 - Disabled the misleading LIVE toggle until the official WebSocket Live Update transport is implemented; manual Python HTTP synchronization remains available.
