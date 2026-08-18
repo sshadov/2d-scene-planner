@@ -7,14 +7,14 @@
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=10.18" />
+    <link rel="stylesheet" href="./styles.css?v=10.19" />
   </head>
   <body>
     <main class="app-shell">
       <header class="app-header">
         <div class="brand-block">
           <p class="eyebrow">SCENE PLANNER</p>
-          <h1>Disguise <span class="app-version">v10.18</span></h1>
+          <h1>Disguise <span class="app-version">v10.19</span></h1>
         </div>
 
         <div class="header-actions">
@@ -95,10 +95,16 @@
             </div>
             <span id="scene-summary">Room 20 × 12 m</span>
             <span id="adapter-status">Designer API: not connected</span>
+            <button class="text-button live-log-button" id="live-log-button" type="button">LIVE log</button>
           </footer>
         </section>
       </section>
     </main>
+
+    <details class="live-log-panel" id="live-log-panel">
+      <summary>LIVE diagnostics</summary>
+      <pre id="live-log-output">No LIVE events yet.</pre>
+    </details>
 
     <div class="modal-backdrop" id="sync-modal" hidden>
         <section class="sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-title">
@@ -142,7 +148,7 @@
          <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Delete object?</span><button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button></div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=10.18"></script>
-    <script src="./app.js?v=10.18"></script>
+    <script src="./designer-adapter.js?v=10.19"></script>
+    <script src="./app.js?v=10.19"></script>
   </body>
 </html>

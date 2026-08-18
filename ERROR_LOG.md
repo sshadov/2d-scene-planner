@@ -402,5 +402,13 @@
 - Date: 2026-08-19
 - Symptom: screens still moved unpredictably after batching values and suppressing echoed writes.
 - Cause: the actual conflict was a second LIVE client in the standalone browser, not only message ordering.
-- Fix: remove the temporary batching/initial-value/authority layers; keep the standalone LIVE guard and add a protocol ring-buffer log for direct diagnosis.
-- Regression test: source checks confirm those temporary layers are absent while `getLiveLogs()` and protocol event logging are present.
+- Fix: remove the temporary batching and authority layers; keep the standalone LIVE guard. The separate protocol-required initial-value gate is retained because removing it reproduces `1007 ACCESS_VIOLATION` in Free Designer Starter. Add a protocol ring-buffer log for direct diagnosis.
+- Regression test: source checks confirm the batching/authority layers are absent, `binding.initialized` guards the first `set`, and `getLiveLogs()` is present.
+
+## ERR-044: Code 1007 needed an accessible protocol trace
+
+- Date: 2026-08-19
+- Symptom: the user saw only `code 1007` and could not inspect which WebSocket message preceded the close.
+- Cause: logs existed only in the browser console and were not visible in the Designer plugin UI.
+- Fix: add a LIVE diagnostics panel backed by the adapter ring buffer, including connect, subscribe, valuesChanged, set, error, and close events.
+- Regression test: HTML includes `live-log-button` and `live-log-output`; adapter exposes `getLiveLogs()`.
