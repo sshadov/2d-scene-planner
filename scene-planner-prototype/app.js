@@ -2,18 +2,19 @@
   const VERSION = 10;
   const STORAGE_KEY = "disguise-scene-generator-state-v10";
   const STANDALONE_PREVIEW = ["127.0.0.1", "localhost"].includes(location.hostname) && String(location.port) === "4173";
-  const PLANAR_TYPES = new Set(["screen", "surface"]);
-  const GROUP_ORDER = ["screen", "surface", "projector", "light", "camera", "designer"];
+  const PLANAR_TYPES = new Set(["screen", "dmxScreen", "surface"]);
+  const GROUP_ORDER = ["screen", "dmxScreen", "surface", "projector", "dmxLight", "camera", "designer"];
   const defaults = {
     room: { width: 20, depth: 12 },
     stage: { centerX: 0, centerZ: 0, floorY: 0, width: 12, depth: 8, height: 0.8, measureFromStage: false },
-    counts: { screen: 0, projector: 0, light: 0, surface: 0, camera: 0 }
+    counts: { screen: 0, dmxScreen: 0, projector: 0, dmxLight: 0, surface: 0, camera: 0 }
   };
   const typeConfig = {
     screen: { label: "LED Screen", group: "LED Screens", color: "#3dd9d4", geometry: { width: 4, height: 2 }, media: { inputMode: "resolution", resolutionX: 1920, resolutionY: 1200, pixelsPerInch: 10, pixelPitchMm: 2.54 } },
+    dmxScreen: { label: "DMX Screen", group: "DMX Screens", color: "#62d7a7", geometry: { width: 4, height: 2 }, media: { resolutionX: 1920, resolutionY: 1200 } },
     projector: { label: "Projector", group: "Projectors", color: "#c084fc", radius: 0.38, defaultHeight: 2.5, media: { resolutionX: 1920, resolutionY: 1080 } },
-    light: { label: "Light", group: "Lights", color: "#f8c84d", radius: 0.23, defaultHeight: 3 },
-    surface: { label: "Surface", group: "Surfaces", color: "#4e9cff", geometry: { width: 3, height: 2 }, media: { resolutionX: 1920, resolutionY: 1200 } },
+    dmxLight: { label: "DMX Light", group: "DMX Lights", color: "#f8c84d", radius: 0.23, defaultHeight: 3 },
+    surface: { label: "Projection Surface", group: "Projection Surfaces", color: "#4e9cff", geometry: { width: 3, height: 2 }, media: { resolutionX: 1920, resolutionY: 1200 } },
     camera: { label: "Camera", group: "Cameras", color: "#ff7d62", radius: 0.36, defaultHeight: 1.6 },
     designer: { label: "Designer Object", group: "Other Designer Objects", color: "#9aa7b4", radius: 0.3, defaultHeight: 0 }
   };
@@ -43,6 +44,7 @@
   let liveSyncQueued = false;
   let activeFieldRefs = new Map();
   let liveIntent = 0;
+  let liveSceneImportTimer = null;
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -102,7 +104,7 @@
       } : { x: finite(object.x) - state.room.width / 2, y: finite(object.z), z: finite(object.y) - state.room.depth / 2 };
       rotation = object.rotation && typeof object.rotation === "object" ? vector(object.rotation) : { x: 0, y: finite(object.rotation), z: 0 };
     }
-    const rawType = object.type || "surface"; const type = typeConfig[rawType] ? rawType : "designer"; const config = typeConfig[type];
+    const rawType = object.type || "surface"; const aliases = { light: "dmxLight", dmx_light: "dmxLight", dmxscreen: "dmxScreen", dmx_screen: "dmxScreen" }; const normalizedType = aliases[rawType] || rawType; const type = typeConfig[normalizedType] ? normalizedType : "designer"; const config = typeConfig[type];
     if (PLANAR_TYPES.has(type)) { rotation.x = 0; rotation.z = 0; }
     const normalized = { id: Number(object.id) || index + 1, pluginId: object.pluginId || makeId(), type, name: object.name || `${config.label} ${index + 1}`, transform: { position, rotation } };
     if (config.geometry) normalized.geometry = {
@@ -164,7 +166,7 @@
     syncModelsFromInputs(); saveHistory(); state.objects = []; const bounds = stageBounds(); const counts = defaults.counts; const margin = .6;
     for (let i = 0; i < counts.screen; i++) state.objects.push(newObject("screen", bounds.minX + state.stage.width * ((i + 1) / (counts.screen + 1)), bounds.minZ + margin));
     for (let i = 0; i < counts.projector; i++) state.objects.push(newObject("projector", state.stage.centerX, bounds.maxZ - margin, { y: 180 }));
-    for (let i = 0; i < counts.light; i++) { const columns = 2; state.objects.push(newObject("light", bounds.minX + state.stage.width * ((i % columns + 1) / (columns + 1)), bounds.minZ + state.stage.depth * ((Math.floor(i / columns) + 1) / 3), { x: -45, y: 0 })); }
+    for (let i = 0; i < counts.dmxLight; i++) { const columns = 2; state.objects.push(newObject("dmxLight", bounds.minX + state.stage.width * ((i % columns + 1) / (columns + 1)), bounds.minZ + state.stage.depth * ((Math.floor(i / columns) + 1) / 3), { x: -45, y: 0 })); }
     for (let i = 0; i < counts.surface; i++) state.objects.push(newObject("surface", bounds.minX + margin, state.stage.centerZ, { y: 90 }));
     for (let i = 0; i < counts.camera; i++) state.objects.push(newObject("camera", state.stage.centerX, bounds.maxZ - margin, { y: 180 }));
     state.selectedId = state.objects[0]?.id ?? null; state.selectedIds = new Set(state.selectedId ? [state.selectedId] : []); persist(); render();
@@ -239,9 +241,9 @@
   function drawObject(object, frame) {
     const position = toScreen(object.transform.position.x, object.transform.position.z, frame); const config = typeConfig[object.type]; const selected = state.selectedIds.has(object.id) || object.id === state.selectedId; const highlighted = object.id === state.highlightObjectId;
     ctx.save(); ctx.translate(position.x, position.y); if (PLANAR_TYPES.has(object.type)) ctx.rotate(object.transform.rotation.y * Math.PI / 180); ctx.fillStyle = config.color; ctx.strokeStyle = selected ? "#fff" : config.color; ctx.lineWidth = selected ? 2.5 : 1.2;
-    if (PLANAR_TYPES.has(object.type)) { const w = object.geometry.width * frame.scale; const t = Math.max(5, .1 * frame.scale); if (object.type === "surface") ctx.globalAlpha = .42; ctx.fillRect(-w / 2, -t / 2, w, t); ctx.globalAlpha = 1; ctx.strokeRect(-w / 2, -t / 2, w, t); }
+    if (PLANAR_TYPES.has(object.type)) { const w = object.geometry.width * frame.scale; const t = Math.max(5, .1 * frame.scale); if (["surface", "dmxScreen"].includes(object.type)) ctx.globalAlpha = .42; ctx.fillRect(-w / 2, -t / 2, w, t); ctx.globalAlpha = 1; ctx.strokeRect(-w / 2, -t / 2, w, t); }
     if (object.type === "projector") { drawDirection(config, frame, object, 4, 1.8); const r = config.radius * frame.scale; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#10161c"; ctx.beginPath(); ctx.arc(0, -r * .25, Math.max(2, r * .28), 0, Math.PI * 2); ctx.fill(); }
-    if (object.type === "light") { drawDirection(config, frame, object, 3, 1.1); const r = Math.max(5, config.radius * frame.scale); ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#10161c"; ctx.beginPath(); ctx.arc(0, -r * .32, Math.max(2, r * .32), 0, Math.PI * 2); ctx.fill(); }
+    if (object.type === "dmxLight") { drawDirection(config, frame, object, 3, 1.1); const r = Math.max(5, config.radius * frame.scale); ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#10161c"; ctx.beginPath(); ctx.arc(0, -r * .32, Math.max(2, r * .32), 0, Math.PI * 2); ctx.fill(); }
     if (object.type === "camera") { drawDirection(config, frame, object, 3, 1.4); const r = config.radius * frame.scale; ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(-r * .75, r * .8); ctx.lineTo(r * .75, r * .8); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     ctx.restore(); const showLabel = selected || highlighted || (state.showSurfaceLabels && object.type === "surface"); if (showLabel) { ctx.fillStyle = highlighted ? "#f8c84d" : selected ? "#fff" : "#8eb7ff"; ctx.font = `${highlighted ? "600 " : ""}12px Inter,sans-serif`; ctx.textAlign = "center"; ctx.fillText(object.name, position.x, position.y - 16); if (highlighted) { ctx.strokeStyle = "rgba(248,200,77,.85)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(position.x, position.y, Math.max(10, (object.geometry?.width || .3) * frame.scale / 2 + 6), 0, Math.PI * 2); ctx.stroke(); } }
   }
@@ -286,9 +288,9 @@
   function fieldSections(object) {
     const heightLabel = state.stage.measureFromStage ? "Position Y (Stage)" : "Position Y"; const position = [["X", "transform.position.x", object.transform.position.x, .1, "m"], ["Z", "transform.position.z", object.transform.position.z, .1, "m"], [heightLabel, "transform.position.y", objectHeightValue(object), .1, "m"]];
     if (object.type === "screen") { const mode = object.media.inputMode || "resolution"; const mediaFields = mode === "resolution" ? [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] : mode === "ppi" ? [["PPI", "media.pixelsPerInch", object.media.pixelsPerInch, .1, "ppi"]] : [["Pixel pitch", "media.pixelPitchMm", object.media.pixelPitchMm, .1, "mm"]]; return [{ title: "Size", fields: [["Width", "geometry.width", object.geometry.width, .1, "m"], ["Height", "geometry.height", object.geometry.height, .1, "m"]] }, { title: "Position", fields: [...position, ["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }, { title: "LED data", mediaMode: true, fields: mediaFields }]; }
-    if (object.type === "surface") return [{ title: "Size", fields: [["Width", "geometry.width", object.geometry.width, .1, "m"], ["Height", "geometry.height", object.geometry.height, .1, "m"]] }, { title: "Position", fields: [...position, ["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }, { title: "Resolution", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] }];
+    if (["dmxScreen", "surface"].includes(object.type)) return [{ title: "Size", fields: [["Width", "geometry.width", object.geometry.width, .1, "m"], ["Height", "geometry.height", object.geometry.height, .1, "m"]] }, { title: "Position", fields: [...position, ["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }, { title: "Resolution", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] }];
     if (object.type === "projector") return [{ title: "Lens position", fields: position }, { title: "Look At", targetSurface: true }, { title: "Resolution", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] }];
-    return [{ title: "Position", fields: position }, { title: object.type === "camera" ? "Camera direction" : object.type === "light" ? "Light direction" : "Rotation", fields: [["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }];
+    return [{ title: "Position", fields: position }, { title: object.type === "camera" ? "Camera direction" : object.type === "dmxLight" ? "DMX light direction" : "Rotation", fields: [["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }];
   }
   function getPath(object, path) { return path.split(".").reduce((value, key) => value[key], object); }
   function getFieldValue(object, path) { return path === "transform.position.y" ? objectHeightValue(object) : getPath(object, path); }
@@ -320,7 +322,21 @@
   function closeCanvasContextMenu() { if (!canvasContextMenu) return; canvasContextMenu.hidden = true; document.querySelector("#surface-context-list").hidden = true; document.querySelector("#context-delete-confirm").hidden = true; state.showSurfaceLabels = false; contextObjectId = null; contextWorldPoint = null; }
   function openCanvasCreateMenu(event, point) { contextObjectId = null; contextWorldPoint = point; document.querySelector("#empty-context-actions").hidden = false; document.querySelector("#object-context-actions").hidden = true; positionContextMenu(event, 190); }
   function openCanvasContextMenu(event, object) { if (!canvasContextMenu || !object) return; contextObjectId = object.id; contextWorldPoint = null; selectObject(object); render(); document.querySelector("#empty-context-actions").hidden = true; document.querySelector("#object-context-actions").hidden = false; const bindButton = document.querySelector("#context-bind-surface"); const surfaceList = document.querySelector("#surface-context-list"); const surfaces = state.objects.filter(item => item.type === "surface"); bindButton.hidden = object.type !== "projector" || !surfaces.length; surfaceList.hidden = true; surfaceList.replaceChildren(); if (object.type === "projector") { state.showSurfaceLabels = true; drawScene(); } surfaces.forEach(surface => { const button = element("button", "", surface.name); button.type = "button"; button.addEventListener("pointerenter", () => previewTargetSurface(surface.pluginId)); button.addEventListener("pointerleave", () => previewTargetSurface(targetSurface(object)?.pluginId || null)); button.addEventListener("click", () => { bindProjectorToSurface(object, surface); closeCanvasContextMenu(); }); surfaceList.append(button); }); document.querySelector("#context-delete-confirm").hidden = true; positionContextMenu(event); }
-  function deleteObject(id) { const index = state.objects.findIndex(object => object.id === id); if (index < 0) return; saveHistory(); const removed = state.objects[index]; const detachedTargets = new Map(state.objects.filter(item => item.targetSurfacePluginId === removed.pluginId).map(projector => [projector.id, effectiveLookAt(projector)])); state.objects.splice(index, 1); state.selectedIds.delete(id); if (state.selectedId === id) selectObject(state.objects[index] || state.objects[index - 1] || null); state.objects.forEach(projector => { const target = detachedTargets.get(projector.id); if (!target) return; projector.lookAt = target; delete projector.targetSurfacePluginId; }); persist(); render(); }
+  async function deleteObject(id) {
+    const index = state.objects.findIndex(object => object.id === id); if (index < 0) return;
+    saveHistory(); const removed = state.objects[index]; const record = state.sync.objects?.[removed.pluginId];
+    const detachedTargets = new Map(state.objects.filter(item => item.targetSurfacePluginId === removed.pluginId).map(projector => [projector.id, effectiveLookAt(projector)]));
+    state.objects.splice(index, 1); state.selectedIds.delete(id); if (state.selectedId === id) selectObject(state.objects[index] || state.objects[index - 1] || null);
+    state.objects.forEach(projector => { const target = detachedTargets.get(projector.id); if (!target) return; projector.lookAt = target; delete projector.targetSurfacePluginId; }); persist(); render();
+    if (!record?.designerId || !getAdapter()?.deleteManagedObjects) return;
+    try {
+      const result = await getAdapter().deleteManagedObjects([record.designerId]);
+      if (!result?.deleted?.map(String).includes(String(record.designerId))) throw new Error(result?.skipped?.join("; ") || "Designer did not confirm deletion");
+      delete state.sync.objects[removed.pluginId]; persist(false); renderStatus();
+    } catch (error) {
+      state.sync.errors[removed.pluginId] = `Delete failed: ${error.message || error}`; persist(false); renderObjectGroups();
+    }
+  }
 
   function canonical(value) { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }
   function changedValue(previous, current) { if (previous && current && typeof previous === "object" && typeof current === "object" && !Array.isArray(previous) && !Array.isArray(current)) { const result = {}; Object.keys(current).forEach(key => { const change = changedValue(previous[key], current[key]); if (change !== undefined) result[key] = change; }); return Object.keys(result).length ? result : undefined; } return canonical(previous) === canonical(current) ? undefined : current; }
@@ -335,7 +351,7 @@
   function getAdapter() { const adapter = globalThis.disguiseSceneAdapter; return adapter && ["inspectScene", "createObject", "updateObject"].every(method => typeof adapter[method] === "function") ? adapter : null; }
   function environmentKey() { return canonical({ room: state.room, stage: state.stage }); }
   async function syncEnvironmentIfChanged(adapter) { if (typeof adapter?.syncEnvironment !== "function") return false; const key = environmentKey(); if (state.sync.environment === key) return false; await adapter.syncEnvironment({ room: state.room, stage: state.stage }); state.sync.environment = key; persist(false); return true; }
-  function typeOfSceneObject(item) { return item.type || ({ ledScreens: "screen", surfaces: "surface", cameras: "camera", projectors: "projector", lights: "light" }[item.collection]); }
+  function typeOfSceneObject(item) { return item.type || ({ ledScreens: "screen", dmxScreens: "dmxScreen", surfaces: "surface", dmxLights: "dmxLight", cameras: "camera", projectors: "projector" }[item.collection]); }
   function isStandardCandidate(item) { return Boolean(item.standard || /(^|[\\/ _-])(surface|projector|camera|screen|light)[ _-]?1(?:\.|$)/i.test(`${item.path || ""} ${item.description || ""} ${item.name || ""}`)); }
   async function makeDiff(adapter, mode = "update") {
     const designerScene = adapter ? await adapter.inspectScene() : null; const inspected = designerScene?.objects || []; const records = state.sync.objects || {}; const byId = new Map(inspected.map(item => [String(item.id || item.uid), item])); const usedIds = new Set(); const currentIds = new Set(state.objects.map(object => object.pluginId));
@@ -382,11 +398,38 @@
     if (record) { record.payload = objectPayload(object); record.lastExported = canonical(record.payload); }
     persist(false); render();
   }
+  function scheduleLiveSceneImport() {
+    if (!state.liveEnabled) return;
+    clearTimeout(liveSceneImportTimer);
+    liveSceneImportTimer = setTimeout(async () => {
+      liveSceneImportTimer = null;
+      const adapter = getAdapter();
+      if (!adapter) return;
+      try { await importDesignerScene(adapter, { preserveLocal: true }); document.querySelector("#adapter-status").textContent = "LIVE: Designer object list updated"; }
+      catch (error) { state.sync.errors.live = error.message || String(error); persist(false); liveStatus({ status: "error", detail: error.message || String(error) }); }
+    }, 120);
+  }
+  async function ensureLiveObjects(adapter) {
+    const records = state.sync.objects || {};
+    const supported = new Set(["screen", "dmxScreen", "surface", "dmxLight", "projector", "camera"]);
+    for (const object of state.objects) {
+      if (!supported.has(object.type)) continue;
+      const existing = records[object.pluginId];
+      if (existing?.designerId) continue;
+      const payload = objectPayload(object);
+      const result = await adapter.createObject(payload);
+      validateReadback(payload, result);
+      records[object.pluginId] = { pluginId: object.pluginId, designerId: result?.designerId || result?.id, path: result?.path, type: object.type, name: object.name, lastExported: canonical(payload), payload, liveCreated: true };
+    }
+    state.sync.objects = records;
+    persist(false);
+  }
   async function runLiveSync() {
     if (liveSyncInFlight || !state.liveEnabled) return;
     const adapter = getAdapter(); if (!adapter?.liveSync) return;
     liveSyncInFlight = true; liveSyncQueued = false;
     try {
+      await ensureLiveObjects(adapter);
       adapter.liveSync(state.objects.map(object => ({ payload: objectPayload(object), record: state.sync.objects?.[object.pluginId] })));
       document.querySelector("#adapter-status").textContent = "LIVE: changes sent over WebSocket";
     } catch (error) {
@@ -404,13 +447,13 @@
   async function startLive() {
     const adapter = getAdapter(); if (!adapter?.liveStart) throw new Error("WebSocket Live Update is not available");
     const intent = ++liveIntent;
-    await adapter.liveStart({ onStatus: liveStatus, onValuesChanged: applyLiveValue });
+    await adapter.liveStart({ onStatus: liveStatus, onValuesChanged: applyLiveValue, onSceneChanged: scheduleLiveSceneImport });
     if (intent !== liveIntent) { adapter.liveStop?.(); return; }
     state.liveEnabled = true; persist(false); renderStatus(); scheduleLiveSync(0);
   }
-  function stopLive() { liveIntent += 1; state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; persist(false); getAdapter()?.liveStop?.(); renderStatus(); }
+  function stopLive() { liveIntent += 1; state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; clearTimeout(liveSceneImportTimer); liveSceneImportTimer = null; persist(false); getAdapter()?.liveStop?.(); renderStatus(); }
   function importedObject(item, index) {
-    const knownType = ["screen", "surface", "projector", "light", "camera"].includes(item.type) ? item.type : "designer";
+    const knownType = ["screen", "dmxScreen", "surface", "projector", "dmxLight", "camera"].includes(item.type) ? item.type : "designer";
     const existingRecord = Object.values(state.sync.objects || {}).find(record => String(record.designerId || "") === String(item.id || item.uid));
     const existing = state.objects.find(object => object.pluginId === item.pluginId) || (existingRecord ? state.objects.find(object => object.pluginId === existingRecord.pluginId) : null);
     const pluginId = existing?.pluginId || item.pluginId || `designer-${String(item.id || item.uid).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
@@ -424,21 +467,24 @@
     object.designer = { designerId: String(item.id || item.uid || ""), path: item.path, className: item.className, collection: item.collection };
     return object;
   }
-  async function importDesignerScene(adapter) {
+  async function importDesignerScene(adapter, options = {}) {
     const inspection = await adapter.inspectScene();
+    adapter.configureLiveScene?.(inspection.stageId);
     if (inspection.roomFloor) { state.room.width = Math.max(2, finite(inspection.roomFloor.width, state.room.width)); state.room.depth = Math.max(2, finite(inspection.roomFloor.depth, state.room.depth)); }
     if (inspection.floorPosition) { state.stage.centerX = finite(inspection.floorPosition.x, state.stage.centerX); state.stage.centerZ = finite(inspection.floorPosition.z, state.stage.centerZ); }
     if (Number.isFinite(Number(inspection.floorY))) state.stage.floorY = finite(inspection.floorY, state.stage.floorY);
     state.sync.sceneCube = inspection.sceneCube || state.sync.sceneCube || null;
     const imported = (inspection.objects || []).map(importedObject);
+    const importedPluginIds = new Set(imported.map(object => object.pluginId));
+    const localOnly = options.preserveLocal ? state.objects.filter(object => !state.sync.objects?.[object.pluginId]?.designerId && !importedPluginIds.has(object.pluginId)) : [];
     // Designer is authoritative at startup. Local storage supplies mappings and UI preferences only.
-    state.objects = imported; state.selectedId = state.objects[0]?.id ?? null; state.selectedIds = new Set(state.selectedId ? [state.selectedId] : []); state.highlightObjectId = null;
+    state.objects = [...imported, ...localOnly]; state.selectedId = state.objects[0]?.id ?? null; state.selectedIds = new Set(state.selectedId ? [state.selectedId] : []); state.highlightObjectId = null;
     // Designer is authoritative at startup, including whether a managed Stage
     // cube exists. Local storage keeps mappings and UI preferences only.
     state.stage.enabled = Boolean(inspection.sceneCube);
     state.sync.designerScene = { inspectedAt: new Date().toISOString(), objectCount: inspection.objects?.length || 0, floorY: inspection.floorY ?? 0, sceneCube: inspection.sceneCube || null };
     const importedRecords = Object.fromEntries(imported.map(object => [object.pluginId, { pluginId: object.pluginId, designerId: object.designer?.designerId, path: object.designer?.path, type: object.type, name: object.name, lastExported: canonical(objectPayload(object)), payload: objectPayload(object), imported: true }]));
-    state.sync.objects = importedRecords;
+    state.sync.objects = { ...(options.preserveLocal ? state.sync.objects : {}), ...importedRecords };
     state.sync.environment = environmentKey(); state.sync.lastSyncAt = new Date().toISOString(); persist(false); render();
   }
   async function confirmSync() { const modal = document.querySelector("#sync-modal"); const diff = modal._diff; if (!diff?.adapter) return; const button = document.querySelector("#confirm-sync"); button.disabled = true; button.textContent = "Synchronizing…"; try { await syncToDesigner(diff); delete state.sync.errors.general; modal.hidden = true; document.querySelector("#adapter-status").textContent = `Designer API: readback verified · ${new Date().toLocaleTimeString()}`; } catch (error) { const message = error.message || String(error); state.sync.errors.general = message; persist(false); document.querySelector("#sync-warning").textContent = `Synchronization stopped: ${message}`; document.querySelector("#sync-warning").hidden = false; document.querySelector("#adapter-status").textContent = `Designer API: error · ${message}`; } finally { button.disabled = false; button.textContent = "Apply changes"; renderStatus(); renderObjectGroups(); } }

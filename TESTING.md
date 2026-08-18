@@ -91,11 +91,11 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 8. Toggle "Отсчитывать высоту объектов от сцены": a screen at world Y `0.8` displays `0` when stage top is `0.8`, then returns to `0.8` when unchecked.
 9. Select every object type; the canvas bounding-box height must not change.
 10. Verify the active strip stays one fixed-height horizontal row and scrolls horizontally when the host window is narrow.
-11. Verify lights and cameras expose no tilt field, only position and horizontal direction/rotation.
+11. Verify DMX lights and cameras expose no tilt field, only position and horizontal direction/rotation. MR Sets and Skeletons must not appear in the Planner object list.
 12. Link a projector to a surface and move the surface; the projector target marker and exported Look At must follow its centre.
 13. Switch the projector to `Ручная точка на плане` and drag the marker; only Look At X/Z change.
 14. Scroll over empty canvas; zoom changes by 10% and object coordinates remain unchanged.
-15. Enable LIVE and verify a WebSocket connection to `ws://127.0.0.1/api/session/liveupdate`; no HTTP polling loop is started. If the host has no WebSocket runtime, LIVE must revert to off with a clear error and manual Synchronize must remain available.
+15. Enable LIVE and verify a WebSocket connection to `ws://127.0.0.1/api/session/liveupdate`; no HTTP polling loop is started. Add a new Planner object and verify it is created in Designer; add a supported object in Designer and verify the Stage collection event imports it into Planner; delete it from either side with confirmation and verify the other side removes it. If the host has no WebSocket runtime, LIVE must revert to off with a clear error and manual Synchronize must remain available.
 
 ## Direct manipulation scenarios
 

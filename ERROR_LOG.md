@@ -438,3 +438,12 @@
 - Cause: the adapter ignored the stored Designer UID and guessed an object expression from the resource filename, replacing spaces with underscores. That expression could resolve to a different value/resource.
 - Fix: build LIVE object expressions from the exact Designer UID using a hexadecimal `getByUID(0x...)` call; keep the name/path expression only as a fallback for invalid legacy IDs.
 - Regression test: adapter source checks UID conversion through `BigInt` and `getByUID`, while the Designer integration test verifies WebSocket and Python readback address the same resource.
+
+## ERR-048: New objects did not cross the Planner/Designer boundary
+
+- Date: 2026-08-19
+- Symptom: an object created after LIVE startup appeared only on the side where it was created.
+- Cause: Live Update `set` can modify subscribed properties but cannot create resources, and the adapter subscribed only to existing object fields; Stage collection changes were not observed.
+- Fix: create missing Planner objects through the Python resource API before binding their UID, subscribe to Stage equipment collections for Designer-side additions/deletions, and run a debounced scene reconciliation. Explicit Planner deletion calls `resourceManager.remove(path)` after confirmation.
+- Regression test: the current Designer watcher observed `dmxScreens` collection events for a temporary create/delete probe; DmxScreen and FixtureGroup create/readback/delete probes completed successfully.
+- Note: after `resourceManager.remove(path)`, Designer can retain a stale typed object in the generic `stage.children` hierarchy until refresh. Inspection now trusts typed collections for supported equipment and ignores typed-class entries encountered through `children`.

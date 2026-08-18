@@ -7,7 +7,7 @@
 
 For screens and surfaces, Enter follows the physical-paper workflow `width -> height -> height above floor/stage`. Inputs remain text-editable and select their entire content on focus/click so a measured value can be replaced immediately. Height is a signed world coordinate; stage-relative mode displays the signed offset and never clamps it.
 
-The official Live Update contract is a WebSocket at `/api/session/liveupdate` with `subscribe`, `valuesChanged`, and `set` messages. The planner does not claim support for that transport until object/property subscriptions are implemented; the current UI keeps LIVE disabled and uses explicit Python HTTP synchronization.
+The official Live Update contract is a WebSocket at `/api/session/liveupdate` with `subscribe`, `valuesChanged`, and `set` messages. The current adapter implements this transport for supported equipment and uses Python HTTP only for resource creation, inspection, and confirmed deletion.
 
 ## ADR-001: Native Designer coordinates
 
@@ -132,7 +132,7 @@ The canvas context menu creates either a plain copy or a mirrored copy around th
 
 The planner interface exposes physical event-building intent, not Designer implementation fields. A projector has lens position and a world/surface target; its body/config rotations remain adapter-owned and are never normalized during import. Screens and surfaces expose physical dimensions, bottom-centre position, and plan yaw. Cameras and lights expose position and horizontal direction.
 
-Object properties live in one fixed horizontal strip above the X/Z plan. The left rail is selection-only and cannot expand with object parameters. Metric and density inputs use `0.1` wheel steps, angles use `1°`, direct typing remains available, and wheel events over the free canvas control zoom. LIVE is disabled until the official WebSocket Live Update adapter is implemented; explicit synchronization remains HTTP/Python.
+Object properties live in one fixed horizontal strip above the X/Z plan. The left rail is selection-only and cannot expand with object parameters. Metric and density inputs use `0.1` wheel steps, angles use `1°`, direct typing remains available, and wheel events over the free canvas control zoom. LIVE uses the official WebSocket adapter; explicit synchronization remains HTTP/Python for operations the protocol cannot perform.
 
 LED input provenance is stored as `media.inputMode`: `resolution`, `ppi`, or `pitch`. Only the selected mode is shown. The other density/resolution values are recalculated so exports and later adapters can consume a complete physical description without forcing all values into the operator workflow.
 
@@ -159,14 +159,14 @@ On startup the adapter inspects every typed collection and `stage.children`. The
 - Date: 2026-08-18
 - Status: accepted
 
-Readback validation has no configured tolerance. A mismatch is reported instead of being rounded away. Manual `Synchronize` remains available; LIVE is disabled until a real WebSocket adapter exists.
+Readback validation has no configured tolerance. A mismatch is reported instead of being rounded away. Manual `Synchronize` remains available alongside the real WebSocket LIVE adapter.
 
 ## ADR-020: Designer-facing English names
 
 - Date: 2026-08-18
 - Status: accepted
 
-Visible type labels and controls use English names matching Designer classes (`LED Screen`, `Surface`, `Projector`, `Light`, `Camera`). Imported Designer descriptions remain the source label, and the selected name in the property strip is editable without using a name as the ownership key.
+Visible type labels and controls use English names matching Designer classes (`LED Screen`, `DMX Screen`, `Projection Surface`, `DMX Light`, `Projector`, `Camera`). Imported Designer descriptions remain the source label, and the selected name in the property strip is editable without using a name as the ownership key. MR Sets and Skeletons are intentionally ignored.
 
 ## ADR-021: Stage geometry and helper filtering
 
@@ -195,7 +195,7 @@ The adapter never writes `stage.floor_size` because Free Designer Starter dispat
 - Date: 2026-08-18
 - Status: accepted
 
-The planner will not label debounced Python HTTP calls as LIVE. Official Live Update is the WebSocket endpoint `/api/session/liveupdate`, whose protocol uses `subscribe`, `valuesChanged`, and `set`. Until subscriptions for the planner's resource paths and writable properties are implemented and verified, the LIVE control is disabled while explicit HTTP synchronization remains available.
+The planner will not label debounced Python HTTP calls as LIVE. Official Live Update is the WebSocket endpoint `/api/session/liveupdate`, whose protocol uses `subscribe`, `valuesChanged`, and `set`. Supported object properties are subscribed by Designer UID; Stage collection subscriptions detect additions and deletions, while Python HTTP handles resource creation and confirmed removal.
 
 Confirmed default deletion uses the ResourceManager lifecycle: `resource.saveOnDelete()` followed by `resourceManager.remove(resource.path)`. Removing an item from a Stage collection alone is not considered deletion.
 
@@ -213,6 +213,6 @@ For screens and surfaces, Enter follows the physical setup order `geometry.width
 - Date: 2026-08-18
 - Status: accepted
 
-LIVE now uses the documented `ws://<director>/api/session/liveupdate` endpoint. The adapter subscribes to the exact resource using the stored Designer UID and the official `getByUID(0x...)` expression, then maps returned subscription IDs to planner fields. Type/name expressions are only a legacy fallback because normalized filenames can resolve separately from the object attached to the Stage. Local changes send `set` messages after a short debounce; Designer `valuesChanged` messages update the local plan without triggering an HTTP export loop. If the plugin host does not expose `WebSocket` or the endpoint rejects the connection, LIVE returns to off and explicit Python HTTP synchronization remains available.
+LIVE now uses the documented `ws://<director>/api/session/liveupdate` endpoint. The adapter subscribes to the exact resource using the stored Designer UID and the official `getByUID(0x...)` expression, then maps returned subscription IDs to planner fields. Type/name expressions are only a legacy fallback because normalized filenames can resolve separately from the object attached to the Stage. Stage collection arrays are also subscribed through the Stage UID to detect object creation and deletion. Local changes send `set` messages after a short debounce; missing Planner objects are created with one Python resource operation before binding. Explicit deletion uses a confirmed `resourceManager.remove(path)` operation. If the plugin host does not expose WebSocket or the endpoint rejects the connection, LIVE returns to off and explicit Python HTTP synchronization remains available.
 
 Subscription ids are session-scoped. The adapter therefore invalidates all ids on socket close and recovers from an `invalid id` error by resubscribing before sending further sets.

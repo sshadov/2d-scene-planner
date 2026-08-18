@@ -5,16 +5,20 @@
   const STATUS_PATH = "/api/session/status/session";
   const LIVE_PATH = "/api/session/liveupdate";
   const LIVE_URL = `${API_ORIGIN.replace(/^http/i, "ws")}${LIVE_PATH}`;
-  const typeCollections = { screen: "ledScreens", surface: "surfaces", camera: "cameras", projector: "projectors", light: "lights", designer: "displays" };
-  const typeClasses = { screen: "LedScreen", surface: "Screen2", camera: "Camera", projector: "Projector", light: "Light" };
-  const typeResourceFolders = { screen: "ledscreen", surface: "screen2", camera: "camera", projector: "projector", light: "light" };
+  const typeCollections = { screen: "ledScreens", dmxScreen: "dmxScreens", surface: "surfaces", dmxLight: "dmxLights", camera: "cameras", projector: "projectors", designer: "displays" };
+  const typeClasses = { screen: "LedScreen", dmxScreen: "DmxScreen", surface: "Screen2", dmxLight: "FixtureGroup", camera: "Camera", projector: "Projector" };
+  const typeResourceFolders = { screen: "ledscreen", dmxScreen: "dmxscreen", surface: "screen2", dmxLight: "dmxlight", camera: "camera", projector: "projector" };
   const collectionTypes = Object.fromEntries(Object.entries(typeCollections).map(([type, collection]) => [collection, type]));
   let liveSocket = null;
   let liveConnectPromise = null;
   let liveBindings = new Map();
+  let liveSceneBindings = new Map();
   let livePendingSubscriptions = new Set();
   let liveOnStatus = () => {};
   let liveOnValuesChanged = () => {};
+  let liveOnSceneChanged = () => {};
+  let liveStageId = null;
+  let liveSceneReady = false;
   const liveLogEntries = [];
   const LIVE_LOG_LIMIT = 300;
 
@@ -115,7 +119,7 @@ return json.dumps({"roomFloor": {"width": float(floor_size.x), "depth": float(fl
     return `def vec_data(value):
     return {"x": float(value.x), "y": float(value.y), "z": float(value.z)}
 def readback(obj, kind):
-    if kind in ["screen", "surface"]:
+    if kind in ["screen", "dmxScreen", "surface"]:
         pos = obj.offset
         rot = obj.rotation
         size = obj.scale
@@ -156,8 +160,8 @@ warnings = []
 collection_types = ${quote(collectionTypes)}
 ${readbackHelpers()}
 seen_ids = set()
-class_types = {"LedScreen": "screen", "Screen2": "surface", "Camera": "camera", "Projector": "projector", "Light": "light"}
-supported_classes = set(["LedScreen", "Screen2", "Camera", "Projector", "Light", "Object", "ObjectBox", "Prop"])
+class_types = {"LedScreen": "screen", "DmxScreen": "dmxScreen", "Screen2": "surface", "FixtureGroup": "dmxLight", "Camera": "camera", "Projector": "projector"}
+supported_classes = set(["LedScreen", "DmxScreen", "Screen2", "FixtureGroup", "Camera", "Projector", "Object", "ObjectBox", "Prop"])
 scene_cube = None
 for collection_name in ${quote([...new Set([...Object.values(typeCollections), "displays", "children"])])}:
     collection = getattr(stage, collection_name, [])
@@ -175,6 +179,11 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
             text = (path + " " + description).lower()
             if path == "objects/object/dsg-scene-cube.apx":
                 scene_cube = {"designerId": uid, "path": path, "description": description}
+                continue
+            if collection_name == "children" and type(obj).__name__ in class_types:
+                # Typed Stage collections are authoritative. The generic
+                # children hierarchy can retain stale references after a
+                # resourceManager.remove() until Designer refreshes it.
                 continue
             if collection_name == "children" and path.lower().startswith("internal/"):
                 warnings.append(collection_name + ": ignored Designer internal helper " + path)
@@ -199,7 +208,7 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
 floor = getattr(stage, "floor_pos", None)
 floor_y = float(floor.y) if floor is not None else 0.0
 floor_size = getattr(stage, "floor_size", None)
-return json.dumps({"objects": objects, "floorY": floor_y, "floorPosition": vec_data(floor) if floor is not None else {"x": 0.0, "y": 0.0, "z": 0.0}, "roomFloor": {"width": float(floor_size.x), "depth": float(floor_size.y)} if floor_size is not None else None, "warnings": warnings, "sceneCube": scene_cube})`;
+return json.dumps({"objects": objects, "stageId": str(getattr(stage, "uid", "")), "floorY": floor_y, "floorPosition": vec_data(floor) if floor is not None else {"x": 0.0, "y": 0.0, "z": 0.0}, "roomFloor": {"width": float(floor_size.x), "depth": float(floor_size.y)} if floor_size is not None else None, "warnings": warnings, "sceneCube": scene_cube})`;
   }
   function createScript(payload) {
     return `import json
@@ -213,7 +222,7 @@ pos = transform["position"]
 rot = transform["rotation"]
 markDirty(obj)
 ${assignHelpers()}
-if kind in ["screen", "surface"]:
+if kind in ["screen", "dmxScreen", "surface"]:
     geometry = payload["geometry"]
     assign("offset", Vec(pos["x"], pos["y"] + geometry["height"] / 2.0, pos["z"]))
     assign("scale", Vec(geometry["width"], geometry["height"], 0.1))
@@ -276,7 +285,7 @@ if name_change:
 transform_change = changed.get("transform", {})
 position_change = transform_change.get("position", {})
 rotation_change = transform_change.get("rotation", {})
-if kind in ["screen", "surface"]:
+if kind in ["screen", "dmxScreen", "surface"]:
     current_pos = obj.offset
     current_size = obj.scale
     current_rot = obj.rotation
@@ -328,6 +337,7 @@ target_ids = set(json.loads(${payloadText(designerIds.map(String))}))
 stage = state.stage
 deleted = []
 skipped = []
+processed = set()
 for collection_name in ${quote([...new Set([...Object.values(typeCollections), "children"])])}:
     collection = getattr(stage, collection_name, [])
     for candidate in list(collection):
@@ -335,8 +345,9 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
             candidate_id = str(getattr(candidate, "uid", ""))
         except Exception:
             continue
-        if candidate_id not in target_ids:
+        if candidate_id in processed or candidate_id not in target_ids:
             continue
+        processed.add(candidate_id)
         path = str(getattr(candidate, "path", ""))
         description = str(getattr(candidate, "description", ""))
         text = (path + " " + description).lower()
@@ -359,6 +370,39 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
         except Exception as error:
             warnings = "delete " + candidate_id + ": " + str(error)
             skipped.append(warnings)
+return json.dumps({"deleted": deleted, "skipped": skipped})`;
+  }
+  function deleteManagedScript(designerIds) {
+    return `import json
+target_ids = set(json.loads(${payloadText(designerIds.map(String))}))
+stage = state.stage
+deleted = []
+skipped = []
+processed = set()
+for collection_name in ${quote([...new Set([...Object.values(typeCollections), "children"])])}:
+    collection = getattr(stage, collection_name, [])
+    for candidate in list(collection):
+        try:
+            candidate_id = str(getattr(candidate, "uid", ""))
+            path = str(getattr(candidate, "path", ""))
+        except Exception:
+            continue
+        if candidate_id in processed or candidate_id not in target_ids or path == "objects/object/dsg-scene-cube.apx":
+            continue
+        processed.add(candidate_id)
+        if type(candidate).__name__ not in ["LedScreen", "DmxScreen", "Screen2", "FixtureGroup", "Camera", "Projector", "Object", "ObjectBox", "Prop"]:
+            skipped.append(candidate_id)
+            continue
+        try:
+            candidate.saveOnDelete()
+            resourceManager.remove(path)
+            try:
+                collection.remove(candidate)
+            except Exception:
+                pass
+            deleted.append(candidate_id)
+        except Exception as error:
+            skipped.append(candidate_id + ": " + str(error))
 return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
 
@@ -389,7 +433,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     const add = (field, property, encode = value => value, decode = value => value) => definitions.push({ field, property, encode, decode });
     const transformPrefix = type === "projector" ? "configPosition" : "offset";
     ["x", "y", "z"].forEach(axis => add(`transform.position.${axis}`, `object.${transformPrefix}.${axis}`));
-    if (["screen", "surface"].includes(type)) {
+    if (["screen", "dmxScreen", "surface"].includes(type)) {
       add("geometry.width", "object.scale.x"); add("geometry.height", "object.scale.y", value => value, value => value);
       add("transform.position.y", "object.offset.y", value => Number(value) + Number(payload.geometry?.height || 0) / 2, value => Number(value) - Number(payload.geometry?.height || 0) / 2);
       add("transform.rotation.y", "object.rotation.y");
@@ -417,6 +461,25 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   function liveResetSubscriptionIds() {
     livePendingSubscriptions.clear();
     for (const binding of liveBindings.values()) { binding.id = null; binding.lastSent = undefined; binding.initialized = false; }
+    for (const binding of liveSceneBindings.values()) binding.id = null;
+    liveSceneReady = false;
+  }
+  function configureLiveScene(stageId) {
+    const nextStageId = stageId ? String(stageId) : null;
+    if (nextStageId === liveStageId && liveSceneBindings.size) return;
+    liveStageId = nextStageId;
+    liveSceneBindings = new Map();
+    liveSceneReady = false;
+    if (liveSocket?.readyState === 1) liveSubscribeScene();
+  }
+  function liveSubscribeScene() {
+    if (!liveSocket || liveSocket.readyState !== 1 || !liveStageId) return;
+    const stagePath = liveUidExpression(liveStageId);
+    if (!stagePath) return;
+    const collections = ["ledScreens", "dmxScreens", "dmxLights", "surfaces", "projectors", "cameras"];
+    const properties = collections.map(collection => `object.${collection}`);
+    collections.forEach((collection, index) => liveSceneBindings.set(collection, { collection, objectPath: stagePath, propertyPath: properties[index], id: null }));
+    liveSend({ subscribe: { object: stagePath, properties } });
   }
   function liveHandleMessage(raw) {
     let message;
@@ -424,6 +487,8 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     liveLog("message", { keys: Object.keys(message), subscriptions: message.subscriptions?.length || 0, valuesChanged: message.valuesChanged?.length || 0, values: Array.isArray(message.valuesChanged) ? message.valuesChanged.slice(0, 50).map(change => { const binding = [...liveBindings.values()].find(candidate => candidate.id === change.id); return { id: change.id, value: change.value, pluginId: binding?.pluginId || null, field: binding?.field || null, property: binding?.propertyPath || null }; }) : [], error: message.error || null });
     if (Array.isArray(message.subscriptions)) {
       message.subscriptions.forEach(subscription => {
+        const sceneBinding = [...liveSceneBindings.values()].find(candidate => candidate.id === subscription.id || (candidate.objectPath === subscription.objectPath && candidate.propertyPath === subscription.propertyPath));
+        if (sceneBinding) { sceneBinding.id = subscription.id; return; }
         const binding = [...liveBindings.values()].find(candidate => candidate.id === subscription.id || (candidate.objectPath === subscription.objectPath && candidate.propertyPath === subscription.propertyPath));
         if (!binding) return;
         const isNewSubscription = binding.id !== subscription.id;
@@ -433,6 +498,13 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       });
     }
     if (Array.isArray(message.valuesChanged)) message.valuesChanged.forEach(change => {
+      const sceneBinding = [...liveSceneBindings.values()].find(candidate => candidate.id === change.id);
+      if (sceneBinding) {
+        sceneBinding.initialized = true;
+        if (liveSceneReady) liveOnSceneChanged({ collection: sceneBinding.collection, value: change.value });
+        else if ([...liveSceneBindings.values()].every(candidate => candidate.initialized)) liveSceneReady = true;
+        return;
+      }
       const binding = [...liveBindings.values()].find(candidate => candidate.id === change.id);
       if (!binding) return;
       binding.lastSent = change.value;
@@ -450,6 +522,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
         liveLog("recover", { reason: detail });
         liveOnStatus({ status: "recovering", detail: `${detail}; resubscribing` });
         liveSubscribeBindings();
+        liveSubscribeScene();
       } else liveOnStatus({ status: "error", detail });
     }
   }
@@ -484,7 +557,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     liveFlushSets();
   }
   function liveStart(callbacks = {}) {
-    liveOnStatus = callbacks.onStatus || (() => {}); liveOnValuesChanged = callbacks.onValuesChanged || (() => {});
+    liveOnStatus = callbacks.onStatus || (() => {}); liveOnValuesChanged = callbacks.onValuesChanged || (() => {}); liveOnSceneChanged = callbacks.onSceneChanged || (() => {});
     if (liveSocket?.readyState === 1) return Promise.resolve();
     if (liveConnectPromise) return liveConnectPromise;
     if (typeof WebSocket !== "function") { liveLog("error", { phase: "support", message: "WebSocket is not available in this plugin window" }); return Promise.reject(new Error("WebSocket is not available in this plugin window")); }
@@ -492,14 +565,14 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       let opened = false;
       liveLog("connect", { url: LIVE_URL });
       const socket = new WebSocket(LIVE_URL); liveSocket = socket;
-      socket.onopen = () => { opened = true; liveConnectPromise = null; liveLog("open", { url: LIVE_URL }); liveOnStatus({ status: "open", detail: LIVE_URL }); liveSubscribeBindings(); liveFlushSets(); resolve(); };
+      socket.onopen = () => { opened = true; liveConnectPromise = null; liveLog("open", { url: LIVE_URL }); liveOnStatus({ status: "open", detail: LIVE_URL }); liveSubscribeScene(); liveSubscribeBindings(); liveFlushSets(); resolve(); };
       socket.onmessage = event => liveHandleMessage(event.data);
       socket.onerror = () => { const error = new Error(`Live Update WebSocket connection failed: ${LIVE_URL}`); liveLog("error", { phase: "socket", message: error.message }); liveOnStatus({ status: "error", detail: error.message }); if (!opened) { liveConnectPromise = null; reject(error); } };
       socket.onclose = event => { liveSocket = null; liveResetSubscriptionIds(); liveConnectPromise = null; const detail = `Live Update connection closed (code ${event.code}${event.reason ? `: ${event.reason}` : ""})`; liveLog("close", { code: event.code, reason: event.reason || "" }); liveOnStatus({ status: "closed", detail }); };
     });
     return liveConnectPromise;
   }
-  function liveStop() { if (liveSocket) { try { liveSocket.close(); } catch {} } liveSocket = null; liveConnectPromise = null; liveResetSubscriptionIds(); liveBindings = new Map(); liveOnStatus({ status: "closed", detail: "Live Update disabled" }); }
+  function liveStop() { if (liveSocket) { try { liveSocket.close(); } catch {} } liveSocket = null; liveConnectPromise = null; liveResetSubscriptionIds(); liveBindings = new Map(); liveSceneBindings = new Map(); liveOnStatus({ status: "closed", detail: "Live Update disabled" }); }
 
   window.disguiseSceneAdapter = {
     capabilities: { liveUpdate: true, liveTransport: "websocket", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API + Live Update WebSocket", apiOrigin: API_ORIGIN, liveUrl: LIVE_URL },
@@ -509,11 +582,13 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     createObject: payload => execute(createScript(payload)),
     updateObject: (designerId, changed, designerPath, kind) => execute(updateScript(designerId, changed, designerPath, kind)),
     deleteObjects: designerIds => execute(deleteScript(designerIds)),
+    deleteManagedObjects: designerIds => execute(deleteManagedScript(designerIds)),
+    configureLiveScene,
     liveStart,
     liveStop,
     liveSync,
     getLiveLogs: () => liveLogEntries.slice(),
     clearLiveLogs: () => { liveLogEntries.length = 0; },
-    debugScripts: { inspectScript, createScript, updateScript }
+    debugScripts: { inspectScript, createScript, updateScript, deleteManagedScript }
   };
 })();

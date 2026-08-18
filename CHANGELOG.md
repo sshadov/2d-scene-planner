@@ -18,6 +18,8 @@
 - Added object and field labels to LIVE subscription/value diagnostics instead of reporting opaque subscription IDs alone.
 - Fixed screen/surface LIVE Y conversion so lower-edge Y is converted to Designer center `offset.y` exactly once instead of adding half-height on every update.
 - Bound LIVE subscriptions to stable Designer resources with `getByUID(0x...)`; generated type/name expressions could resolve to a detached value instead of the object attached to the Stage.
+- Added bidirectional object lifecycle for `LED Screen`, `DMX Screen`, `Projection Surface`, `DMX Light`, `Projector`, and `Camera`: LIVE creates Planner objects, watches Stage collections, imports Designer additions, and confirms deletions. MR Sets and Skeletons remain ignored.
+- Bumped the deployed plugin cache version to `v10.24` for the bidirectional lifecycle build.
 
 ## 0.16.0 - 2026-08-18
 

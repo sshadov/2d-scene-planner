@@ -87,7 +87,7 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .legend { padding: 11px 14px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr; gap: 7px 9px; color: #778491; font-size: 9px; }
 .legend span { display: flex; align-items: center; gap: 5px; }
 .swatch { width: 7px; height: 7px; border-radius: 2px; }
-.swatch.screen { background: var(--cyan); }.swatch.surface { background: var(--blue); }.swatch.camera { background: var(--coral); }.swatch.projector { background: var(--purple); }.swatch.light { background: var(--yellow); }
+.swatch.screen { background: var(--cyan); }.swatch.dmx-screen { background: #62d7a7; }.swatch.surface { background: var(--blue); }.swatch.camera { background: var(--coral); }.swatch.projector { background: var(--purple); }.swatch.light { background: var(--yellow); }
 
 .stage-panel { min-width: 0; min-height: 0; display: grid; grid-template-rows: 82px 42px minmax(0, 1fr) 34px; background: var(--canvas); }
 .active-object-strip { min-width: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); background: #111820; display: flex; align-items: stretch; gap: 12px; overflow-x: auto; overflow-y: hidden; }
