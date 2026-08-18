@@ -12,6 +12,7 @@
 - Batched incoming LIVE values into one animation-frame render so screens do not visibly jump through partial intermediate states.
 - Guarded LIVE startup/shutdown with an intent token so a late connection result cannot re-enable a mode the user just turned off.
 - Added an authority guard for local Planner writes and disabled LIVE in the standalone `127.0.0.1:4173` preview so it cannot compete with the embedded Designer plugin.
+- Reverted the experimental LIVE value queue, initial-value gate, and authority guard after identifying the duplicate-browser client as the source-of-truth problem; added a ring-buffer protocol log instead.
 
 ## 0.16.0 - 2026-08-18
 

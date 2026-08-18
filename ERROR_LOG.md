@@ -396,3 +396,11 @@
 - Cause: both windows subscribed to the same Designer resources and issued competing `set` commands.
 - Fix: standalone `127.0.0.1:4173` is now read-only for LIVE; only the embedded Designer plugin can enable WebSocket transport. Manual inspection and Synchronize remain available in the preview.
 - Regression test: startup source checks the standalone preview guard and visible runtime version.
+
+## ERR-043: Experimental LIVE convergence guards obscured the source-of-truth bug
+
+- Date: 2026-08-19
+- Symptom: screens still moved unpredictably after batching values and suppressing echoed writes.
+- Cause: the actual conflict was a second LIVE client in the standalone browser, not only message ordering.
+- Fix: remove the temporary batching/initial-value/authority layers; keep the standalone LIVE guard and add a protocol ring-buffer log for direct diagnosis.
+- Regression test: source checks confirm those temporary layers are absent while `getLiveLogs()` and protocol event logging are present.

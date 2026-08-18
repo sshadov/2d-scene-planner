@@ -42,10 +42,7 @@
   let liveSyncInFlight = false;
   let liveSyncQueued = false;
   let activeFieldRefs = new Map();
-  let liveValueQueue = new Map();
-  let liveValueFrame = null;
   let liveIntent = 0;
-  let livePendingValues = new Map();
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -375,31 +372,13 @@
     else if (update.status === "closed") { status.textContent = `LIVE: ${update.detail || "WebSocket closed"}`; if (state.liveEnabled) { state.liveEnabled = false; document.querySelector("#live-toggle").checked = false; persist(false); renderStatus(); } }
     else if (update.status === "error") { status.textContent = `LIVE: WebSocket error · ${update.detail || "unknown error"}`; state.liveEnabled = false; document.querySelector("#live-toggle").checked = false; persist(false); renderStatus(); }
   }
-  function flushLiveValues() {
-    liveValueFrame = null;
-    const changes = [...liveValueQueue.values()]; liveValueQueue.clear();
-    changes.forEach(change => {
-      const object = state.objects.find(item => item.pluginId === change.pluginId); if (!object) return;
-      if (change.field === "name") object.name = String(change.value || object.name);
-      else if (change.field.includes("resolution") || change.field.includes("geometry") || change.field.startsWith("lookAt.") || change.field.startsWith("transform.")) setPath(object, change.field, finite(change.value, getFieldValue(object, change.field)));
-      const record = state.sync.objects?.[object.pluginId];
-      if (record) { record.payload = objectPayload(object); record.lastExported = canonical(record.payload); }
-    });
-    if (changes.length) { persist(false); render(); }
-  }
-  function sameLiveValue(left, right) { if (typeof left === "number" && typeof right === "number") return Math.abs(left - right) < 0.00001; return String(left) === String(right); }
-  function noteLiveSet(change) { livePendingValues.set(`${change.pluginId}:${change.field}`, { value: change.value, at: Date.now() }); }
   function applyLiveValue(change) {
-    const key = `${change.pluginId}:${change.field}`; const pending = livePendingValues.get(key);
-    if (pending) {
-      if (sameLiveValue(pending.value, change.value)) livePendingValues.delete(key);
-      else if (Date.now() - pending.at < 1500) return;
-      else livePendingValues.delete(key);
-    }
-    liveValueQueue.set(`${change.pluginId}:${change.field}`, change);
-    if (liveValueFrame !== null) return;
-    if (globalThis.requestAnimationFrame) liveValueFrame = globalThis.requestAnimationFrame(flushLiveValues);
-    else liveValueFrame = setTimeout(flushLiveValues, 0);
+    const object = state.objects.find(item => item.pluginId === change.pluginId); if (!object) return;
+    if (change.field === "name") object.name = String(change.value || object.name);
+    else if (change.field.includes("resolution") || change.field.includes("geometry") || change.field.startsWith("lookAt.") || change.field.startsWith("transform.")) setPath(object, change.field, finite(change.value, getFieldValue(object, change.field)));
+    const record = state.sync.objects?.[object.pluginId];
+    if (record) { record.payload = objectPayload(object); record.lastExported = canonical(record.payload); }
+    persist(false); render();
   }
   async function runLiveSync() {
     if (liveSyncInFlight || !state.liveEnabled) return;
@@ -423,11 +402,11 @@
   async function startLive() {
     const adapter = getAdapter(); if (!adapter?.liveStart) throw new Error("WebSocket Live Update is not available");
     const intent = ++liveIntent;
-    await adapter.liveStart({ onStatus: liveStatus, onValuesChanged: applyLiveValue, onSet: noteLiveSet });
+    await adapter.liveStart({ onStatus: liveStatus, onValuesChanged: applyLiveValue });
     if (intent !== liveIntent) { adapter.liveStop?.(); return; }
     state.liveEnabled = true; persist(false); renderStatus(); scheduleLiveSync(0);
   }
-  function stopLive() { liveIntent += 1; livePendingValues.clear(); state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; persist(false); getAdapter()?.liveStop?.(); renderStatus(); }
+  function stopLive() { liveIntent += 1; state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; persist(false); getAdapter()?.liveStop?.(); renderStatus(); }
   function importedObject(item, index) {
     const knownType = ["screen", "surface", "projector", "light", "camera"].includes(item.type) ? item.type : "designer";
     const existingRecord = Object.values(state.sync.objects || {}).find(record => String(record.designerId || "") === String(item.id || item.uid));
