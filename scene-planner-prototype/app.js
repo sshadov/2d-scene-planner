@@ -1,6 +1,7 @@
 (() => {
   const VERSION = 10;
   const STORAGE_KEY = "disguise-scene-generator-state-v10";
+  const STANDALONE_PREVIEW = ["127.0.0.1", "localhost"].includes(location.hostname) && String(location.port) === "4173";
   const PLANAR_TYPES = new Set(["screen", "surface"]);
   const GROUP_ORDER = ["screen", "surface", "projector", "light", "camera", "designer"];
   const defaults = {
@@ -44,6 +45,7 @@
   let liveValueQueue = new Map();
   let liveValueFrame = null;
   let liveIntent = 0;
+  let livePendingValues = new Map();
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -385,7 +387,15 @@
     });
     if (changes.length) { persist(false); render(); }
   }
+  function sameLiveValue(left, right) { if (typeof left === "number" && typeof right === "number") return Math.abs(left - right) < 0.00001; return String(left) === String(right); }
+  function noteLiveSet(change) { livePendingValues.set(`${change.pluginId}:${change.field}`, { value: change.value, at: Date.now() }); }
   function applyLiveValue(change) {
+    const key = `${change.pluginId}:${change.field}`; const pending = livePendingValues.get(key);
+    if (pending) {
+      if (sameLiveValue(pending.value, change.value)) livePendingValues.delete(key);
+      else if (Date.now() - pending.at < 1500) return;
+      else livePendingValues.delete(key);
+    }
     liveValueQueue.set(`${change.pluginId}:${change.field}`, change);
     if (liveValueFrame !== null) return;
     if (globalThis.requestAnimationFrame) liveValueFrame = globalThis.requestAnimationFrame(flushLiveValues);
@@ -413,11 +423,11 @@
   async function startLive() {
     const adapter = getAdapter(); if (!adapter?.liveStart) throw new Error("WebSocket Live Update is not available");
     const intent = ++liveIntent;
-    await adapter.liveStart({ onStatus: liveStatus, onValuesChanged: applyLiveValue });
+    await adapter.liveStart({ onStatus: liveStatus, onValuesChanged: applyLiveValue, onSet: noteLiveSet });
     if (intent !== liveIntent) { adapter.liveStop?.(); return; }
     state.liveEnabled = true; persist(false); renderStatus(); scheduleLiveSync(0);
   }
-  function stopLive() { liveIntent += 1; state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; persist(false); getAdapter()?.liveStop?.(); renderStatus(); }
+  function stopLive() { liveIntent += 1; livePendingValues.clear(); state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; persist(false); getAdapter()?.liveStop?.(); renderStatus(); }
   function importedObject(item, index) {
     const knownType = ["screen", "surface", "projector", "light", "camera"].includes(item.type) ? item.type : "designer";
     const existingRecord = Object.values(state.sync.objects || {}).find(record => String(record.designerId || "") === String(item.id || item.uid));
@@ -454,7 +464,7 @@
   async function deleteSelectedStandards() { const modal = document.querySelector("#sync-modal"); const diff = modal._diff; const ids = [...document.querySelectorAll("#standard-checklist input:checked")].map(input => input.value); if (!diff?.adapter || !ids.length || typeof diff.adapter.deleteObjects !== "function") return; if (!window.confirm(`Удалить ${ids.length} выбранных стандартных объектов?`)) return; try { await diff.adapter.deleteObjects(ids); modal.hidden = true; } catch (error) { document.querySelector("#sync-warning").textContent = `Очистка остановлена: ${error.message || error}`; } }
   function exportSceneJson() { const output = { version: VERSION, units: "metres", coordinateSystem: "Designer world XYZ; top view X/Z; no room-relative transform", room: state.room, stage: state.stage, objects: state.objects.map(({ id, ...object }) => object.type === "projector" ? { ...object, lookAt: effectiveLookAt(object) } : object) }; const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "disguise-scene-plan.json"; link.click(); URL.revokeObjectURL(url); }
 
-  document.querySelector("#clear-scene-button").addEventListener("click", clearPlannerScene); document.querySelector("#export-button").addEventListener("click", openSyncDialog); document.querySelector("#json-button").addEventListener("click", exportSceneJson); document.querySelector("#confirm-sync").addEventListener("click", confirmSync); document.querySelector("#delete-standards").addEventListener("click", deleteSelectedStandards); document.querySelectorAll("input[name=sync-mode]").forEach(input => input.addEventListener("change", () => { if (!document.querySelector("#sync-modal").hidden) openSyncDialog(); })); ["#close-sync", "#cancel-sync"].forEach(selector => document.querySelector(selector).addEventListener("click", () => { document.querySelector("#sync-modal").hidden = true; })); document.querySelector("#objects-toggle").addEventListener("click", () => { const rail = document.querySelector("#object-rail"); rail.hidden = !rail.hidden; document.querySelector("#objects-toggle").setAttribute("aria-expanded", String(!rail.hidden)); }); document.querySelector("#live-toggle").addEventListener("change", async event => { const toggle = event.target; if (!toggle.checked) { stopLive(); document.querySelector("#adapter-status").textContent = "LIVE off"; return; } toggle.disabled = true; try { await startLive(); } catch (error) { state.liveEnabled = false; toggle.checked = false; persist(false); document.querySelector("#adapter-status").textContent = `LIVE unavailable · ${error.message || error}`; } finally { toggle.disabled = false; renderStatus(); } });
+  document.querySelector("#clear-scene-button").addEventListener("click", clearPlannerScene); document.querySelector("#export-button").addEventListener("click", openSyncDialog); document.querySelector("#json-button").addEventListener("click", exportSceneJson); document.querySelector("#confirm-sync").addEventListener("click", confirmSync); document.querySelector("#delete-standards").addEventListener("click", deleteSelectedStandards); document.querySelectorAll("input[name=sync-mode]").forEach(input => input.addEventListener("change", () => { if (!document.querySelector("#sync-modal").hidden) openSyncDialog(); })); ["#close-sync", "#cancel-sync"].forEach(selector => document.querySelector(selector).addEventListener("click", () => { document.querySelector("#sync-modal").hidden = true; })); document.querySelector("#objects-toggle").addEventListener("click", () => { const rail = document.querySelector("#object-rail"); rail.hidden = !rail.hidden; document.querySelector("#objects-toggle").setAttribute("aria-expanded", String(!rail.hidden)); }); document.querySelector("#live-toggle").addEventListener("change", async event => { const toggle = event.target; if (STANDALONE_PREVIEW) { toggle.checked = false; toggle.disabled = true; document.querySelector("#adapter-status").textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; return; } if (!toggle.checked) { stopLive(); document.querySelector("#adapter-status").textContent = "LIVE off"; return; } toggle.disabled = true; try { await startLive(); } catch (error) { state.liveEnabled = false; toggle.checked = false; persist(false); document.querySelector("#adapter-status").textContent = `LIVE unavailable · ${error.message || error}`; } finally { toggle.disabled = false; renderStatus(); } });
   document.querySelector("#undo-button").addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button").addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in").addEventListener("click", () => { state.zoom = clamp(state.zoom + .15, .5, 2); drawScene(); }); document.querySelector("#zoom-out").addEventListener("click", () => { state.zoom = clamp(state.zoom - .15, .5, 2); drawScene(); });
   document.querySelector("#align-x").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.x = state.stage.centerX; persist(); render(); }); document.querySelector("#align-z").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.z = state.stage.centerZ; persist(); render(); });
   canvas.addEventListener("pointerdown", event => {
@@ -555,7 +565,7 @@
 
   setupStaticInputs(); if (!loadPersisted()) { syncStaticInputs(); render(); } else { syncStaticInputs(); render(); }
   const adapter = getAdapter(); const adapterStatus = document.querySelector("#adapter-status");
-  const finishStartup = async () => { if (adapter) { try { await importDesignerScene(adapter); adapterStatus.textContent = "Designer scene imported"; } catch (error) { adapterStatus.textContent = `Designer import failed · ${error.message || error}`; } } const liveToggle = document.querySelector("#live-toggle"); if (!adapter?.capabilities?.liveUpdate) { state.liveEnabled = false; liveToggle.checked = false; liveToggle.disabled = true; adapterStatus.textContent = adapter ? "LIVE unavailable · WebSocket adapter is not available" : "Designer API unavailable · JSON available"; persist(false); } else { liveToggle.disabled = false; appReady = true; if (state.liveEnabled) { try { await startLive(); } catch (error) { state.liveEnabled = false; liveToggle.checked = false; adapterStatus.textContent = `LIVE unavailable · ${error.message || error}`; persist(false); } } } appReady = true; renderStatus(); };
+  const finishStartup = async () => { if (adapter) { try { await importDesignerScene(adapter); adapterStatus.textContent = "Designer scene imported"; } catch (error) { adapterStatus.textContent = `Designer import failed · ${error.message || error}`; } } const liveToggle = document.querySelector("#live-toggle"); if (STANDALONE_PREVIEW) { state.liveEnabled = false; liveToggle.checked = false; liveToggle.disabled = true; adapterStatus.textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; persist(false); } else if (!adapter?.capabilities?.liveUpdate) { state.liveEnabled = false; liveToggle.checked = false; liveToggle.disabled = true; adapterStatus.textContent = adapter ? "LIVE unavailable · WebSocket adapter is not available" : "Designer API unavailable · JSON available"; persist(false); } else { liveToggle.disabled = false; appReady = true; if (state.liveEnabled) { try { await startLive(); } catch (error) { state.liveEnabled = false; liveToggle.checked = false; adapterStatus.textContent = `LIVE unavailable · ${error.message || error}`; persist(false); } } } appReady = true; renderStatus(); };
   if (!adapter) { state.liveEnabled = false; adapterStatus.textContent = "Designer API unavailable · JSON available"; finishStartup(); }
   else {
     adapterStatus.textContent = "Checking Designer API…";

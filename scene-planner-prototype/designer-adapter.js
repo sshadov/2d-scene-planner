@@ -15,6 +15,7 @@
   let livePendingSubscriptions = new Set();
   let liveOnStatus = () => {};
   let liveOnValuesChanged = () => {};
+  let liveOnSet = () => {};
 
   function quote(value) { return JSON.stringify(value); }
   function payloadText(payload) { return quote(JSON.stringify(payload)); }
@@ -394,6 +395,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       if (binding.lastSent !== undefined && JSON.stringify(binding.lastSent) === JSON.stringify(binding.value)) continue;
       changes.push({ id: binding.id, value: binding.value });
       binding.lastSent = binding.value;
+      liveOnSet({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(binding.value) });
     }
     if (changes.length) liveSend({ set: changes });
   }
@@ -460,7 +462,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     liveFlushSets();
   }
   function liveStart(callbacks = {}) {
-    liveOnStatus = callbacks.onStatus || (() => {}); liveOnValuesChanged = callbacks.onValuesChanged || (() => {});
+    liveOnStatus = callbacks.onStatus || (() => {}); liveOnValuesChanged = callbacks.onValuesChanged || (() => {}); liveOnSet = callbacks.onSet || (() => {});
     if (liveSocket?.readyState === 1) return Promise.resolve();
     if (liveConnectPromise) return liveConnectPromise;
     if (typeof WebSocket !== "function") return Promise.reject(new Error("WebSocket is not available in this plugin window"));

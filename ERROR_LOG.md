@@ -380,3 +380,19 @@
 - Cause: `startLive()` always enabled the state after its asynchronous connection promise resolved, even when a newer stop/start intent had superseded it.
 - Fix: sequence LIVE start/stop operations with an intent token and invalidate stale results.
 - Regression test: app source contains the intent guard around `liveStart()` and invalidation in `stopLive()`.
+
+## ERR-041: Planner and Designer fought over LIVE values
+
+- Date: 2026-08-19
+- Symptom: screens oscillated after enabling LIVE even though final Designer readback was stable.
+- Cause: the planner accepted intermediate `valuesChanged` notifications for its own pending `set` writes and could send them back.
+- Fix: local Planner writes remain authoritative until Designer echoes the requested value; unrelated external Designer edits still flow back into the plan.
+- Regression test: adapter exposes `onSet` and the app tracks `livePendingValues` before applying incoming updates.
+
+## ERR-042: Standalone browser became a second LIVE client
+
+- Date: 2026-08-19
+- Symptom: screens oscillated when the local preview browser and embedded Designer plugin were open together.
+- Cause: both windows subscribed to the same Designer resources and issued competing `set` commands.
+- Fix: standalone `127.0.0.1:4173` is now read-only for LIVE; only the embedded Designer plugin can enable WebSocket transport. Manual inspection and Synchronize remain available in the preview.
+- Regression test: startup source checks the standalone preview guard and visible runtime version.
