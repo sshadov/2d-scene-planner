@@ -26,6 +26,7 @@ h1, h2, h3, p { margin: 0; }
 .brand-block { width: 132px; flex: 0 0 auto; }
 .eyebrow { color: var(--cyan); font-size: 9px; font-weight: 750; letter-spacing: 1.1px; }
 h1 { margin-top: 2px; font-size: 18px; line-height: 1; }
+.app-version { color: var(--muted); font-size: 10px; font-weight: 500; letter-spacing: .04em; vertical-align: middle; }
 h2 { font-size: 13px; }
 .add-toolbar { min-width: 0; display: flex; align-items: center; gap: 5px; overflow-x: auto; scrollbar-width: none; }
 .add-toolbar::-webkit-scrollbar { display: none; }

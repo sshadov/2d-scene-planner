@@ -6,6 +6,7 @@
 - Kept Python HTTP synchronization for explicit create/update/inspect/delete operations; LIVE no longer uses polling.
 - Made dimension focus use direct input references and verified `Width -> Height -> Position Y` in the browser.
 - Reset session-scoped subscription ids after reconnects and automatically resubscribe after an `invalid id` response.
+- Added the runtime version next to the Disguise title so cached plugin copies are immediately visible.
 
 ## 0.16.0 - 2026-08-18
 

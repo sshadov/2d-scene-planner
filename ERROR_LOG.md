@@ -340,3 +340,11 @@
 - Cause: subscription ids are scoped to one WebSocket session, but the adapter retained ids from the closed socket and sent `set` messages before resubscribing.
 - Fix: clear every binding id and last-sent value on close; when Designer reports an invalid subscription id, clear the bindings and resubscribe automatically on the current socket.
 - Regression test: adapter source covers id reset on close and the invalid-id recovery branch.
+
+## ERR-036: Cached plugin copy obscured WebSocket diagnostics
+
+- Date: 2026-08-18
+- Symptom: the browser could still show an older `v10.8` page while the deployed source had newer WebSocket recovery logic.
+- Cause: the plugin header did not expose its loaded runtime version, making stale Designer/browser copies indistinguishable.
+- Fix: display `v10.10` beside the Disguise title and bump all asset cache keys to `10.10`.
+- Regression test: the HTML test asserts both the visible version and cache-busted script URL.
