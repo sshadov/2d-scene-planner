@@ -363,7 +363,16 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
 
   function liveDescriptorKey(pluginId, field) { return `${pluginId}:${field}`; }
+  function liveUidExpression(designerId) {
+    try {
+      const uid = BigInt(String(designerId).trim());
+      if (uid < BigInt(0)) return null;
+      return `getByUID(0x${uid.toString(16)})`;
+    } catch { return null; }
+  }
   function liveObjectPath(designerId, payload, record) {
+    const uidExpression = liveUidExpression(designerId);
+    if (uidExpression) return uidExpression;
     const sourcePath = String(record?.path || resourcePath(payload));
     const parts = sourcePath.split(/[\\/]/); const folder = parts.length > 1 ? parts[parts.length - 2] : typeResourceFolders[payload.type];
     const sourceName = (parts[parts.length - 1] || String(payload.name || payload.pluginId)).replace(/\.apx$/i, "");
@@ -372,7 +381,6 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
   function liveFieldValue(payload, field) {
     if (field === "name") return payload.name;
-    if (field === "transform.position.y" && ["screen", "surface"].includes(payload.type)) return Number(payload.transform.position.y) + Number(payload.geometry?.height || 0) / 2;
     return field.split(".").reduce((value, key) => value?.[key], payload);
   }
   function liveDefinitions(payload) {
@@ -418,9 +426,10 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       message.subscriptions.forEach(subscription => {
         const binding = [...liveBindings.values()].find(candidate => candidate.id === subscription.id || (candidate.objectPath === subscription.objectPath && candidate.propertyPath === subscription.propertyPath));
         if (!binding) return;
+        const isNewSubscription = binding.id !== subscription.id;
         binding.id = subscription.id;
         livePendingSubscriptions.delete(`${binding.objectPath}|${binding.propertyPath}`);
-        liveLog("subscribed", { id: subscription.id, pluginId: binding.pluginId, field: binding.field, object: binding.objectPath, property: binding.propertyPath });
+        if (isNewSubscription) liveLog("subscribed", { id: subscription.id, pluginId: binding.pluginId, field: binding.field, object: binding.objectPath, property: binding.propertyPath });
       });
     }
     if (Array.isArray(message.valuesChanged)) message.valuesChanged.forEach(change => {

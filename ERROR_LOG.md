@@ -420,3 +420,21 @@
 - Cause: Designer rounded the numeric readback, but the adapter kept the pre-rounding local value as the desired baseline and compared it byte-for-byte.
 - Fix: update the binding baseline from each incoming `valuesChanged` value before flushing pending sets; include returned values plus object/field labels in the diagnostics panel.
 - Regression test: adapter source checks the `binding.value = change.value` baseline assignment.
+
+## ERR-046: Screens and surfaces rose by half their height on every LIVE change
+
+- Date: 2026-08-19
+- Symptom: any scene edit raised the LED screen by `3 m`, Surface 1 by `2.5 m`, and Surface 2 by `2.55 m` on every LIVE cycle.
+- Evidence: the increments exactly matched half of each object's Designer `scale.y` (`6/2`, `5/2`, and `5.1/2`).
+- Cause: `liveFieldValue()` added half-height to the planner's lower-edge Y, then the field encoder added half-height again when producing Designer `offset.y`.
+- Fix: keep `liveFieldValue()` in planner coordinates and perform the lower-edge-to-center conversion only in the screen/surface Y encoder.
+- Regression test: adapter source must not contain a screen/surface Y conversion in `liveFieldValue()`; the encoder remains responsible for the single conversion.
+
+## ERR-047: Surface 1 acknowledged LIVE changes but did not move in the Stage
+
+- Date: 2026-08-19
+- Symptom: `screen2:surface_1` echoed changed `offset` values through `valuesChanged`, while the visible Stage surface did not move.
+- Evidence: a reversible test set the generated-name subscription from `-8` to `-7.9`, but Python still read `state.stage.surfaces[0].offset.x == -9.533178...`. The official `getByUID(0xb62bf40299529c0f)` expression started at the same `-9.533178...`, changed both WebSocket and Python readback to `-9.433178...`, and restored successfully.
+- Cause: the adapter ignored the stored Designer UID and guessed an object expression from the resource filename, replacing spaces with underscores. That expression could resolve to a different value/resource.
+- Fix: build LIVE object expressions from the exact Designer UID using a hexadecimal `getByUID(0x...)` call; keep the name/path expression only as a fallback for invalid legacy IDs.
+- Regression test: adapter source checks UID conversion through `BigInt` and `getByUID`, while the Designer integration test verifies WebSocket and Python readback address the same resource.
