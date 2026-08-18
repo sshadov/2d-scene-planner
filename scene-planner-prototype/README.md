@@ -31,3 +31,7 @@ LIVE по умолчанию выключен и активируется тол
 `createObject` и `updateObject` получают только управляемые или явно принятые данные. `deleteObjects` вызывается только для выбранных стандартных объектов; объекты, исчезнувшие из плана, остаются в Designer.
 
 Полный запуск и тесты описаны в корневом `TESTING.md`.
+
+## Current interface contract
+
+The current runtime uses English Designer-facing labels. The open Designer scene is imported on startup: typed collections and `stage.children` are reconciled by UID/path, and unsupported classes remain visible as protected `Designer Object` entries. The `Scene` checkbox controls whether the plan has a scene footprint; when enabled, synchronization updates the Designer floor and a managed real cube. Object-relative height is measured from the Designer floor mark, while projector config rotations are read-only adapter data and are never normalized. `Synchronize` is disabled during LIVE.

@@ -178,6 +178,38 @@
 - Fix: probe the session endpoint at startup and distinguish `Designer доступен` from `Designer не отвечает · JSON доступен`.
 - Regression test: with the endpoint unavailable, the export dialog remains disabled and the footer reports the offline state.
 
+## ERR-020: Scene-relative height used scene size as an offset
+
+- Date: 2026-08-18
+- Symptom: switching `Y relative to Scene` changed world `Y=0` to a negative value when the scene had non-zero height.
+- Cause: the UI used `floorY + scene.height` as the reference even though height is a position, not a size.
+- Fix: relative height now uses `stage.floorY`; scene height only defines cube dimensions.
+- Regression test: world `Y=stage.floorY` displays relative `0`, and signed values remain signed.
+
+## ERR-021: Startup inspection missed non-typed Designer entities
+
+- Date: 2026-08-18
+- Symptom: reopening the planner did not recreate the full current Designer scene in the 2D model.
+- Cause: inspection only walked typed collections and ignored `stage.children`.
+- Fix: inspect and deduplicate all typed collections plus `stage.children`; unknown classes become `designer` objects.
+- Regression test: a `Prop` in `children` is imported with its Designer name, UID, and path.
+
+## ERR-022: Managed Scene cube was not attached to the stage
+
+- Date: 2026-08-18
+- Symptom: environment sync returned success but no visible cube appeared in Designer.
+- Cause: `stage.children.append(obj)` did not attach an `Object` to the stage in the current API.
+- Fix: use `stage.add(obj)` and build a real cube mesh before saving `dsg-scene-cube.apx`.
+- Regression test: the live Designer object has 8 vertices, 12 triangles, and the requested world offset.
+
+## ERR-023: Cached 10.2 runtime hid the new interface
+
+- Date: 2026-08-18
+- Symptom: the browser continued showing the removed Russian add toolbar and old controls after source edits.
+- Cause: HTML, CSS, and JavaScript asset URLs retained the same cache key.
+- Fix: bump runtime resources to `10.3` and reload the local page with a fresh query key.
+- Regression test: index source contains `10.3`, no top `data-add-type` toolbar, and the Scene/Object/Clear controls.
+
 ## ERR-020: Expanding object controls moved the plan
 
 - Date: 2026-08-17

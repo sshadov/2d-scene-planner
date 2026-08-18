@@ -2,13 +2,13 @@
 
 ## Components
 
-`scene-planner-prototype/index.html` and `styles.css` provide the Russian UI. `app.js` owns the scene model, 2D canvas, local persistence, diff, and synchronization workflow. `designer-adapter.js` is the only layer that creates Python scripts or calls Designer HTTP endpoints. It creates resources in class-named folders, marks them dirty before mutation, and saves them after successful changes.
+`scene-planner-prototype/index.html` and `styles.css` provide the English Designer-oriented UI. `app.js` owns the scene model, 2D canvas, local persistence, diff, and synchronization workflow. `designer-adapter.js` is the only layer that creates Python scripts or calls Designer HTTP endpoints. It creates resources in class-named folders, marks them dirty before mutation, and saves them after successful changes.
 
 ## Scene model
 
 ```text
 room: { width, depth }
-stage: { centerX, centerZ, floorY, width, depth, height, measureFromStage }
+stage: { enabled, centerX, centerZ, floorY, width, depth, height, measureFromStage }
 object:
   pluginId
   type, name
@@ -43,7 +43,7 @@ The top toolbar creates objects at the stage centre. Right-clicking empty plan s
 
 Projectors expose lens position and a target marker/surface relation, never user-facing Euler rotation. Dragging a manual marker edits Look At X/Z; selecting a surface locks the marker to that surface centre. LED screens show one source mode at a time: resolution, PPI, or millimetre pitch. The model recalculates the hidden companion values after edits. Dragging objects preserves the pointer offset and optional snapping can use the 1 m grid, 0.1 m grid, stage centre/edges, same-type coordinates, and mirrored distances. Ctrl-drag first creates an independent copy without offset and then moves it. Shift-click selects the complete same-type set; group drag applies one clamped delta so relative positions stay unchanged. Selected screens and surfaces expose an external rotation handle that changes yaw only. The context menu supports duplication, 90-degree rotation/direction change, projector surface binding, mirrored copies, and confirmed deletion.
 
-Every successful create/update returns a type-specific readback. The planner compares position, rotation, and planar geometry to the requested values with a `0.001` metre/degree tolerance before recording the sync version.
+Every successful create/update returns a type-specific readback. The planner compares position, rotation, and planar geometry strictly, without a tolerance, before recording the sync version.
 
 ## Synchronization
 
@@ -65,4 +65,10 @@ The adapter repeats the default/managed check before deletion. Repeat sync resol
 
 ## Persistence
 
-Browser state uses localStorage key `disguise-scene-generator-state-v10`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v9 keys are read only as migration sources. `liveEnabled` is currently a UI-preview flag and performs no API transmission.
+Browser state uses localStorage key `disguise-scene-generator-state-v10`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v9 keys are read only as migration sources. `sync.objects` stores every imported UID/path mapping and `sync.sceneCube` stores the managed Scene cube mapping.
+
+## Current v10.3 Contract
+
+The UI is English and uses Designer-facing type names. `stage.enabled` is independent from room dimensions. When enabled, `syncEnvironment` writes `stage.floor_size` and `stage.floor_pos`, and maintains the managed real cube `objects/object/dsg-scene-cube.apx` using a `d3.Object` with an 8-vertex/12-triangle mesh. Scene-relative object height is `position.y - stage.floorY`, never an offset from scene height.
+
+Startup inspection reads typed collections and `stage.children`, deduplicates by Designer UID, imports unknown classes as `designer`, and stores `pluginId -> designerId/path/className`. Projector config rotation is read back as Designer data and is never normalized or exposed as a user input. Strict readback comparison uses no tolerance. The Synchronize button is disabled while LIVE is enabled.

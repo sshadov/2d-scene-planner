@@ -1,5 +1,11 @@
 # Roadmap and Technical Debt
 
+## v10.3 completed
+
+- Scene checkbox and managed Designer cube are implemented through `d3.Object` mesh geometry.
+- Startup import now covers all typed collections and `stage.children`.
+- Projector readback preserves Designer optical rotation; scene-relative height uses `floorY`.
+
 ## Confirmed user requests not fully implemented
 
 - Presets: save the current plan with a name, load it later, duplicate it, import/export it, and delete it.

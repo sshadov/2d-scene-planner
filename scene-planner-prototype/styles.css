@@ -63,6 +63,7 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .compact-checkbox input { width: 14px; height: 14px; margin: 0; accent-color: var(--cyan); }
 
 .workspace { min-height: 0; display: grid; grid-template-columns: 224px minmax(0, 1fr); overflow: hidden; }
+.workspace:has(#object-rail[hidden]) { grid-template-columns: minmax(0, 1fr); }
 .object-rail { min-height: 0; border-right: 1px solid var(--line); background: var(--panel); display: grid; grid-template-rows: 42px minmax(0, 1fr) auto; overflow: hidden; }
 .rail-heading { padding: 0 13px 0 15px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
 .rail-heading span, .group-count { min-width: 21px; padding: 2px 5px; border: 1px solid #35414e; border-radius: 3px; color: var(--muted); font-size: 9px; text-align: center; }
@@ -91,6 +92,8 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .active-identity { width: 126px; flex: 0 0 auto; padding: 6px 10px; border-right: 1px solid var(--line); display: flex; flex-direction: column; justify-content: center; gap: 4px; }
 .active-identity span { color: var(--muted); font-size: 9px; text-transform: uppercase; }
 .active-identity strong { overflow: hidden; color: #f1f4f7; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.editable-object-name { cursor: text; }
+.object-name-input { width: 126px; height: 25px; border: 1px solid #344250; border-radius: 3px; background: #0e141a; color: var(--ink); padding: 3px 6px; font-size: 11px; }
 .active-property-section { min-width: max-content; padding-right: 12px; border-right: 1px solid var(--line); display: grid; align-content: center; gap: 5px; }
 .active-property-section:last-child { border-right: 0; }
 .active-property-title { color: #8f9dab; font-size: 9px; font-weight: 650; }

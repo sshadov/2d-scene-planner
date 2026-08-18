@@ -85,7 +85,7 @@ This decision records the v5 contract. Its projector and camera fields are histo
 
 The room stores only width/depth around the Designer world origin. The stage is an independent positioned footprint with width/depth/height and a top elevation. Objects are edited in grouped, collapsed type collections; screens add resolution and pixel pitch, projectors add resolution, and directional objects expose position plus `Rx/Ry/Rz`.
 
-Projector `configPosition/configLookAt` are the sole authoritative writes. The adapter must not write inherited body `offset/rotation` or `configRotation`, because Designer recalculates the projector optical configuration. Light position/direction continue through `offset/rotation`, which are the writable transform properties exposed by the current Python stubs.
+Projector `configPosition/configLookAt` are the sole authoritative writes. The adapter must not write inherited body `offset/rotation` or `configRotation`, because Designer recalculates the projector optical configuration. Any existing `configRotation` is read back and retained as adapter data, but is not normalized or exposed to the user. Light position/direction continue through `offset/rotation`, which are the writable transform properties exposed by the current Python stubs.
 
 All numeric controls are text-backed decimal inputs so both comma and dot are valid. Empty or incomplete text never becomes zero. A click selects without changing coordinates; a drag preserves the original pointer offset and then applies the selected snapping policy.
 
@@ -130,7 +130,7 @@ The canvas context menu creates either a plain copy or a mirrored copy around th
 - Date: 2026-08-17
 - Status: accepted
 
-The planner interface exposes physical event-building intent, not Designer implementation fields. A projector has lens position and a world/surface target; its hidden body rotation is normalized and any Designer `configRotation` derived from Look At remains adapter-owned. Screens and surfaces expose physical dimensions, bottom-centre position, and plan yaw. Cameras and lights expose position and horizontal direction.
+The planner interface exposes physical event-building intent, not Designer implementation fields. A projector has lens position and a world/surface target; its body/config rotations remain adapter-owned and are never normalized during import. Screens and surfaces expose physical dimensions, bottom-centre position, and plan yaw. Cameras and lights expose position and horizontal direction.
 
 Object properties live in one fixed horizontal strip above the X/Z plan. The left rail is selection-only and cannot expand with object parameters. Metric and density inputs use `0.1` wheel steps, angles use `1°`, direct typing remains available, and wheel events over the free canvas control zoom. The v10 LIVE switch is an explicitly local UI state only; it does not send API requests until a separate debounced LiveUpdate adapter is implemented.
 
@@ -139,3 +139,31 @@ LED input provenance is stored as `media.inputMode`: `resolution`, `ppi`, or `pi
 Creation is spatial and mouse-first: right-clicking empty plan space opens an equipment menu and creates the chosen object at that world X/Z. Screen and surface creation starts a width-then-height keyboard sequence. Projector creation starts a temporary target-placement mode in which the visible Look At point follows the cursor until the next primary click. Ctrl-drag creates an independent copy at the original position and immediately moves it; Shift-click selects every object of the same type, and dragging any member preserves all relative X/Z offsets.
 
 Canvas geometry queries are side-effect free. Pointer hover, hit-testing, coordinate conversion, and context-menu placement may read the CSS bounds and compute a frame but must not assign `canvas.width` or `canvas.height`. Only an actual draw pass may resize the backing buffer and must repaint immediately afterward.
+
+## ADR-017: Current Designer scene is the initial 2D model
+
+- Date: 2026-08-18
+- Status: accepted
+
+On startup the adapter inspects every typed collection and `stage.children`. The returned Designer UID, path, class, and display name become the local object's identity and label. Unknown classes are represented as `designer` objects rather than being silently discarded. Projector rotations are imported as read; the planner never normalizes or rewrites them merely because a projector was inspected.
+
+## ADR-018: Optional Scene and Designer floor
+
+- Date: 2026-08-18
+- Status: accepted
+
+`stage.enabled` is independent from room dimensions. When enabled, the adapter updates `stage.floor_size`/`stage.floor_pos` and maintains one managed `d3.Object` cube at `objects/object/dsg-scene-cube.apx`. The cube is built from a real 8-vertex/12-triangle mesh. Turning Scene off does not delete Designer content; deletion remains an explicit future operation. Object-relative height is measured from `stage.floorY`, never from the scene height.
+
+## ADR-019: Strict readback and manual synchronization gate
+
+- Date: 2026-08-18
+- Status: accepted
+
+Readback validation has no configured tolerance. A mismatch is reported instead of being rounded away. The manual `Synchronize` action is disabled while LIVE is enabled. LIVE writes remain debounced and selective; manual sync can be revisited independently.
+
+## ADR-020: Designer-facing English names
+
+- Date: 2026-08-18
+- Status: accepted
+
+Visible type labels and controls use English names matching Designer classes (`LED Screen`, `Surface`, `Projector`, `Light`, `Camera`). Imported Designer descriptions remain the source label, and the selected name in the property strip is editable without using a name as the ownership key.

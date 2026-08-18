@@ -3,7 +3,7 @@
   const API_ORIGIN = window.DISGUISE_API_ORIGIN || (localTest ? "http://127.0.0.1" : window.location.origin);
   const EXECUTE_PATH = "/api/session/python/execute";
   const STATUS_PATH = "/api/session/status/session";
-  const typeCollections = { screen: "ledScreens", surface: "surfaces", camera: "cameras", projector: "projectors", light: "lights" };
+  const typeCollections = { screen: "ledScreens", surface: "surfaces", camera: "cameras", projector: "projectors", light: "lights", designer: "displays" };
   const typeClasses = { screen: "LedScreen", surface: "Screen2", camera: "Camera", projector: "Projector", light: "Light" };
   const typeResourceFolders = { screen: "ledscreen", surface: "screen2", camera: "camera", projector: "projector", light: "light" };
   const collectionTypes = Object.fromEntries(Object.entries(typeCollections).map(([type, collection]) => [collection, type]));
@@ -11,8 +11,7 @@
   function quote(value) { return JSON.stringify(value); }
   function payloadText(payload) { return quote(JSON.stringify(payload)); }
   function resourceSlug(payload) {
-    const suffix = String(payload.name || "object").match(/(\d+)$/)?.[1] || "object";
-    return `${String(payload.type || "object").toLowerCase()}-${suffix}`;
+    return String(payload.pluginId || `${String(payload.type || "object").toLowerCase()}-object`).replace(/[^a-zA-Z0-9_-]/g, "-");
   }
   function parseReturnValue(value) {
     if (typeof value !== "string") return value;
@@ -35,6 +34,48 @@
     return parseReturnValue(body.returnValue);
   }
   async function sessionStatus() { const response = await fetchWithTimeout(`${API_ORIGIN}${STATUS_PATH}`, {}, 2500); if (!response.ok) throw new Error(`Designer session status: HTTP ${response.status}`); return response.json(); }
+  function environmentScript(environment) {
+    return `import json
+stage = state.stage
+stage.floor_size = Vec(${Number(environment.room.width)}, ${Number(environment.room.depth)})
+stage.floor_pos = Vec(${Number(environment.stage.centerX || 0)}, ${Number(environment.stage.floorY || 0)}, ${Number(environment.stage.centerZ || 0)})
+scene_path = "objects/object/dsg-scene-cube.apx"
+scene_enabled = ${Boolean(environment.stage.enabled) ? "True" : "False"}
+scene_obj = None
+for candidate in stage.children:
+    if str(getattr(candidate, "path", "")) == scene_path:
+        scene_obj = candidate
+        break
+if scene_enabled:
+    if scene_obj is None:
+        scene_obj = resourceManager.loadOrCreate(scene_path, Object)
+        stage.add(scene_obj)
+    cube_width = abs(float(${Number(environment.stage.width)}))
+    cube_depth = abs(float(${Number(environment.stage.depth)}))
+    cube_height = abs(float(${Number(environment.stage.height)}))
+    mesh = stage.mesh.copy()
+    mesh.verts.resize(8)
+    hx, hy, hz = cube_width / 2.0, cube_height / 2.0, cube_depth / 2.0
+    points = [(-hx, -hy, -hz), (hx, -hy, -hz), (hx, -hy, hz), (-hx, -hy, hz), (-hx, hy, -hz), (hx, hy, -hz), (hx, hy, hz), (-hx, hy, hz)]
+    for index, point in enumerate(points):
+        mesh.verts[index].pos = Vec(point[0], point[1], point[2])
+    mesh.triangles.resize(12)
+    faces = [(0, 2, 1), (0, 3, 2), (4, 5, 6), (4, 6, 7), (0, 1, 5), (0, 5, 4), (1, 2, 6), (1, 6, 5), (2, 3, 7), (2, 7, 6), (3, 0, 4), (3, 4, 7)]
+    for index, face in enumerate(faces):
+        triangle = mesh.triangles[index]
+        triangle.a, triangle.b, triangle.c, triangle.material = face[0], face[1], face[2], 0
+    mesh.updateMesh()
+    scene_obj.mesh = mesh
+    scene_obj.offset = Vec(${Number(environment.stage.centerX || 0)}, ${Number(environment.stage.floorY || 0)} + hy, ${Number(environment.stage.centerZ || 0)})
+    scene_obj.rotation = Vec(0.0, 0.0, 0.0)
+    scene_obj.scale = Vec(1.0, 1.0, 1.0)
+    scene_obj.save()
+try:
+    stage.save()
+except Exception:
+    pass
+return json.dumps({"roomFloor": {"width": float(stage.floor_size.x), "depth": float(stage.floor_size.y)}, "floorY": float(stage.floor_pos.y), "sceneEnabled": scene_enabled, "sceneCube": {"designerId": str(scene_obj.uid), "path": scene_path} if scene_obj is not None else None})`;
+  }
 
   function readbackHelpers() {
     return `def vec_data(value):
@@ -52,15 +93,20 @@ def readback(obj, kind):
             "geometry": {"width": float(size.x), "height": float(size.y)}
         }
     if kind == "projector":
-        # Projector orientation is represented by the optical target. Reading
-        # configRotation is unnecessary and is not available consistently in
-        # Designer builds, so keep the planner's rotation contract explicit.
-        return {"transform": {"position": vec_data(obj.configPosition), "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": vec_data(obj.configLookAt)}
+        # Preserve the actual Designer optical rotation when the build exposes it.
+        config_rotation = getattr(obj, "configRotation", None)
+        if config_rotation is None:
+            config_rotation = getattr(obj, "rotation", None)
+        return {"transform": {"position": vec_data(obj.configPosition), "rotation": vec_data(config_rotation) if config_rotation is not None else {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": vec_data(obj.configLookAt)}
     if kind == "camera":
         if hasattr(obj, "posRelativeOrGlobal"):
             return {"transform": {"position": vec_data(obj.posRelativeOrGlobal), "rotation": vec_data(obj.rotRelativeOrGlobal)}}
         return {"transform": {"position": vec_data(obj.offset), "rotation": vec_data(obj.rotation)}}
-    return {"transform": {"position": vec_data(obj.offset), "rotation": vec_data(obj.rotation)}}`;
+    position = getattr(obj, "offset", None)
+    rotation = getattr(obj, "rotation", None)
+    if position is None:
+        return {"transform": {"position": {"x": 0.0, "y": 0.0, "z": 0.0}, "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}}
+    return {"transform": {"position": vec_data(position), "rotation": vec_data(rotation) if rotation is not None else {"x": 0.0, "y": 0.0, "z": 0.0}}}`;
   }
   function assignHelpers() {
     return `def assign(field, value):
@@ -77,7 +123,10 @@ objects = []
 warnings = []
 collection_types = ${quote(collectionTypes)}
 ${readbackHelpers()}
-for collection_name in ${quote(Object.values(typeCollections))}:
+seen_ids = set()
+class_types = {"LedScreen": "screen", "Screen2": "surface", "Camera": "camera", "Projector": "projector", "Light": "light"}
+scene_cube = None
+for collection_name in ${quote([...new Set([...Object.values(typeCollections), "displays", "children"])])}:
     collection = getattr(stage, collection_name, [])
     for obj in collection:
         try:
@@ -85,12 +134,18 @@ for collection_name in ${quote(Object.values(typeCollections))}:
             if not uid:
                 warnings.append(collection_name + ": empty object reference")
                 continue
+            if uid in seen_ids:
+                continue
+            seen_ids.add(uid)
             path = str(getattr(obj, "path", ""))
             description = str(getattr(obj, "description", ""))
             text = (path + " " + description).lower()
+            if path == "objects/object/dsg-scene-cube.apx":
+                scene_cube = {"designerId": uid, "path": path, "description": description}
+                continue
             match = re.search(r"dsg-(.+?)\\.apx", path, re.IGNORECASE)
             standard = bool(re.search(r"(^|[/\\\\ _-])(surface|projector|camera|screen|light)[ _-]?1(?:\\.|$)", text))
-            kind = collection_types[collection_name]
+            kind = class_types.get(type(obj).__name__, collection_types.get(collection_name, "designer"))
             data = readback(obj, kind)
             objects.append({
                 "id": uid, "path": path, "description": description, "collection": collection_name, "type": kind,
@@ -101,7 +156,8 @@ for collection_name in ${quote(Object.values(typeCollections))}:
             warnings.append(collection_name + ": " + str(error))
 floor = getattr(stage, "floor_pos", None)
 floor_y = float(floor.y) if floor is not None else 0.0
-return json.dumps({"objects": objects, "floorY": floor_y, "warnings": warnings})`;
+floor_size = getattr(stage, "floor_size", None)
+return json.dumps({"objects": objects, "floorY": floor_y, "floorPosition": vec_data(floor) if floor is not None else {"x": 0.0, "y": 0.0, "z": 0.0}, "roomFloor": {"width": float(floor_size.x), "depth": float(floor_size.y)} if floor_size is not None else None, "warnings": warnings, "sceneCube": scene_cube})`;
   }
   function createScript(payload) {
     return `import json
@@ -146,7 +202,7 @@ kind = ${quote(kind)}
 changed = json.loads(${payloadText(changed)})
 stage = state.stage
 obj = None
-for collection_name in ${quote(Object.values(typeCollections))}:
+for collection_name in ${quote([...new Set([...Object.values(typeCollections), "displays", "children"])])}:
     for candidate in getattr(stage, collection_name, []):
         try:
             candidate_path = str(getattr(candidate, "path", ""))
@@ -218,7 +274,7 @@ target_ids = set(json.loads(${payloadText(designerIds.map(String))}))
 stage = state.stage
 deleted = []
 skipped = []
-for collection_name in ${quote(Object.values(typeCollections))}:
+for collection_name in ${quote([...new Set([...Object.values(typeCollections), "children"])])}:
     collection = getattr(stage, collection_name, [])
     for candidate in list(collection):
         try:
@@ -242,6 +298,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   window.disguiseSceneAdapter = {
     capabilities: { liveUpdate: true, selectiveDelete: true, readback: true, source: "Designer Python API", apiOrigin: API_ORIGIN },
     sessionStatus,
+    syncEnvironment: environment => execute(environmentScript(environment)),
     inspectScene: () => execute(inspectScript()),
     createObject: payload => execute(createScript(payload)),
     updateObject: (designerId, changed, designerPath, kind) => execute(updateScript(designerId, changed, designerPath, kind)),

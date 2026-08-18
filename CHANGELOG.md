@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0 - 2026-08-18
+
+- Switched the planner UI to English Designer-facing names and kept object names editable in the active property strip.
+- Made Scene optional; enabled Scene writes the Designer floor and maintains a real managed cube mesh.
+- Imported all current Designer children and typed entities on startup, including unknown classes as protected `designer` objects.
+- Removed projector normalization, fixed scene-relative height to use `floorY`, and made readback validation strict.
+- Disabled manual Synchronize while LIVE is enabled and bumped runtime cache keys to `10.3`.
+
 ## 0.12.0 - 2026-08-18
 
 - Исправлен порядок ввода: экран и поверхность переводят фокус `Ширина → Высота → Высота от пола/сцены` по Enter.

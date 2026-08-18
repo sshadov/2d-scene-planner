@@ -15,9 +15,9 @@
     },
     "stage": {
       "type": "object", "additionalProperties": false,
-      "required": ["centerX", "centerZ", "floorY", "width", "depth", "height", "measureFromStage"],
+      "required": ["enabled", "centerX", "centerZ", "floorY", "width", "depth", "height", "measureFromStage"],
       "properties": {
-        "centerX": { "type": "number" }, "centerZ": { "type": "number" }, "floorY": { "type": "number" },
+        "enabled": { "type": "boolean" }, "centerX": { "type": "number" }, "centerZ": { "type": "number" }, "floorY": { "type": "number" },
         "width": { "type": "number", "exclusiveMinimum": 0 }, "depth": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "minimum": 0 }, "measureFromStage": { "type": "boolean" }
       }
     },
@@ -49,7 +49,7 @@
     "sceneObject": {
       "type": "object", "additionalProperties": false, "required": ["pluginId", "type", "name", "transform"],
       "properties": {
-        "pluginId": { "type": "string", "minLength": 1 }, "type": { "enum": ["screen", "surface", "camera", "projector", "light"] },
+        "pluginId": { "type": "string", "minLength": 1 }, "type": { "enum": ["screen", "surface", "camera", "projector", "light", "designer"] },
         "name": { "type": "string", "minLength": 1 }, "transform": { "$ref": "#/$defs/transform" }, "lookAt": { "$ref": "#/$defs/lookAt" }, "targetSurfacePluginId": { "type": "string", "minLength": 1 }, "geometry": { "$ref": "#/$defs/geometry" }, "media": { "$ref": "#/$defs/media" }, "designer": { "type": "object" }
       },
       "allOf": [
