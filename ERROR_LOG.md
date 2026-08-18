@@ -332,3 +332,11 @@
 - Cause: HTTP polling had been removed to avoid misrepresenting the official API, but no `subscribe`/`set` client existed yet.
 - Fix: add a WebSocket adapter for `/api/session/liveupdate`, scalar transform subscriptions, `valuesChanged` readback, and debounced `set` writes. HTTP remains explicit-only.
 - Regression test: adapter source contains the endpoint, subscribe, valuesChanged, and set protocol; browser focus and status checks run against the deployed page.
+
+## ERR-035: LIVE reused stale subscription ids after reconnect
+
+- Date: 2026-08-18
+- Symptom: after a WebSocket reconnect, Designer returned `invalid id` while applying changes; LIVE appeared to work only intermittently.
+- Cause: subscription ids are scoped to one WebSocket session, but the adapter retained ids from the closed socket and sent `set` messages before resubscribing.
+- Fix: clear every binding id and last-sent value on close; when Designer reports an invalid subscription id, clear the bindings and resubscribe automatically on the current socket.
+- Regression test: adapter source covers id reset on close and the invalid-id recovery branch.

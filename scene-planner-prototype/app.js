@@ -366,6 +366,7 @@
     const status = document.querySelector("#adapter-status");
     if (!update) return;
     if (update.status === "open") status.textContent = "LIVE: WebSocket connected";
+    else if (update.status === "recovering") status.textContent = `LIVE: restoring subscriptions · ${update.detail || "retrying"}`;
     else if (update.status === "closed") { status.textContent = "LIVE: WebSocket closed"; if (state.liveEnabled) { state.liveEnabled = false; document.querySelector("#live-toggle").checked = false; persist(false); renderStatus(); } }
     else if (update.status === "error") { status.textContent = `LIVE: WebSocket error · ${update.detail || "unknown error"}`; state.liveEnabled = false; document.querySelector("#live-toggle").checked = false; persist(false); renderStatus(); }
   }

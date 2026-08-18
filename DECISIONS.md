@@ -214,3 +214,5 @@ For screens and surfaces, Enter follows the physical setup order `geometry.width
 - Status: accepted
 
 LIVE now uses the documented `ws://<director>/api/session/liveupdate` endpoint. The adapter subscribes to Designer resource expressions such as `ledscreen:led_screen_1` and maps the returned subscription IDs to planner fields. Local changes send `set` messages after a short debounce; Designer `valuesChanged` messages update the local plan without triggering an HTTP export loop. If the plugin host does not expose `WebSocket` or the endpoint rejects the connection, LIVE returns to off and explicit Python HTTP synchronization remains available.
+
+Subscription ids are session-scoped. The adapter therefore invalidates all ids on socket close and recovers from an `invalid id` error by resubscribing before sending further sets.

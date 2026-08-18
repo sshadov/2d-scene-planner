@@ -5,6 +5,7 @@
 - Implemented the official Live Update WebSocket transport with `subscribe`, `valuesChanged`, and `set` messages for mapped object names and scalar transforms.
 - Kept Python HTTP synchronization for explicit create/update/inspect/delete operations; LIVE no longer uses polling.
 - Made dimension focus use direct input references and verified `Width -> Height -> Position Y` in the browser.
+- Reset session-scoped subscription ids after reconnects and automatically resubscribe after an `invalid id` response.
 
 ## 0.16.0 - 2026-08-18
 

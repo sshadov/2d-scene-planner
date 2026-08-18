@@ -397,6 +397,10 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     }
     if (changes.length) liveSend({ set: changes });
   }
+  function liveResetSubscriptionIds() {
+    livePendingSubscriptions.clear();
+    for (const binding of liveBindings.values()) { binding.id = null; binding.lastSent = undefined; }
+  }
   function liveHandleMessage(raw) {
     let message;
     try { message = JSON.parse(typeof raw === "string" ? raw : raw?.data || "{}"); } catch { return; }
@@ -415,7 +419,14 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       binding.lastSent = change.value;
       liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath });
     });
-    if (message.error) liveOnStatus({ status: "error", detail: typeof message.error === "string" ? message.error : JSON.stringify(message.error) });
+    if (message.error) {
+      const detail = typeof message.error === "string" ? message.error : JSON.stringify(message.error);
+      if (/invalid\s+id|unknown\s+subscription|subscription.*id/i.test(detail)) {
+        liveResetSubscriptionIds();
+        liveOnStatus({ status: "recovering", detail: `${detail}; resubscribing` });
+        liveSubscribeBindings();
+      } else liveOnStatus({ status: "error", detail });
+    }
   }
   function liveSubscribeBindings() {
     if (!liveSocket || liveSocket.readyState !== 1) return;
@@ -458,11 +469,11 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       socket.onopen = () => { opened = true; liveConnectPromise = null; liveOnStatus({ status: "open", detail: LIVE_URL }); liveSubscribeBindings(); liveFlushSets(); resolve(); };
       socket.onmessage = event => liveHandleMessage(event.data);
       socket.onerror = () => { const error = new Error(`Live Update WebSocket connection failed: ${LIVE_URL}`); liveOnStatus({ status: "error", detail: error.message }); if (!opened) { liveConnectPromise = null; reject(error); } };
-      socket.onclose = () => { liveSocket = null; livePendingSubscriptions.clear(); liveConnectPromise = null; liveOnStatus({ status: "closed", detail: "Live Update connection closed" }); };
+      socket.onclose = () => { liveSocket = null; liveResetSubscriptionIds(); liveConnectPromise = null; liveOnStatus({ status: "closed", detail: "Live Update connection closed" }); };
     });
     return liveConnectPromise;
   }
-  function liveStop() { if (liveSocket) { try { liveSocket.close(); } catch {} } liveSocket = null; liveConnectPromise = null; livePendingSubscriptions.clear(); liveBindings = new Map(); liveOnStatus({ status: "closed", detail: "Live Update disabled" }); }
+  function liveStop() { if (liveSocket) { try { liveSocket.close(); } catch {} } liveSocket = null; liveConnectPromise = null; liveResetSubscriptionIds(); liveBindings = new Map(); liveOnStatus({ status: "closed", detail: "Live Update disabled" }); }
 
   window.disguiseSceneAdapter = {
     capabilities: { liveUpdate: true, liveTransport: "websocket", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API + Live Update WebSocket", apiOrigin: API_ORIGIN, liveUrl: LIVE_URL },
