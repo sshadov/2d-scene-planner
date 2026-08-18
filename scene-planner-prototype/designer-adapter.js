@@ -21,12 +21,23 @@
   let liveSceneReady = false;
   const liveLogEntries = [];
   const LIVE_LOG_LIMIT = 300;
+  const LIVE_FLOAT_EPSILON = 1e-6;
 
   function liveLog(event, details = {}) {
     const entry = { at: new Date().toISOString(), event, ...details };
     liveLogEntries.push(entry); if (liveLogEntries.length > LIVE_LOG_LIMIT) liveLogEntries.shift();
     if (event === "error" || event === "close") console.error("[ScenePlanner LIVE]", entry);
     else console.info("[ScenePlanner LIVE]", entry);
+  }
+
+  function liveValuesEqual(left, right) {
+    if (typeof left === "number" && typeof right === "number") return Math.abs(left - right) <= LIVE_FLOAT_EPSILON;
+    if (Array.isArray(left) && Array.isArray(right)) return left.length === right.length && left.every((value, index) => liveValuesEqual(value, right[index]));
+    if (left && right && typeof left === "object" && typeof right === "object") {
+      const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+      return [...keys].every(key => liveValuesEqual(left[key], right[key]));
+    }
+    return left === right;
   }
 
   function quote(value) { return JSON.stringify(value); }
@@ -452,7 +463,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     const changes = [];
     for (const binding of liveBindings.values()) {
       if (binding.id === null || binding.value === undefined || !binding.initialized) continue;
-      if (binding.lastSent !== undefined && JSON.stringify(binding.lastSent) === JSON.stringify(binding.value)) continue;
+      if (binding.lastSent !== undefined && liveValuesEqual(binding.lastSent, binding.value)) continue;
       changes.push({ id: binding.id, value: binding.value });
       binding.lastSent = binding.value;
     }

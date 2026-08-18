@@ -439,6 +439,14 @@
 - Fix: build LIVE object expressions from the exact Designer UID using a hexadecimal `getByUID(0x...)` call; keep the name/path expression only as a fallback for invalid legacy IDs.
 - Regression test: adapter source checks UID conversion through `BigInt` and `getByUID`, while the Designer integration test verifies WebSocket and Python readback address the same resource.
 
+## ERR-049: Float32 readback caused false LIVE errors and repeated writes
+
+- Date: 2026-08-19
+- Symptom: LIVE rejected values such as `-0.985` vs `-0.9850000143051147` and repeatedly sent the same coordinate after Designer returned its float32 representation.
+- Cause: readback validation and LIVE baseline comparison used exact numeric equality.
+- Fix: use a `1e-6` machine epsilon for validation and recursive LIVE value comparison. This does not round or alter planner values and still rejects meaningful differences.
+- Regression test: `scene-planner` tests cover float32-noise acceptance, meaningful mismatch rejection, and cache version `v10.25`.
+
 ## ERR-048: New objects did not cross the Planner/Designer boundary
 
 - Date: 2026-08-19

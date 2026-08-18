@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.1 - 2026-08-19
+
+- Tolerated only `1e-6` float32 representation noise in Designer readback validation.
+- Compared LIVE numeric baselines with the same machine epsilon to stop repeated `set` feedback for quantized values.
+- Bumped the deployed plugin cache version to `v10.25`.
+
 ## 0.17.0 - 2026-08-18
 
 - Implemented the official Live Update WebSocket transport with `subscribe`, `valuesChanged`, and `set` messages for mapped object names and scalar transforms.
