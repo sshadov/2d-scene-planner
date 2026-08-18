@@ -418,5 +418,5 @@
 - Date: 2026-08-19
 - Symptom: after a successful handshake, the same `set` (for example `id: 289`) was emitted after every `valuesChanged` message.
 - Cause: Designer rounded the numeric readback, but the adapter kept the pre-rounding local value as the desired baseline and compared it byte-for-byte.
-- Fix: update the binding baseline from each incoming `valuesChanged` value before flushing pending sets; include returned values in the diagnostics panel.
+- Fix: update the binding baseline from each incoming `valuesChanged` value before flushing pending sets; include returned values plus object/field labels in the diagnostics panel.
 - Regression test: adapter source checks the `binding.value = change.value` baseline assignment.

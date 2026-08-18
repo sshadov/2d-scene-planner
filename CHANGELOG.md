@@ -15,6 +15,7 @@
 - Reverted the experimental LIVE value queue and authority guard after identifying the duplicate-browser client as the source-of-truth problem. The protocol-required initial `valuesChanged` gate remains enabled so Starter does not receive `set` before subscription values are initialized.
 - Added an in-app LIVE diagnostics panel showing the protocol event ring buffer and close/error details.
 - Adopted Designer's `valuesChanged` readback as the LIVE baseline to prevent repeated `set` loops caused by numeric quantization; diagnostics now include returned values.
+- Added object and field labels to LIVE subscription/value diagnostics instead of reporting opaque subscription IDs alone.
 
 ## 0.16.0 - 2026-08-18
 

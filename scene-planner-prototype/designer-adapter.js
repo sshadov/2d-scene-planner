@@ -413,13 +413,14 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   function liveHandleMessage(raw) {
     let message;
     try { message = JSON.parse(typeof raw === "string" ? raw : raw?.data || "{}"); } catch { return; }
-    liveLog("message", { keys: Object.keys(message), subscriptions: message.subscriptions?.length || 0, valuesChanged: message.valuesChanged?.length || 0, values: Array.isArray(message.valuesChanged) ? message.valuesChanged.slice(0, 50).map(change => ({ id: change.id, value: change.value })) : [], error: message.error || null });
+    liveLog("message", { keys: Object.keys(message), subscriptions: message.subscriptions?.length || 0, valuesChanged: message.valuesChanged?.length || 0, values: Array.isArray(message.valuesChanged) ? message.valuesChanged.slice(0, 50).map(change => { const binding = [...liveBindings.values()].find(candidate => candidate.id === change.id); return { id: change.id, value: change.value, pluginId: binding?.pluginId || null, field: binding?.field || null, property: binding?.propertyPath || null }; }) : [], error: message.error || null });
     if (Array.isArray(message.subscriptions)) {
       message.subscriptions.forEach(subscription => {
         const binding = [...liveBindings.values()].find(candidate => candidate.id === subscription.id || (candidate.objectPath === subscription.objectPath && candidate.propertyPath === subscription.propertyPath));
         if (!binding) return;
         binding.id = subscription.id;
         livePendingSubscriptions.delete(`${binding.objectPath}|${binding.propertyPath}`);
+        liveLog("subscribed", { id: subscription.id, pluginId: binding.pluginId, field: binding.field, object: binding.objectPath, property: binding.propertyPath });
       });
     }
     if (Array.isArray(message.valuesChanged)) message.valuesChanged.forEach(change => {
