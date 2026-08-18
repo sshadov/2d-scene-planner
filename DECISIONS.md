@@ -5,7 +5,7 @@
 - Date: 2026-08-18
 - Status: accepted
 
-For screens and surfaces, Enter follows the physical-paper workflow `width -> height -> height above floor/stage`. Inputs remain text-editable and select their entire content on focus/click so a measured value can be replaced immediately. Height is clamped to zero in the displayed reference system and never writes a negative world Y.
+For screens and surfaces, Enter follows the physical-paper workflow `width -> height -> height above floor/stage`. Inputs remain text-editable and select their entire content on focus/click so a measured value can be replaced immediately. Height is a signed world coordinate; stage-relative mode displays the signed offset and never clamps it.
 
 LIVE is opt-in and cannot start until a manual export has completed and stored `sync.lastSyncAt`. Changes are debounced before Designer writes, while explicit export remains the recovery path when the API is unavailable.
 

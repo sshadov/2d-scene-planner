@@ -40,6 +40,7 @@ h2 { font-size: 13px; }
 .button.danger { margin-top: 10px; border-color: #75433f; background: #38201f; color: #ffaca5; }
 .icon-button { width: 30px; height: 30px; padding: 0; border-radius: 3px; display: inline-grid; place-items: center; font-size: 18px; line-height: 1; }
 .text-button { min-height: auto; padding: 0; border: 0; background: transparent; color: var(--cyan); font-size: 11px; }
+.text-button.danger-text { color: #ff9f96; }
 .live-toggle { height: 30px; display: flex; align-items: center; gap: 6px; color: #b9c3cd; font-size: 10px; font-weight: 750; cursor: pointer; }
 .live-toggle input { position: absolute; opacity: 0; pointer-events: none; }
 .live-toggle i { position: relative; width: 30px; height: 16px; border: 1px solid #44515f; border-radius: 8px; background: #0e141a; }
@@ -52,7 +53,7 @@ h2 { font-size: 13px; }
 .environment-group + .environment-group { padding-left: 18px; border-left: 1px solid var(--line); }
 .environment-group b { margin-right: 2px; color: #d7dfe7; font-size: 11px; }
 .environment-group label { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 9px; white-space: nowrap; }
-.environment-bar > .text-button { margin-left: auto; min-width: max-content; }
+.environment-actions { margin-left: auto; display: flex; gap: 14px; min-width: max-content; }
 .input-shell { position: relative; display: inline-block; }
 .input-shell input { width: 70px; height: 27px; padding: 3px 20px 3px 6px; border: 1px solid #344250; border-radius: 3px; outline: none; background: #0e141a; color: var(--ink); font-size: 11px; text-align: right; }
 .input-shell i { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); color: #667482; font-size: 8px; font-style: normal; pointer-events: none; }

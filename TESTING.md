@@ -99,7 +99,9 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 
 ## Direct manipulation scenarios
 
-Before these scenarios, verify the numeric workflow: screen/surface `Ширина -> Высота -> Высота от пола/сцены` advances on Enter, clicking an input selects all text, `4` displays as `4`, `1.5` as `1,5`, and negative heights store as zero. LIVE must reject activation before the first confirmed export and may send a debounced diff only after that baseline.
+Before these scenarios, verify the numeric workflow: screen/surface `Ширина -> Высота -> Высота от пола/сцены` advances on Enter, clicking an input selects all text, `4` displays as `4`, `1.5` as `1,5`, and negative world heights remain negative. LIVE must reject activation before the first confirmed export and may send a debounced diff only after that baseline.
+
+The `Очистить сцену` button requires confirmation, removes planner objects and keeps their Designer mappings as orphans; it must never call Designer deletion automatically.
 
 1. Right-click empty plan space and choose each equipment type; every object must be created at the clicked world X/Z.
 2. Create a screen or surface this way; width receives keyboard focus, and Enter commits it and moves focus to height.
