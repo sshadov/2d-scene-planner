@@ -1,5 +1,15 @@
 # Roadmap and Technical Debt
 
+## Confirmed user requests not fully implemented
+
+- Presets: save the current plan with a name, load it later, duplicate it, import/export it, and delete it.
+- Partial synchronization: one failed camera/light/projector must not stop the other object operations. Each failed object needs `Повторить` and `Принять Designer` actions.
+- Designer cleanup mode: make the meaning of `Очистить сцену` explicit. The local planner clear button is implemented; a separate confirmed command is still needed for deleting selected recognized default objects in the open Designer scene.
+- External edits: inspect changed or deleted Designer objects and offer `Принять Designer` or `Повторить`, without overwriting unrelated manual changes.
+- LIVE transport: the current implementation is debounced HTTP/Python diff sync. A supported Designer LiveUpdate/WebSocket adapter still needs verification and an explicit capability indicator.
+- Fast alignment tools: equal distance from an edge, equal spacing between objects, center alignment, distribute, and dimension-aware snapping need a dedicated interaction pass.
+- Device detail: projector lens/throw-ratio/lens-shift binding, camera sensor/FOV/frustum, podium anchors, and screen cabinet/module presets are not part of the current model.
+
 ## Next product functions
 
 - Preset manager: save, name, import, duplicate, and delete plans.
