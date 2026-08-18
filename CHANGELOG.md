@@ -8,6 +8,7 @@
 - Reset session-scoped subscription ids after reconnects and automatically resubscribe after an `invalid id` response.
 - Added the runtime version next to the Disguise title so cached plugin copies are immediately visible.
 - Sent the first LIVE subscription immediately after connection and exposed the WebSocket close code/reason in the status line.
+- Delayed LIVE `set` messages until Designer has delivered initial `valuesChanged` values, avoiding the Starter `1007 ACCESS_VIOLATION` close.
 
 ## 0.16.0 - 2026-08-18
 

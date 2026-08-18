@@ -390,7 +390,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   function liveFlushSets() {
     const changes = [];
     for (const binding of liveBindings.values()) {
-      if (binding.id === null || binding.value === undefined) continue;
+      if (binding.id === null || binding.value === undefined || !binding.initialized) continue;
       if (binding.lastSent !== undefined && JSON.stringify(binding.lastSent) === JSON.stringify(binding.value)) continue;
       changes.push({ id: binding.id, value: binding.value });
       binding.lastSent = binding.value;
@@ -399,7 +399,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
   function liveResetSubscriptionIds() {
     livePendingSubscriptions.clear();
-    for (const binding of liveBindings.values()) { binding.id = null; binding.lastSent = undefined; }
+    for (const binding of liveBindings.values()) { binding.id = null; binding.lastSent = undefined; binding.initialized = false; }
   }
   function liveHandleMessage(raw) {
     let message;
@@ -411,14 +411,15 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
         binding.id = subscription.id;
         livePendingSubscriptions.delete(`${binding.objectPath}|${binding.propertyPath}`);
       });
-      liveFlushSets();
     }
     if (Array.isArray(message.valuesChanged)) message.valuesChanged.forEach(change => {
       const binding = [...liveBindings.values()].find(candidate => candidate.id === change.id);
       if (!binding) return;
       binding.lastSent = change.value;
+      binding.initialized = true;
       liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath });
     });
+    if (Array.isArray(message.valuesChanged)) liveFlushSets();
     if (message.error) {
       const detail = typeof message.error === "string" ? message.error : JSON.stringify(message.error);
       if (/invalid\s+id|unknown\s+subscription|subscription.*id/i.test(detail)) {

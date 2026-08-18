@@ -356,3 +356,11 @@
 - Cause: the initial subscription was scheduled with the normal 150 ms change debounce.
 - Fix: the initial LIVE sync runs immediately after `onopen`; later local changes retain the short debounce. Close status now includes the WebSocket code and reason.
 - Regression test: syntax/unit checks pass and the deployed endpoint accepts the immediate subscription sequence.
+
+## ERR-038: LIVE set raced initial subscription values
+
+- Date: 2026-08-19
+- Symptom: the socket closed with `1007 ACCESS_VIOLATION: read at 0x38` immediately after LIVE was enabled.
+- Cause: `set` was sent as soon as subscription IDs arrived, before the initial `valuesChanged` notification completed.
+- Fix: each binding is marked `initialized` only after its first `valuesChanged`; `set` is suppressed until then.
+- Regression test: adapter source checks the initialized guard and the deployed Designer endpoint accepts the subscription/value sequence.
