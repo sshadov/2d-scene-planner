@@ -354,7 +354,13 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
 
   function liveDescriptorKey(pluginId, field) { return `${pluginId}:${field}`; }
-  function liveObjectPath(designerId) { return `getByUID(${quote(String(designerId))})`; }
+  function liveObjectPath(designerId, payload, record) {
+    const sourcePath = String(record?.path || resourcePath(payload));
+    const parts = sourcePath.split(/[\\/]/); const folder = parts.length > 1 ? parts[parts.length - 2] : typeResourceFolders[payload.type];
+    const sourceName = (parts[parts.length - 1] || String(payload.name || payload.pluginId)).replace(/\.apx$/i, "");
+    const identifier = sourceName.replace(/[^A-Za-z0-9_]/g, "_");
+    return `${folder}:${identifier}`;
+  }
   function liveFieldValue(payload, field) {
     if (field === "name") return payload.name;
     if (field === "transform.position.y" && ["screen", "surface"].includes(payload.type)) return Number(payload.transform.position.y) + Number(payload.geometry?.height || 0) / 2;
@@ -430,7 +436,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       const payload = entry?.payload || entry;
       const designerId = entry?.record?.designerId || entry?.designerId;
       if (!payload?.pluginId || !designerId) return;
-      const objectPath = liveObjectPath(designerId);
+      const objectPath = liveObjectPath(designerId, payload, entry?.record);
       liveDefinitions(payload).forEach(definition => {
         const key = liveDescriptorKey(payload.pluginId, definition.field);
         const previous = liveBindings.get(key);
