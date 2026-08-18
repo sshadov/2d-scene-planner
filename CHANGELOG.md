@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 - 2026-08-18
+
+- Fixed the 2D plan disappearing when the pointer merely entered or moved across the canvas.
+- Made pointer hit-testing and context-menu coordinate lookup use side-effect-free canvas geometry measurements.
+- Bumped embedded asset URLs to `10.1` so Designer cannot reuse the faulty cached script.
+
 ## 0.11.0 - 2026-08-17
 
 - Replaced the expandable property sidebar with a compact grouped object list and one fixed active-object strip above the plan.

@@ -195,8 +195,9 @@
     stageInputs.measureFromStage.addEventListener("change", () => { state.stage.measureFromStage = stageInputs.measureFromStage.checked; persist(); render(); });
   }
 
-  function sizing() {
-    const rect = canvas.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1; canvas.width = Math.max(1, Math.floor(rect.width * dpr)); canvas.height = Math.max(1, Math.floor(rect.height * dpr)); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  function sizing(resizeCanvas = true) {
+    const rect = canvas.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
+    if (resizeCanvas) { const width = Math.max(1, Math.floor(rect.width * dpr)); const height = Math.max(1, Math.floor(rect.height * dpr)); if (canvas.width !== width) canvas.width = width; if (canvas.height !== height) canvas.height = height; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
     const padding = 62; const base = Math.min((rect.width - padding * 2) / state.room.width, (rect.height - padding * 2) / state.room.depth); const scale = Math.max(4, base * state.zoom); const roomWidth = state.room.width * scale; const roomHeight = state.room.depth * scale;
     return { rect, scale, left: (rect.width - roomWidth) / 2, top: (rect.height - roomHeight) / 2, roomWidth, roomHeight };
   }
@@ -243,9 +244,9 @@
   function selectedObject() { return state.objects.find(object => object.id === state.selectedId); }
   function selectObject(object, allOfType = false) { state.selectedId = object?.id ?? null; state.selectedIds = object ? new Set((allOfType ? state.objects.filter(item => item.type === object.type) : [object]).map(item => item.id)) : new Set(); }
   function objectRadius(object, frame) { return PLANAR_TYPES.has(object.type) ? object.geometry.width * frame.scale / 2 : Math.max(12, (typeConfig[object.type].radius || .3) * frame.scale * 1.8); }
-  function hitTest(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { const p = toScreen(object.transform.position.x, object.transform.position.z, frame); return Math.hypot(point.x - p.x, point.y - p.y) < objectRadius(object, frame) + 7; }); }
-  function hitTestProjectorTarget(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { if (object.type !== "projector") return false; const target = effectiveLookAt(object); const p = toScreen(target.x, target.z, frame); return Math.hypot(point.x - p.x, point.y - p.y) <= 12; }); }
-  function hitTestRotateHandle(clientX, clientY) { const object = selectedObject(); if (!object) return null; const rect = canvas.getBoundingClientRect(); const geometry = rotateHandleGeometry(object, sizing()); if (!geometry) return null; return Math.hypot(clientX - rect.left - geometry.handle.x, clientY - rect.top - geometry.handle.y) <= 12 ? object : null; }
+  function hitTest(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(false); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { const p = toScreen(object.transform.position.x, object.transform.position.z, frame); return Math.hypot(point.x - p.x, point.y - p.y) < objectRadius(object, frame) + 7; }); }
+  function hitTestProjectorTarget(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(false); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { if (object.type !== "projector") return false; const target = effectiveLookAt(object); const p = toScreen(target.x, target.z, frame); return Math.hypot(point.x - p.x, point.y - p.y) <= 12; }); }
+  function hitTestRotateHandle(clientX, clientY) { const object = selectedObject(); if (!object) return null; const rect = canvas.getBoundingClientRect(); const geometry = rotateHandleGeometry(object, sizing(false)); if (!geometry) return null; return Math.hypot(clientX - rect.left - geometry.handle.x, clientY - rect.top - geometry.handle.y) <= 12 ? object : null; }
   function snapCoordinate(axis, value, object, ignoredIds = null) {
     const mode = document.querySelector("#snap-mode").value; let result = value; if (mode === "grid-1") result = Math.round(result); if (mode === "grid-01") result = Math.round(result * 10) / 10;
     const stage = stageBounds(); const center = axis === "x" ? state.stage.centerX : state.stage.centerZ; const min = axis === "x" ? stage.minX : stage.minZ; const max = axis === "x" ? stage.maxX : stage.maxZ;
@@ -350,7 +351,7 @@
     if (event.button !== 0) return;
     closeCanvasContextMenu();
     const rect = canvas.getBoundingClientRect();
-    const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing());
+    const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false));
     if (state.placingProjectorId) {
       const projector = state.objects.find(item => item.id === state.placingProjectorId);
       const bounds = roomBounds();
@@ -388,8 +389,9 @@
     render();
   });
   canvas.addEventListener("pointermove", event => {
+    if (!state.placingProjectorId && !state.dragging) return;
     const rect = canvas.getBoundingClientRect();
-    const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing());
+    const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false));
     if (state.placingProjectorId) {
       const projector = state.objects.find(item => item.id === state.placingProjectorId);
       const bounds = roomBounds();
@@ -399,7 +401,7 @@
     if (!state.dragging) return;
     const object = state.objects.find(item => item.id === state.dragging.id);
     if (!object) return;
-    if (state.dragging.kind === "rotate") { const geometry = rotateHandleGeometry(object, sizing()); if (!geometry) return; const angle = Math.atan2(event.clientY - rect.top - geometry.centre.y, event.clientX - rect.left - geometry.centre.x); object.transform.rotation.y = normalizeYaw((angle - geometry.handleAngleOffset) * 180 / Math.PI); drawScene(); refreshActiveValues(); return; }
+    if (state.dragging.kind === "rotate") { const geometry = rotateHandleGeometry(object, sizing(false)); if (!geometry) return; const angle = Math.atan2(event.clientY - rect.top - geometry.centre.y, event.clientX - rect.left - geometry.centre.x); object.transform.rotation.y = normalizeYaw((angle - geometry.handleAngleOffset) * 180 / Math.PI); drawScene(); refreshActiveValues(); return; }
     const bounds = roomBounds();
     state.guides = [];
     if (state.dragging.kind === "group") {
@@ -425,7 +427,7 @@
   });
   canvas.addEventListener("pointerup", event => { state.dragging = null; state.guides = []; persist(); render(); if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId); }); canvas.addEventListener("pointercancel", () => { state.dragging = null; state.guides = []; persist(); render(); }); window.addEventListener("resize", drawScene);
   canvas.addEventListener("wheel", event => { event.preventDefault(); state.zoom = clamp(state.zoom + (event.deltaY < 0 ? .1 : -.1), .5, 2); drawScene(); }, { passive: false });
-  canvas.addEventListener("contextmenu", event => { event.preventDefault(); const object = hitTestProjectorTarget(event.clientX, event.clientY) || hitTest(event.clientX, event.clientY); if (object) openCanvasContextMenu(event, object); else { const rect = canvas.getBoundingClientRect(); openCanvasCreateMenu(event, toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing())); } });
+  canvas.addEventListener("contextmenu", event => { event.preventDefault(); const object = hitTestProjectorTarget(event.clientX, event.clientY) || hitTest(event.clientX, event.clientY); if (object) openCanvasContextMenu(event, object); else { const rect = canvas.getBoundingClientRect(); openCanvasCreateMenu(event, toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false))); } });
   document.querySelectorAll("[data-create-type]").forEach(button => button.addEventListener("click", () => { const point = contextWorldPoint; const type = button.dataset.createType; closeCanvasContextMenu(); if (point) addObjectAt(type, point.x, point.z, true); }));
   document.querySelectorAll("#canvas-context-menu [data-action]").forEach(button => button.addEventListener("click", () => { const id = contextObjectId; const action = button.dataset.action; if (!id) return; if (action === "bind-surface") { const list = document.querySelector("#surface-context-list"); list.hidden = !list.hidden; return; } if (action === "delete") { document.querySelector("#context-delete-confirm").hidden = false; return; } closeCanvasContextMenu(); if (action === "rotate-90") rotateObject90(id); else duplicateObject(id, action === "mirror-x" ? "x" : action === "mirror-z" ? "z" : null); })); document.querySelector("#context-delete-yes").addEventListener("click", () => { const id = contextObjectId; closeCanvasContextMenu(); if (id) deleteObject(id); }); document.querySelector("#context-delete-no").addEventListener("click", () => { document.querySelector("#context-delete-confirm").hidden = true; });
   window.addEventListener("pointerdown", event => { if (!canvasContextMenu?.hidden && !canvasContextMenu.contains?.(event.target)) closeCanvasContextMenu(); });

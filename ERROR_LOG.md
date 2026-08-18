@@ -203,3 +203,12 @@
 - Cause: the UI was structured around the internal scene object representation instead of the operator's paper measurements and mouse workflow.
 - Fix: make the left rail selection-only, put the active object's physical values in one fixed strip, remove projector rotation from the UI, replace scrubbing with wheel steps, show only the selected LED data mode, and make creation spatial through the empty-plan context menu. Screen dimensions continue width-to-height on Enter; projectors place their visible target immediately; Ctrl-drag copies and Shift-click creates a movable same-type selection.
 - Regression test: selecting a projector exposes only X/Z/height, target, and resolution; changing selection does not resize the canvas; PPI wheel input changes by `0.1` and recalculates resolution; no horizontal scrub state exists; all five equipment types exist in the empty-plan menu; positional creation, target-placement state, stationary duplication, and same-type selection are covered by the harness.
+
+## ERR-024: Pointer hover erased the 2D plan
+
+- Date: 2026-08-18
+- Symptom: moving the mouse into or across the 2D plan made the complete drawing disappear.
+- Evidence: `pointermove` called `sizing()` before checking whether a drag or projector-target placement was active; `sizing()` assigned `canvas.width/height`, which clears the backing buffer by browser definition.
+- Cause: a geometry-measurement helper also performed destructive canvas resizing, so a read-only pointer event erased the frame and returned without repainting it.
+- Fix: idle pointer movement now returns before any geometry work; hit-tests and coordinate conversions call `sizing(false)`; only draw passes resize the backing buffer, and only when its pixel dimensions changed.
+- Regression test: the pointermove handler must guard idle movement before sizing, and all hit-test/context-menu coordinate paths must use non-resizing frame measurements.
