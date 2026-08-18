@@ -469,7 +469,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       socket.onopen = () => { opened = true; liveConnectPromise = null; liveOnStatus({ status: "open", detail: LIVE_URL }); liveSubscribeBindings(); liveFlushSets(); resolve(); };
       socket.onmessage = event => liveHandleMessage(event.data);
       socket.onerror = () => { const error = new Error(`Live Update WebSocket connection failed: ${LIVE_URL}`); liveOnStatus({ status: "error", detail: error.message }); if (!opened) { liveConnectPromise = null; reject(error); } };
-      socket.onclose = () => { liveSocket = null; liveResetSubscriptionIds(); liveConnectPromise = null; liveOnStatus({ status: "closed", detail: "Live Update connection closed" }); };
+      socket.onclose = event => { liveSocket = null; liveResetSubscriptionIds(); liveConnectPromise = null; liveOnStatus({ status: "closed", detail: `Live Update connection closed (code ${event.code}${event.reason ? `: ${event.reason}` : ""})` }); };
     });
     return liveConnectPromise;
   }

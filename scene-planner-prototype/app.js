@@ -392,15 +392,15 @@
       if (liveSyncQueued) scheduleLiveSync();
     }
   }
-  function scheduleLiveSync() {
+  function scheduleLiveSync(delay = 150) {
     if (!appReady || !state.liveEnabled) return;
     if (liveSyncInFlight) { liveSyncQueued = true; return; }
-    clearTimeout(liveSyncTimer); liveSyncTimer = setTimeout(() => { liveSyncTimer = null; runLiveSync(); }, 150);
+    clearTimeout(liveSyncTimer); liveSyncTimer = setTimeout(() => { liveSyncTimer = null; runLiveSync(); }, delay);
   }
   async function startLive() {
     const adapter = getAdapter(); if (!adapter?.liveStart) throw new Error("WebSocket Live Update is not available");
     await adapter.liveStart({ onStatus: liveStatus, onValuesChanged: applyLiveValue });
-    state.liveEnabled = true; persist(false); renderStatus(); scheduleLiveSync();
+    state.liveEnabled = true; persist(false); renderStatus(); scheduleLiveSync(0);
   }
   function stopLive() { getAdapter()?.liveStop?.(); state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; persist(false); renderStatus(); }
   function importedObject(item, index) {

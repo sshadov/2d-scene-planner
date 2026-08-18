@@ -348,3 +348,11 @@
 - Cause: the plugin header did not expose its loaded runtime version, making stale Designer/browser copies indistinguishable.
 - Fix: display `v10.10` beside the Disguise title and bump all asset cache keys to `10.10`.
 - Regression test: the HTML test asserts both the visible version and cache-busted script URL.
+
+## ERR-037: First LIVE subscription was delayed
+
+- Date: 2026-08-18
+- Symptom: a newly opened WebSocket could close before the first debounced planner sync, making LIVE appear not to connect.
+- Cause: the initial subscription was scheduled with the normal 150 ms change debounce.
+- Fix: the initial LIVE sync runs immediately after `onopen`; later local changes retain the short debounce. Close status now includes the WebSocket code and reason.
+- Regression test: syntax/unit checks pass and the deployed endpoint accepts the immediate subscription sequence.
