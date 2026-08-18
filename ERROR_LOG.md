@@ -276,3 +276,27 @@
 - Cause: the plugin wrote `stage.floor_size`, which triggers a Starter callback that receives a protected Field proxy.
 - Fix: stop writing `stage.floor_size`; keep room size in the planner and only update `stage.floor_pos` when the environment changes.
 - Regression test: generated environment Python contains no `stage.floor_size =` assignment and direct `floor_pos` update returns HTTP 200.
+
+## ERR-028: HTTP polling was labelled as Live Update
+
+- Date: 2026-08-18
+- Symptom: the `LIVE` switch started a 200 ms timer that reran Python HTTP export while the adapter advertised `liveUpdate: true`.
+- Cause: the official WebSocket `/api/session/liveupdate` protocol with `subscribe`/`valuesChanged`/`set` had not been implemented.
+- Fix: disable LIVE and expose `liveUpdate: false`, `liveTransport: "websocket-required"`, and `httpSync: true`. Manual synchronization remains explicit.
+- Regression test: the adapter capability is false and the checkbox is disabled in the initial HTML.
+
+## ERR-029: Resource deletion only detached collection entries
+
+- Date: 2026-08-18
+- Symptom: deleting a standard object removed it from a Stage collection but could leave its `.apx` resource in the project.
+- Cause: the adapter called `collection.remove(candidate)` without using the ResourceManager lifecycle.
+- Fix: call `candidate.saveOnDelete()` followed by `resourceManager.remove(candidate.path)`, then detach any remaining collection reference.
+- Regression test: delete script contains both lifecycle calls.
+
+## ERR-030: Camera readback used a legacy alternative contract
+
+- Date: 2026-08-18
+- Symptom: camera readback could use `posRelativeOrGlobal/rotRelativeOrGlobal`, producing inconsistent coordinates across Designer versions.
+- Cause: an old VirtualCamera-compatible branch remained in the generic reader.
+- Fix: concrete `Camera` inspection now reads only `offset/rotation`, matching create/update.
+- Regression test: adapter source contains no `posRelativeOrGlobal` or `rotRelativeOrGlobal` branch.

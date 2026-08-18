@@ -4,11 +4,11 @@
 
 В прототипе можно задать размеры помещения и сцены, затем добавить LED-экраны, поверхности, камеры, проекторы и световые приборы из верхней панели или через ПКМ в свободной точке плана. Объект из контекстного меню появляется в выбранной мировой координате. У экрана и поверхности сразу активируется ширина, Enter переводит на высоту; у нового проектора видимая точка `Look At` следует за курсором до следующего клика. `Ctrl + drag` создаёт и тащит копию, `Shift + click` выбирает все объекты того же типа для общего перемещения. Слева остаётся только компактный список, а физические параметры активного объекта показываются одной полосой над планом. Проектор содержит положение линзы и видимую цель/поверхность без пользовательских rotation-полей. LED-экран переключается между вводом разрешения, PPI и шага пикселя; остальные значения рассчитываются автоматически. Числа можно вводить вручную, менять стрелками или колесом. Колесо над планом управляет масштабом. Планы v10 сохраняются локально, а «JSON» создаёт переносимый файл.
 
-Переключатель `LIVE` по умолчанию выключен и становится доступен только после подтверждённого экспорта в Designer. После этого он отправляет выборочный diff с задержкой 200 мс; до базовой синхронизации возвращается в выключенное состояние.
+Переключатель `LIVE` отключён до реализации официального WebSocket Live Update адаптера. Текущий `Synchronize` использует Python Execution API только по явному действию пользователя; HTTP-таймер не выдаётся за Live Update.
 
 Главная кнопка «Экспортировать сцену» не обещает запись в Designer, пока адаптер не подключён. Она предлагает обновить текущую сцену или создать новый чистый набор, затем показывает операции `создать`, `обновить`, `без изменений`, `ручные: оставить` и `оставшиеся в Designer`. Узнаваемые стандартные объекты можно принять на месте. Их удаление доступно только отдельным списком с чекбоксами и вторым подтверждением.
 
-LIVE по умолчанию выключен и активируется только после подтверждённого экспорта. После этого изменения отправляются выборочно с задержкой 200 мс; до базовой синхронизации переключатель возвращается в выключенное состояние.
+Официальный Live Update требует WebSocket `ws://<director>/api/session/liveupdate` с сообщениями `subscribe` и `set`. Этот транспорт пока не подключён, поэтому интерфейс честно показывает `LIVE unavailable`, а ручной экспорт остаётся доступен.
 
 Кнопка «Очистить сцену» очищает только локальный план после подтверждения. Уже экспортированные объекты Designer остаются нетронутыми и отображаются как оставшиеся объекты при следующей синхронизации.
 
@@ -20,7 +20,7 @@ LIVE по умолчанию выключен и активируется тол
 
 ```js
 {
-  capabilities: { liveUpdate: true },
+  capabilities: { liveUpdate: false, liveTransport: "websocket-required", httpSync: true },
   inspectScene: async () => ({ objects: [{ id: "designer-id", type: "surface" }], floorY: 0 }),
   createObject: async (payload) => ({ designerId: "designer-id" }),
   updateObject: async (designerId, changedFields, designerPath) => undefined,
@@ -34,4 +34,4 @@ LIVE по умолчанию выключен и активируется тол
 
 ## Current interface contract
 
-The current runtime uses English Designer-facing labels. The open Designer project is imported on startup and is authoritative: typed collections and physical `stage.children` are reconciled by UID/path, while internal and non-physical helper entities are ignored. The `Stage` checkbox controls whether the plan has a Stage footprint; dimensions appear before numeric position fields, and synchronization updates only the safe Designer floor position plus a managed internal cube. Stage position is numeric-only. Object-relative height is measured from the Designer floor mark, while projector config rotations are read-only adapter data and are never normalized. Selecting or previewing a projector target surface highlights that surface on the plan. Missing mapped objects are not recreated automatically, and Designer resource names follow planner names without `dsg-`. `Synchronize` is disabled during LIVE.
+The current runtime uses English Designer-facing labels. The open Designer project is imported on startup and is authoritative: typed collections and physical `stage.children` are reconciled by UID/path, while internal and non-physical helper entities are ignored. The `Stage` checkbox controls whether the plan has a Stage footprint; dimensions appear before numeric position fields, and synchronization updates only the safe Designer floor position plus a managed internal cube. Stage position is numeric-only. Object-relative height is measured from the Designer floor mark, while projector config rotations are read-only adapter data and are never normalized. Selecting or previewing a projector target surface highlights that surface on the plan. Missing mapped objects are not recreated automatically, and Designer resource names follow planner names without `dsg-`. `Synchronize` remains enabled for explicit HTTP/Python export; LIVE stays disabled until the official WebSocket adapter is implemented.

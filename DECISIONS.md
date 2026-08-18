@@ -7,7 +7,7 @@
 
 For screens and surfaces, Enter follows the physical-paper workflow `width -> height -> height above floor/stage`. Inputs remain text-editable and select their entire content on focus/click so a measured value can be replaced immediately. Height is a signed world coordinate; stage-relative mode displays the signed offset and never clamps it.
 
-LIVE is opt-in and cannot start until a manual export has completed and stored `sync.lastSyncAt`. Changes are debounced before Designer writes, while explicit export remains the recovery path when the API is unavailable.
+The official Live Update contract is a WebSocket at `/api/session/liveupdate` with `subscribe`, `valuesChanged`, and `set` messages. The planner does not claim support for that transport until object/property subscriptions are implemented; the current UI keeps LIVE disabled and uses explicit Python HTTP synchronization.
 
 ## ADR-001: Native Designer coordinates
 
@@ -53,7 +53,7 @@ A stored Designer UID is preferred but is not assumed to remain sufficient acros
 - Date: 2026-08-17
 - Status: accepted
 
-Scene inspection treats an entry that no longer exposes a valid `uid/path` as a dangling Designer reference. It records a warning and continues inspecting the remaining collections. If a planner-managed object is absent from the valid result, normal diff logic classifies it as `create`; stale local mappings never force an update call to a deleted resource.
+Scene inspection treats an entry that no longer exposes a valid `uid/path` as a dangling Designer reference. It records a warning and continues inspecting the remaining collections. If a planner-managed object is absent from the valid result, diff logic classifies it as `missing` and never recreates it automatically; stale local mappings never force an update call to a deleted resource.
 
 ## ADR-007: Source and deployed plugin are separate artifacts
 
@@ -101,7 +101,7 @@ Version 5 already stored a separate `stage` object. The v7 loader preserves it w
 - Date: 2026-08-17
 - Status: accepted
 
-The planner creates Designer `Camera` resources, not `VirtualCamera` resources. Camera transforms use inherited `offset/rotation`. Generated resource paths use stable human-readable names such as `dsg-camera-1.apx`; local `pluginId -> designerId/path` remains the ownership source and names are never the only identity.
+The planner creates Designer `Camera` resources, not `VirtualCamera` resources. Camera transforms use inherited `offset/rotation`. Generated resource paths use lowercase human-readable planner names such as `camera-1.apx`; local `pluginId -> designerId/path` remains the ownership source and names are never the only identity.
 
 Projectors expose a world `lookAt` point. The adapter converts it to `configLookAt`, while the 2D view derives its cone from the vector between position and target.
 
@@ -132,7 +132,7 @@ The canvas context menu creates either a plain copy or a mirrored copy around th
 
 The planner interface exposes physical event-building intent, not Designer implementation fields. A projector has lens position and a world/surface target; its body/config rotations remain adapter-owned and are never normalized during import. Screens and surfaces expose physical dimensions, bottom-centre position, and plan yaw. Cameras and lights expose position and horizontal direction.
 
-Object properties live in one fixed horizontal strip above the X/Z plan. The left rail is selection-only and cannot expand with object parameters. Metric and density inputs use `0.1` wheel steps, angles use `1°`, direct typing remains available, and wheel events over the free canvas control zoom. The v10 LIVE switch is an explicitly local UI state only; it does not send API requests until a separate debounced LiveUpdate adapter is implemented.
+Object properties live in one fixed horizontal strip above the X/Z plan. The left rail is selection-only and cannot expand with object parameters. Metric and density inputs use `0.1` wheel steps, angles use `1°`, direct typing remains available, and wheel events over the free canvas control zoom. LIVE is disabled until the official WebSocket Live Update adapter is implemented; explicit synchronization remains HTTP/Python.
 
 LED input provenance is stored as `media.inputMode`: `resolution`, `ppi`, or `pitch`. Only the selected mode is shown. The other density/resolution values are recalculated so exports and later adapters can consume a complete physical description without forcing all values into the operator workflow.
 
@@ -152,14 +152,14 @@ On startup the adapter inspects every typed collection and `stage.children`. The
 - Date: 2026-08-18
 - Status: accepted
 
-`stage.enabled` is independent from room dimensions. When enabled, the adapter updates `stage.floor_size`/`stage.floor_pos` and maintains one managed `d3.Object` cube at `objects/object/dsg-scene-cube.apx`. The cube is built from a real 8-vertex/12-triangle mesh. Turning Scene off does not delete Designer content; deletion remains an explicit future operation. Object-relative height is measured from `stage.floorY`, never from the scene height.
+`stage.enabled` is independent from room dimensions. When enabled, the adapter updates only the safe `stage.floor_pos` field and maintains one managed `d3.Object` cube at `objects/object/dsg-scene-cube.apx`; `stage.floor_size` is planner metadata because Free Designer Starter rejects that write. The cube is built from a real 8-vertex/12-triangle mesh. Turning Stage off does not delete Designer content; deletion remains an explicit future operation. Object-relative height is measured from `stage.floorY`, never from the stage height.
 
 ## ADR-019: Strict readback and manual synchronization gate
 
 - Date: 2026-08-18
 - Status: accepted
 
-Readback validation has no configured tolerance. A mismatch is reported instead of being rounded away. The manual `Synchronize` action is disabled while LIVE is enabled. LIVE writes remain debounced and selective; manual sync can be revisited independently.
+Readback validation has no configured tolerance. A mismatch is reported instead of being rounded away. Manual `Synchronize` remains available; LIVE is disabled until a real WebSocket adapter exists.
 
 ## ADR-020: Designer-facing English names
 
@@ -189,3 +189,12 @@ Designer resource filenames are derived from the editable planner name (`objects
 If a mapped Designer object is missing during inspection, the planner reports `Missing in Designer` and does not classify it as `create`. This prevents LIVE from recreating an object the operator deliberately removed in Designer; recreation must be an explicit future command.
 
 The adapter never writes `stage.floor_size` because Free Designer Starter dispatches a broken `Screen2Editor` callback for that field. Room dimensions remain planner metadata while Stage dimensions are represented by the managed internal cube. `stage.floor_pos` is updated only when the environment actually changes.
+
+## ADR-023: Official Live Update boundary
+
+- Date: 2026-08-18
+- Status: accepted
+
+The planner will not label debounced Python HTTP calls as LIVE. Official Live Update is the WebSocket endpoint `/api/session/liveupdate`, whose protocol uses `subscribe`, `valuesChanged`, and `set`. Until subscriptions for the planner's resource paths and writable properties are implemented and verified, the LIVE control is disabled while explicit HTTP synchronization remains available.
+
+Confirmed default deletion uses the ResourceManager lifecycle: `resource.saveOnDelete()` followed by `resourceManager.remove(resource.path)`. Removing an item from a Stage collection alone is not considered deletion.

@@ -12,7 +12,7 @@
   function payloadText(payload) { return quote(JSON.stringify(payload)); }
   function resourceSlug(payload) {
     const source = String(payload.name || payload.pluginId || `${String(payload.type || "object").toLowerCase()}-object`).trim();
-    return (source || String(payload.pluginId || "object")).replace(/[\\/:*?"<>|]/g, "-");
+    return (source || String(payload.pluginId || "object")).replace(/[\\/:*?"<>|]/g, "-").toLowerCase();
   }
   function resourcePath(payload) { return `objects/${typeResourceFolders[payload.type]}/${resourceSlug(payload)}.apx`; }
   function parseReturnValue(value) {
@@ -116,8 +116,6 @@ def readback(obj, kind):
             config_rotation = getattr(obj, "rotation", None)
         return {"transform": {"position": vec_data(obj.configPosition), "rotation": vec_data(config_rotation) if config_rotation is not None else {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": vec_data(obj.configLookAt)}
     if kind == "camera":
-        if hasattr(obj, "posRelativeOrGlobal"):
-            return {"transform": {"position": vec_data(obj.posRelativeOrGlobal), "rotation": vec_data(obj.rotRelativeOrGlobal)}}
         return {"transform": {"position": vec_data(obj.offset), "rotation": vec_data(obj.rotation)}}
     position = getattr(obj, "offset", None)
     rotation = getattr(obj, "rotation", None)
@@ -329,13 +327,26 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
         if "dsg-" in path.lower() or not standard:
             skipped.append(candidate_id)
             continue
-        collection.remove(candidate)
-        deleted.append(candidate_id)
+        resource_path = str(getattr(candidate, "path", ""))
+        if not resource_path:
+            skipped.append(candidate_id)
+            continue
+        try:
+            candidate.saveOnDelete()
+            resourceManager.remove(resource_path)
+            try:
+                collection.remove(candidate)
+            except Exception:
+                pass
+            deleted.append(candidate_id)
+        except Exception as error:
+            warnings = "delete " + candidate_id + ": " + str(error)
+            skipped.append(warnings)
 return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
 
   window.disguiseSceneAdapter = {
-    capabilities: { liveUpdate: true, selectiveDelete: true, readback: true, source: "Designer Python API", apiOrigin: API_ORIGIN },
+    capabilities: { liveUpdate: false, liveTransport: "websocket-required", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API", apiOrigin: API_ORIGIN },
     sessionStatus,
     syncEnvironment: environment => execute(environmentScript(environment)),
     inspectScene: () => execute(inspectScript()),

@@ -49,7 +49,7 @@ Every successful create/update returns a type-specific readback. The planner com
 
 ### Numeric workflow and LIVE
 
-For screens and surfaces, Enter advances measured values in the order `width -> height -> height above floor/stage`. Numeric focus selects the complete value and integer formatting omits a decimal suffix. Height is a signed world coordinate and may be below the floor or stage; the relative mode displays the signed offset without changing it. The persisted LIVE flag is accepted only after `sync.lastSyncAt` exists; changes are sent as a 200 ms debounced selective diff while explicit export remains the recovery path.
+For screens and surfaces, Enter advances measured values in the order `width -> height -> height above floor/stage`. Numeric focus selects the complete value and integer formatting omits a decimal suffix. Height is a signed world coordinate and may be below the floor or stage; the relative mode displays the signed offset without changing it. The official Live Update transport is a WebSocket with `subscribe`/`set`; it is not implemented yet, so LIVE is disabled and all Designer writes use explicit Python HTTP synchronization.
 
 ```text
 planner state -> inspect Designer -> classify -> diff -> confirm -> selective API calls -> save mappings
@@ -59,16 +59,16 @@ planner state -> inspect Designer -> classify -> diff -> confirm -> selective AP
 - Standard: a recognized default name/path such as `surface 1` or `projector 1`.
 - Manual: everything else.
 
-Update mode may adopt a same-type standard object and update it in place. Clean mode creates a new managed set and exposes remaining standards in the deletion checklist. Orphans are reported but never automatically deleted.
+Update mode may adopt a same-type standard object and update it in place. Clean mode creates a new managed set and exposes remaining standards in the deletion checklist. Orphans are reported but never automatically deleted. A mapped object missing from Designer is reported as missing and is never recreated implicitly.
 
-The adapter repeats the default/managed check before deletion. Repeat sync resolves a managed object by Designer UID, saved resource path, or its `dsg-*` path. Dangling references left in Designer stage collections after deletion are skipped and reported as inspection warnings; a managed object absent from the valid inspection result is recreated. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful sync. Startup probes `/api/session/status/session` with a short timeout, while create/update calls have a longer timeout.
+The adapter repeats the default/managed check before deletion and removes selected resources through `resourceManager.remove(path)` after `saveOnDelete()`. Repeat sync resolves a managed object by Designer UID, saved resource path, or its legacy `dsg-*` path. Dangling references left in Designer stage collections after deletion are skipped and reported as inspection warnings; a managed object absent from the valid inspection result is never recreated implicitly. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful sync. Startup probes `/api/session/status/session` with a short timeout, while create/update calls have a longer timeout.
 
 ## Persistence
 
 Browser state uses localStorage key `disguise-scene-generator-state-v10`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v9 keys are read only as migration sources. `sync.objects` stores every imported UID/path mapping and `sync.sceneCube` stores the managed Scene cube mapping.
 
-## Current v10.5 Contract
+## Current v10.6 Contract
 
 The UI is English and uses Designer-facing type names. `stage.enabled` is derived from the inspected managed Stage cube at startup, so an empty local store does not create preset equipment or overwrite the open Designer project. When enabled, `syncEnvironment` writes `stage.floor_size` and `stage.floor_pos`, and maintains the managed real cube `objects/object/dsg-scene-cube.apx`. Its geometry reuses the valid 8-vertex/12-triangle topology of Designer's built-in `LookAtManipulable` helper; the plugin changes only vertex positions because the current API does not expose a supported `Triangle` constructor. Stage-relative object height is `position.y - stage.floorY`, never an offset from stage height.
 
-Startup inspection reads typed collections and `stage.children`, deduplicates by Designer UID, imports only physical user objects (`Object`/`Prop` with `needsMesh`) plus supported equipment, and ignores `internal/*` and non-physical Designer helpers. Projector config rotation is read as Designer data and is never normalized or exposed as a user input. Selecting or previewing a projector target surface highlights that surface's name and outline on the plan. A mapped object missing from Designer is reported rather than recreated. Strict readback comparison uses no tolerance. The Synchronize button is disabled while LIVE is enabled.
+Startup inspection reads typed collections and `stage.children`, deduplicates by Designer UID, imports only physical user objects (`Object`/`Prop` with `needsMesh`) plus supported equipment, and ignores `internal/*` and non-physical Designer helpers. Projector config rotation is read as Designer data and is never normalized or exposed as a user input. Selecting or previewing a projector target surface highlights that surface's name and outline on the plan. A mapped object missing from Designer is reported rather than recreated. Strict readback comparison uses no tolerance. The explicit Synchronize button remains available; LIVE is disabled until the official WebSocket adapter exists.

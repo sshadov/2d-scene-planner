@@ -7,7 +7,7 @@
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=10.5" />
+    <link rel="stylesheet" href="./styles.css?v=10.6" />
   </head>
   <body>
     <main class="app-shell">
@@ -18,9 +18,9 @@
         </div>
 
         <div class="header-actions">
-          <label class="live-toggle" title="Send local changes to Designer automatically">
+          <label class="live-toggle" title="Official WebSocket Live Update is not connected yet">
             <span>LIVE</span>
-            <input id="live-toggle" type="checkbox" />
+            <input id="live-toggle" type="checkbox" disabled />
             <i aria-hidden="true"></i>
           </label>
           <button class="icon-button" id="undo-button" type="button" aria-label="Undo" title="Undo">↶</button>
@@ -142,7 +142,7 @@
          <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Delete object?</span><button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button></div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=10.5"></script>
-    <script src="./app.js?v=10.5"></script>
+    <script src="./designer-adapter.js?v=10.6"></script>
+    <script src="./app.js?v=10.6"></script>
   </body>
 </html>

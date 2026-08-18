@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.0 - 2026-08-18
+
+- Disabled the misleading LIVE toggle until the official WebSocket Live Update transport is implemented; manual Python HTTP synchronization remains available.
+- Camera inspection now uses only `Camera.offset` and `Camera.rotation`.
+- Standard-resource deletion now calls `resourceManager.remove(path)` and saves the resource for deletion instead of only detaching a collection entry.
+- Added regression coverage for the transport capability, camera contract, and resource removal call.
+
 ## 0.15.0 - 2026-08-18
 
 - Look At surface selection now previews the target surface highlight before the choice is committed, including context-menu hover.
