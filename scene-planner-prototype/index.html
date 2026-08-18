@@ -7,7 +7,7 @@
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=10.3" />
+    <link rel="stylesheet" href="./styles.css?v=10.4" />
   </head>
   <body>
     <main class="app-shell">
@@ -30,18 +30,20 @@
         </div>
       </header>
 
-      <section class="environment-bar" aria-label="Room and scene dimensions">
+      <section class="environment-bar" aria-label="Room and stage dimensions">
         <div class="environment-group">
           <b>Room</b>
           <label>Width <span class="input-shell"><input id="room-width" type="text" inputmode="decimal" value="20" /><i>m</i></span></label>
           <label>Depth <span class="input-shell"><input id="room-depth" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
         </div>
         <div class="environment-group">
-          <label class="compact-checkbox scene-toggle"><input id="stage-enabled" type="checkbox" checked /><b>Scene</b></label>
+          <label class="compact-checkbox scene-toggle"><input id="stage-enabled" type="checkbox" checked /><b>Stage</b></label>
+          <label>X <span class="input-shell"><input id="stage-center-x" type="text" inputmode="decimal" value="0" /><i>m</i></span></label>
+          <label>Z <span class="input-shell"><input id="stage-center-z" type="text" inputmode="decimal" value="0" /><i>m</i></span></label>
           <label>Width <span class="input-shell"><input id="stage-width" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
           <label>Depth <span class="input-shell"><input id="stage-depth" type="text" inputmode="decimal" value="8" /><i>m</i></span></label>
           <label>Height <span class="input-shell"><input id="stage-height" type="text" inputmode="decimal" value="0.8" /><i>m</i></span></label>
-          <label class="compact-checkbox"><input id="measure-from-stage" type="checkbox" /><span>Y relative to Scene</span></label>
+          <label class="compact-checkbox"><input id="measure-from-stage" type="checkbox" /><span>Y relative to Stage</span></label>
         </div>
         <div class="environment-actions">
           <button class="text-button danger-text" id="clear-scene-button" type="button">Clear plan</button>
@@ -140,7 +142,7 @@
          <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Delete object?</span><button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button></div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=10.3"></script>
-    <script src="./app.js?v=10.3"></script>
+    <script src="./designer-adapter.js?v=10.4"></script>
+    <script src="./app.js?v=10.4"></script>
   </body>
 </html>

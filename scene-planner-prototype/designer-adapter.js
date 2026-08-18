@@ -53,22 +53,33 @@ if scene_enabled:
     cube_width = abs(float(${Number(environment.stage.width)}))
     cube_depth = abs(float(${Number(environment.stage.depth)}))
     cube_height = abs(float(${Number(environment.stage.height)}))
-    mesh = stage.mesh.copy()
+    # Triangle has no supported public constructor/fields in the current
+    # Designer build. Reuse the valid cube topology from the built-in
+    # LookAtManipulable helper and only replace its vertex positions.
+    template_mesh = None
+    for candidate in stage.children:
+        try:
+            candidate_mesh = getattr(candidate, "mesh", None)
+            if type(candidate).__name__ == "LookAtManipulable" and candidate_mesh is not None and len(candidate_mesh.verts) == 8 and len(candidate_mesh.triangles) == 12:
+                template_mesh = candidate_mesh
+                break
+        except Exception:
+            continue
+    if template_mesh is None:
+        raise RuntimeError("Designer has no supported 8-vertex cube mesh template")
+    markDirty(scene_obj)
+    mesh = template_mesh.copy()
     mesh.verts.resize(8)
     hx, hy, hz = cube_width / 2.0, cube_height / 2.0, cube_depth / 2.0
     points = [(-hx, -hy, -hz), (hx, -hy, -hz), (hx, -hy, hz), (-hx, -hy, hz), (-hx, hy, -hz), (hx, hy, -hz), (hx, hy, hz), (-hx, hy, hz)]
     for index, point in enumerate(points):
         mesh.verts[index].pos = Vec(point[0], point[1], point[2])
-    mesh.triangles.resize(12)
-    faces = [(0, 2, 1), (0, 3, 2), (4, 5, 6), (4, 6, 7), (0, 1, 5), (0, 5, 4), (1, 2, 6), (1, 6, 5), (2, 3, 7), (2, 7, 6), (3, 0, 4), (3, 4, 7)]
-    for index, face in enumerate(faces):
-        triangle = mesh.triangles[index]
-        triangle.a, triangle.b, triangle.c, triangle.material = face[0], face[1], face[2], 0
     mesh.updateMesh()
     scene_obj.mesh = mesh
     scene_obj.offset = Vec(${Number(environment.stage.centerX || 0)}, ${Number(environment.stage.floorY || 0)} + hy, ${Number(environment.stage.centerZ || 0)})
     scene_obj.rotation = Vec(0.0, 0.0, 0.0)
     scene_obj.scale = Vec(1.0, 1.0, 1.0)
+    scene_obj.renderLayer = Object.OnStage
     scene_obj.save()
 try:
     stage.save()
@@ -125,6 +136,7 @@ collection_types = ${quote(collectionTypes)}
 ${readbackHelpers()}
 seen_ids = set()
 class_types = {"LedScreen": "screen", "Screen2": "surface", "Camera": "camera", "Projector": "projector", "Light": "light"}
+supported_classes = set(["LedScreen", "Screen2", "Camera", "Projector", "Light", "Object", "ObjectBox", "Prop"])
 scene_cube = None
 for collection_name in ${quote([...new Set([...Object.values(typeCollections), "displays", "children"])])}:
     collection = getattr(stage, collection_name, [])
@@ -142,6 +154,15 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
             text = (path + " " + description).lower()
             if path == "objects/object/dsg-scene-cube.apx":
                 scene_cube = {"designerId": uid, "path": path, "description": description}
+                continue
+            if collection_name == "children" and path.lower().startswith("internal/"):
+                warnings.append(collection_name + ": ignored Designer internal helper " + path)
+                continue
+            if type(obj).__name__ not in supported_classes:
+                warnings.append(collection_name + ": ignored Designer helper " + type(obj).__name__)
+                continue
+            if type(obj).__name__ in ["Object", "ObjectBox", "Prop"] and not bool(getattr(obj, "needsMesh", False)):
+                warnings.append(collection_name + ": ignored non-physical Designer helper " + type(obj).__name__)
                 continue
             match = re.search(r"dsg-(.+?)\\.apx", path, re.IGNORECASE)
             standard = bool(re.search(r"(^|[/\\\\ _-])(surface|projector|camera|screen|light)[ _-]?1(?:\\.|$)", text))

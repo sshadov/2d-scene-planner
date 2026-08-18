@@ -252,3 +252,11 @@
 - Cause: a geometry-measurement helper also performed destructive canvas resizing, so a read-only pointer event erased the frame and returned without repainting it.
 - Fix: idle pointer movement now returns before any geometry work; hit-tests and coordinate conversions call `sizing(false)`; only draw passes resize the backing buffer, and only when its pixel dimensions changed.
 - Regression test: the pointermove handler must guard idle movement before sizing, and all hit-test/context-menu coordinate paths must use non-resizing frame measurements.
+
+## ERR-025: Managed Stage cube used unsupported Triangle mutation
+
+- Date: 2026-08-18
+- Symptom: Designer contained `objects/object/dsg-scene-cube.apx`, but the cube did not render and its mesh dimensions reverted to stale defaults.
+- Cause: the adapter copied a floor mesh and assigned undocumented `Triangle.a/b/c` fields. The wrapped Designer API does not persist those fields.
+- Fix: copy the valid 8-vertex/12-triangle topology from the built-in `LookAtManipulable` helper, update only `Vert.pos`, call `updateMesh()`, set the Stage offset, and save.
+- Regression test: the environment script contains the helper-mesh lookup and no `triangle.a`, `triangle.b`, or `triangle.c` assignments.

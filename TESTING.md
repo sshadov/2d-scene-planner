@@ -130,13 +130,14 @@ The `Очистить сцену` button requires confirmation, removes planner 
 10. Force a Designer Python error: the modal must show the failing object name and the HTTP response body instead of a bare `500`.
 11. After every successful write, verify the status says that coordinates were checked.
 
-## Current v10.3 checks
+## Current v10.4 checks
 
-1. Reload the planner with an open Designer project. The room floor size/position and every object in typed collections or `stage.children` must appear in the 2D model. Unknown classes are shown as `Designer Object` and retain their Designer description.
-2. Toggle `Scene`. When checked, a managed `dsg-scene-cube.apx` appears in Designer with room/stage dimensions; when unchecked, no automatic deletion occurs.
+1. Reload the planner with an open Designer project. The room floor size/position and supported physical objects in typed collections or `stage.children` must appear in the 2D model. `internal/*`, `LookAtManipulable`, `Puck`, and other non-physical helpers must not appear.
+2. Toggle `Stage`. When checked, a managed `dsg-scene-cube.apx` appears in Designer with stage dimensions and is visible. When unchecked, no automatic deletion occurs. Change Stage `X/Z` fields and verify the cube moves; dragging the Stage outline does nothing.
 3. Set stage `floorY=1` and an object world `Y=1`. With `Y relative to Scene` enabled it displays `0`; entering `-3` stores world `Y=-2`. Turning the checkbox off shows `-2`.
 4. Import a projector with non-zero Designer `configRotation`; the 2D model preserves it, while the projector inspector still exposes only position, Look At, and resolution.
 5. Enable LIVE and confirm `Synchronize` is disabled. Disable LIVE and confirm it becomes enabled.
 6. A narrow screen or surface is selectable only inside its rendered rectangle/thickness. A click 10 CSS pixels outside is not a hit.
 7. Change an object name in the active property strip, reload, and verify the local name remains associated with the stored Designer UID/path.
 8. Verify strict readback: a `0.0001` coordinate mismatch is reported rather than accepted by tolerance.
+9. Select a projector, choose a named surface in `Look At surface`, and verify that the surface name and outline are highlighted on the plan.

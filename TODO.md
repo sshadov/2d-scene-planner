@@ -1,10 +1,11 @@
 # Roadmap and Technical Debt
 
-## v10.3 completed
+## v10.4 completed
 
-- Scene checkbox and managed Designer cube are implemented through `d3.Object` mesh geometry.
-- Startup import now covers all typed collections and `stage.children`.
+- Stage checkbox and managed Designer cube are implemented through `d3.Object` mesh geometry copied from a supported Designer helper topology.
+- Startup import now treats the open Designer project as authoritative and filters internal/non-physical helpers.
 - Projector readback preserves Designer optical rotation; scene-relative height uses `floorY`.
+- Stage movement is numeric-only and projector target surfaces are highlighted on the plan.
 
 ## Confirmed user requests not fully implemented
 

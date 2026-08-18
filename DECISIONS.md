@@ -167,3 +167,14 @@ Readback validation has no configured tolerance. A mismatch is reported instead 
 - Status: accepted
 
 Visible type labels and controls use English names matching Designer classes (`LED Screen`, `Surface`, `Projector`, `Light`, `Camera`). Imported Designer descriptions remain the source label, and the selected name in the property strip is editable without using a name as the ownership key.
+
+## ADR-021: Stage geometry and helper filtering
+
+- Date: 2026-08-18
+- Status: accepted
+
+The Stage is optional. Its position is changed only through numeric `X/Z` fields; the plan never treats the Stage boundary as a draggable canvas object. On startup the open Designer project is authoritative: no generated presets are inserted, and Stage is enabled only when the managed `dsg-scene-cube.apx` is found.
+
+The current Designer Python API exposes `Mesh.verts` and `Mesh.triangles` but does not expose a supported `Triangle` constructor or index setters. The managed cube therefore copies the valid topology from the built-in `LookAtManipulable` helper and replaces vertex positions before `updateMesh()`.
+
+Inspection ignores internal paths and non-physical helper resources. It keeps supported typed equipment and generic `Object`/`Prop` resources only when `needsMesh` is true. A projector's selected Look At surface is highlighted on the 2D plan so the relationship is visible without exposing Designer implementation rotations.

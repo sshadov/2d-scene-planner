@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0 - 2026-08-18
+
+- Fixed the managed Stage cube by reusing Designer's valid cube topology instead of undocumented Triangle field assignments.
+- Stage movement is numeric only, and an empty local store no longer generates preset equipment before importing the open Designer project.
+- Startup inspection now ignores internal/non-physical Designer helpers while retaining physical generic objects and supported equipment.
+- Selecting a projector Look At surface highlights that surface on the X/Z plan.
+
 ## 0.13.0 - 2026-08-18
 
 - Switched the planner UI to English Designer-facing names and kept object names editable in the active property strip.
