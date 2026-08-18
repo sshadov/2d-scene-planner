@@ -47,6 +47,10 @@ Every successful create/update returns a type-specific readback. The planner com
 
 ## Synchronization
 
+### Numeric workflow and LIVE
+
+For screens and surfaces, Enter advances measured values in the order `width -> height -> height above floor/stage`. Numeric focus selects the complete value, integer formatting omits a decimal suffix, and height setters clamp at zero. The persisted LIVE flag is accepted only after `sync.lastSyncAt` exists; changes are sent as a 200 ms debounced selective diff while explicit export remains the recovery path.
+
 ```text
 planner state -> inspect Designer -> classify -> diff -> confirm -> selective API calls -> save mappings
 ```

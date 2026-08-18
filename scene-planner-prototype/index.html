@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="disguise-plugin-window-size" content="1440,900" />
+    <meta name="disguise-plugin-window-min-size" content="900,620" />
+    <meta name="disguise-plugin-window-resizable" content="true" />
     <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=10.1" />
+    <link rel="stylesheet" href="./styles.css?v=10.2" />
   </head>
   <body>
     <main class="app-shell">
@@ -23,7 +26,7 @@
         </nav>
 
         <div class="header-actions">
-          <label class="live-toggle" title="Живая синхронизация по умолчанию выключена">
+          <label class="live-toggle" title="После первой синхронизации отправлять изменения автоматически">
             <span>LIVE</span>
             <input id="live-toggle" type="checkbox" />
             <i aria-hidden="true"></i>
@@ -142,7 +145,7 @@
         <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Удалить объект?</span><button type="button" id="context-delete-yes">Да</button><button type="button" id="context-delete-no">Нет</button></div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=10.1"></script>
-    <script src="./app.js?v=10.1"></script>
+    <script src="./designer-adapter.js?v=10.2"></script>
+    <script src="./app.js?v=10.2"></script>
   </body>
 </html>

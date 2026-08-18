@@ -1,5 +1,13 @@
 # Error Log
 
+## ERR-010: Numeric workflow lost focus and LIVE was only a mock
+
+- Date: 2026-08-18
+- Symptom: Enter after screen width did not advance reliably, values kept a trailing `.0`, and LIVE could be enabled without transmitting changes.
+- Cause: focus transfer happened across a rerender and the old LIVE handler explicitly reported that sending was disabled.
+- Fix: preserve the active strip during the width/height transition, select all text on focus/pointer-up, clamp height at zero, add window metadata/cache-busting, and gate debounced LIVE on `sync.lastSyncAt`.
+- Regression test: harness assertions cover the `width -> height -> height` chain, integer formatting, numeric selection listeners, baseline gating, and `10.2` assets.
+
 ## ERR-001: Depth was sent as vertical position
 
 - Date: 2026-08-17
