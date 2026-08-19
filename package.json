@@ -1,6 +1,6 @@
 {
   "name": "disguise-scene-planner",
-  "version": "0.19.1",
+  "version": "0.19.2",
   "private": true,
   "description": "Disguise Designer Scene Planner plugin",
   "scripts": {

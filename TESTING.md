@@ -25,7 +25,7 @@ Verify:
 3. Undo/redo overlay top-left; Magnet and zoom overlay top-right. Zoom stays within `10-300%`; clicking its value restores `100%` and the initial pan.
 4. Left-drag on empty canvas pans. Right-click on an input restores its defined default.
 5. Right-click empty canvas and create all six supported types at the clicked X/Z coordinate.
-6. New objects focus Height. Initial heights are Camera `1.5`, DMX Light `5`, Projector `3`, and planar types `0`; a second object of the same type reuses that type's last edited height.
+6. New planar objects focus Width; Camera and DMX Light focus Height. A new Projector first moves its Look At point with the cursor, commits it on primary click, and then focuses Height. Initial heights are Camera `1.5`, DMX Light `5`, Projector `3`, and planar types `0`; a second object of the same type reuses that type's last edited height.
 7. Camera and DMX light show top-view direction icons and numeric Yaw controls. Projectors show a draggable Look At marker and no rotation handle.
 8. A manual projector target is displayed as rounded coordinates in the Look At selector. Target dragging changes X/Z and only clears a surface binding after drag actually starts.
 9. Ctrl-drag does not duplicate in the embedded Designer host. Use the object context menu or planner Ctrl+C/Ctrl+V clipboard instead. Pointerup, pointercancel, lost capture, window blur, and tab hiding leave no stale drag state.
@@ -72,6 +72,7 @@ Both calls must succeed. Proxy software must bypass localhost, the Director host
 6. Remove a mapped object from the binding set and confirm `unsubscribe` is sent.
 7. Force a set error. Diagnostics must retain the error; the binding clears `inFlight` and remains `dirty` for recovery.
 8. Create/delete supported objects in Designer and confirm technical collection subscriptions reconcile the Scene without loops or duplicate resources.
+9. Create a Projector, commit Look At, mirror-copy it, and change the copy's Surface. Confirm exactly one new Designer Projector exists and later edits do not issue another create.
 
 ## Resource Lifecycle
 
@@ -83,7 +84,7 @@ Use disposable resources only.
 4. Create an object whose requested name already exists in the Resource list; confirm the next numeric name is used and shown in the Planner.
 5. Rename an object to an existing Resource list name; confirm the rename is rejected, the Planner name is restored, and the error identifies the Designer Resource list.
 6. A deleted mapped object must not be recreated automatically by the next inspection or LIVE event.
-7. Manual/unowned Designer objects remain protected.
+7. Imported/manual Designer objects are physically removed only through the explicit `Delete from Designer?` confirmation. Confirm the request uses the exact selected UID/path and removes the typed Stage reference before discovered dependencies.
 8. Startup inspection deduplicates typed collections and technical `stage.children` entries by UID and ignores internal helpers, MR Sets, and Skeletons.
 
 ### Composite Device Smoke

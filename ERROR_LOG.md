@@ -1,5 +1,14 @@
 # Error Log
 
+## ERR-052: Valid Projector readback caused repeated creation
+
+- Date: 2026-08-20
+- Symptom: changing the Surface of a copied Projector created another Projector, and later actions continued creating more copies.
+- Evidence: Designer returned `configLookAt.x=10.000001907348633` for requested `10` and `z=9.399995803833008` for requested `9.4`; the Planner used a `0.000001 m` tolerance and threw before storing the returned UID.
+- Cause: numeric readback validation incorrectly controlled whether a successfully created Designer resource was remembered.
+- Fix: use a `0.001 m` readback tolerance and persist UID, path, and validated ownership immediately after the create response, before coordinate validation. A validation error remains visible but cannot cause another create.
+- Regression test: float drift below `0.001 m` passes, drift above it fails, and a failed readback followed by another LIVE pass calls `createObject()` only once.
+
 ## ERR-010: Numeric workflow lost focus and LIVE was only a mock
 
 - Date: 2026-08-18

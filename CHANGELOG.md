@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.19.2 - 2026-08-20
+
+- Accept Designer numeric readback drift up to `0.001 m`.
+- Persist a successful create response before readback validation so retries cannot create duplicate devices.
+- Restore mouse-first Projector Look At placement, followed by Projector height focus.
+- Allow explicitly confirmed deletion of an imported object by exact Designer UID/path with Stage-first dependency cleanup.
+
 ## 0.19.1 - 2026-08-20
 
 - Fixed DMX Light ownership validation so a successful Designer create is recorded instead of being retried after every Planner action.

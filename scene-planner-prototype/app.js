@@ -45,6 +45,7 @@
   let liveSceneImportTimer = null;
   let clipboardObjects = [];
   let pendingFocusPath = null;
+  let projectorTargetPlacement = null;
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -382,7 +383,34 @@
   function refreshActiveValues() { const object = selectedObject(); if (!object) return; document.querySelectorAll("#active-object-strip input[data-field]").forEach(input => { if (document.activeElement === input) return; const step = finite(input.dataset.step, .1); input.value = formatValue(getFieldValue(object, input.dataset.field), step); }); }
   function renderStatus() { const currentIds = new Set(state.objects.map(object => object.pluginId)); const statuses = state.objects.map(objectSyncStatus); const synced = statuses.filter(status => status === "synced").length; const changed = statuses.filter(status => status === "changed").length; const errors = Object.keys(state.sync.errors || {}).filter(id => currentIds.has(id)).length; document.querySelector("#status-synced").textContent = synced; document.querySelector("#status-changed").textContent = changed; document.querySelector("#status-errors").textContent = errors; document.querySelector("#status-error-chip").hidden = errors === 0; document.querySelector("#live-toggle").checked = Boolean(state.liveEnabled); }
   function render() { syncStaticInputs(); drawScene(); renderObjectGroups(); renderActiveInspector(); renderStatus(); }
-  function addObjectAt(type, x = 0, z = 0, focusDimensions = false) { syncModelsFromInputs(); saveHistory(); const bounds = stageBounds(); const object = newObject(type, clamp(x, bounds.minX, bounds.maxX), clamp(z, bounds.minZ, bounds.maxZ)); state.objects.push(object); selectObject(object); pendingFocusPath = initialObjectFocusPath(object); persist(); render(); return object; }
+  function updateProjectorTargetPlacement(point) {
+    if (!projectorTargetPlacement || !point) return false;
+    const object = state.objects.find(item => item.id === projectorTargetPlacement.objectId && item.type === "projector");
+    if (!object) { projectorTargetPlacement = null; return false; }
+    const bounds = stageBounds();
+    object.lookAt.x = Number(clamp(point.x, bounds.minX, bounds.maxX).toFixed(3));
+    object.lookAt.z = Number(clamp(point.z, bounds.minZ, bounds.maxZ).toFixed(3));
+    delete object.targetSurfacePluginId;
+    drawScene();
+    refreshActiveValues();
+    return true;
+  }
+  function commitProjectorTargetPlacement(point) {
+    if (!projectorTargetPlacement) return false;
+    if (point) updateProjectorTargetPlacement(point);
+    projectorTargetPlacement = null;
+    pendingFocusPath = "transform.position.y";
+    persist();
+    render();
+    return true;
+  }
+  function cancelProjectorTargetPlacement() {
+    if (!projectorTargetPlacement) return false;
+    projectorTargetPlacement = null;
+    render();
+    return true;
+  }
+  function addObjectAt(type, x = 0, z = 0, focusDimensions = false) { syncModelsFromInputs(); saveHistory(); const bounds = stageBounds(); const object = newObject(type, clamp(x, bounds.minX, bounds.maxX), clamp(z, bounds.minZ, bounds.maxZ)); state.objects.push(object); selectObject(object); if (type === "projector") { projectorTargetPlacement = { objectId: object.id }; pendingFocusPath = null; persist(false); } else { pendingFocusPath = initialObjectFocusPath(object); persist(); } render(); return object; }
   function addObject(type) { return addObjectAt(type); }
   function duplicateObject(id, mirrorAxis = null, options = {}) { const source = state.objects.find(object => object.id === id); if (!source) return null; if (options.history !== false) saveHistory(); const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(source.type); delete copy.designer; if (mirrorAxis === "x") { copy.transform.position.x = Number((-source.transform.position.x).toFixed(3)); copy.transform.rotation.y = normalizeYaw(-source.transform.rotation.y); } else if (mirrorAxis === "z") { copy.transform.position.z = Number((-source.transform.position.z).toFixed(3)); copy.transform.rotation.y = normalizeYaw(180 - source.transform.rotation.y); } else if (options.offset !== false) copy.transform.position.x = Number((source.transform.position.x + .5).toFixed(3)); if (source.type === "projector" && mirrorAxis) { const target = effectiveLookAt(source); copy.lookAt = { ...target, [mirrorAxis]: Number((-target[mirrorAxis]).toFixed(3)) }; } state.objects.push(copy); selectObject(copy); if (options.persist !== false) persist(); if (options.render !== false) render(); return copy; }
   function copySelectedObjects() { const selected = state.objects.filter(object => state.selectedIds.has(object.id) || object.id === state.selectedId); if (!selected.length) return false; clipboardObjects = selected.map(object => clone(object)); return true; }
@@ -392,18 +420,25 @@
   function closeCanvasContextMenu() { if (!canvasContextMenu) return; canvasContextMenu.hidden = true; document.querySelector("#surface-context-list").hidden = true; document.querySelector("#context-delete-confirm").hidden = true; state.showSurfaceLabels = false; contextObjectId = null; contextWorldPoint = null; }
   function openCanvasCreateMenu(event, point) { contextObjectId = null; contextWorldPoint = point; document.querySelector("#empty-context-actions").hidden = false; document.querySelector("#object-context-actions").hidden = true; positionContextMenu(event, 190); }
   function openCanvasContextMenu(event, object) { if (!canvasContextMenu || !object) return; contextObjectId = object.id; contextWorldPoint = null; selectObject(object); render(); document.querySelector("#empty-context-actions").hidden = true; document.querySelector("#object-context-actions").hidden = false; const bindButton = document.querySelector("#context-bind-surface"); const rotateButton = document.querySelector('#object-context-actions [data-action="rotate-90"]'); const surfaceList = document.querySelector("#surface-context-list"); const surfaces = state.objects.filter(item => item.type === "surface"); bindButton.hidden = object.type !== "projector" || !surfaces.length; if (rotateButton) rotateButton.hidden = object.type === "projector"; surfaceList.hidden = true; surfaceList.replaceChildren(); if (object.type === "projector") { state.showSurfaceLabels = true; drawScene(); } surfaces.forEach(surface => { const button = element("button", "", surface.name); button.type = "button"; button.addEventListener("pointerenter", () => previewTargetSurface(surface.pluginId)); button.addEventListener("pointerleave", () => previewTargetSurface(targetSurface(object)?.pluginId || null)); button.addEventListener("click", () => { saveHistory(); object.targetSurfacePluginId = surface.pluginId; object.lookAt = effectiveLookAt(object); object.optics.throwRatio = projectorThrowRatio(object); persist(); render(); closeCanvasContextMenu(); }); surfaceList.append(button); }); document.querySelector("#context-delete-confirm").hidden = true; positionContextMenu(event); }
-  async function deleteObject(id) {
+  async function deleteObject(id, options = {}) {
     const index = state.objects.findIndex(object => object.id === id); if (index < 0) return;
     saveHistory(); const removed = state.objects[index]; const record = state.sync.objects?.[removed.pluginId];
     const detachedTargets = new Map(state.objects.filter(item => item.type === "projector" && item.targetSurfacePluginId === removed.pluginId).map(projector => [projector.id, { target: effectiveLookAt(projector), surfacePluginId: projector.targetSurfacePluginId }]));
     state.objects.splice(index, 1); state.selectedIds.delete(id); detachedTargets.forEach((target, projectorId) => { const projector = state.objects.find(item => item.id === projectorId); if (projector) { projector.lookAt = target; delete projector.targetSurfacePluginId; } }); if (state.selectedId === id) selectObject(state.objects[index] || state.objects[index - 1] || null);
     persist(); render();
     if (!record?.designerId) return;
-    if (!record.owned) { delete state.sync.objects[removed.pluginId]; persist(false); renderStatus(); return; }
-    if (!getAdapter()?.deleteManagedObjects) return;
+    const adapter = getAdapter();
+    if (!record.owned && !options.deleteImportedFromDesigner) { delete state.sync.objects[removed.pluginId]; persist(false); renderStatus(); return; }
+    if (record.owned && !adapter?.deleteManagedObjects) return;
+    if (!record.owned && !adapter?.deleteDesignerObjects) return;
     try {
-      if (!Array.isArray(record.ownedPaths) || !record.ownedPaths.length) throw new Error("Designer ownership metadata is incomplete; refusing physical deletion");
-      const result = await getAdapter().deleteManagedObjects([{ id: record.designerId, path: record.path, owned: true, ownedPaths: record.ownedPaths }]);
+      let result;
+      if (record.owned) {
+        if (!Array.isArray(record.ownedPaths) || !record.ownedPaths.length) throw new Error("Designer ownership metadata is incomplete; refusing physical deletion");
+        result = await adapter.deleteManagedObjects([{ id: record.designerId, path: record.path, owned: true, ownedPaths: record.ownedPaths }]);
+      } else {
+        result = await adapter.deleteDesignerObjects([{ id: record.designerId, path: record.path }]);
+      }
       if (!result?.deleted?.map(String).includes(String(record.designerId))) throw new Error(result?.skipped?.join("; ") || "Designer did not confirm deletion");
       delete state.sync.objects[removed.pluginId]; persist(false); renderStatus();
     } catch (error) {
@@ -417,10 +452,9 @@
   function canonical(value) { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }
   function changedValue(previous, current) { if (previous && current && typeof previous === "object" && typeof current === "object" && !Array.isArray(previous) && !Array.isArray(current)) { const result = {}; Object.keys(current).forEach(key => { const change = changedValue(previous[key], current[key]); if (change !== undefined) result[key] = change; }); return Object.keys(result).length ? result : undefined; } return canonical(previous) === canonical(current) ? undefined : current; }
   function objectPayload(object) { const payload = { pluginId: object.pluginId, type: object.type, name: object.name, transform: clone(object.transform) }; if (object.lookAt) payload.lookAt = clone(effectiveLookAt(object)); if (object.geometry) payload.geometry = clone(object.geometry); if (object.media) payload.media = clone(object.media); if (object.optics) payload.optics = clone(object.optics); return payload; }
-  // Designer stores numeric fields as float32 in several resource types. Keep
-  // this tolerance at machine-noise scale: real measurement differences still
-  // fail validation, while values such as 8.842000007629395 match 8.842.
-  function validateReadback(expected, result, tolerance = 1e-6) {
+  // Designer stores numeric fields as float32 and derives projector values.
+  // One millimetre accepts harmless readback drift without hiding layout errors.
+  function validateReadback(expected, result, tolerance = 0.001) {
     const actual = result?.readback; if (!actual) throw new Error("Designer не вернул координаты объекта для проверки"); const mismatches = [];
     const compare = (path, wanted, got) => { if (!Number.isFinite(Number(got)) || Math.abs(Number(wanted) - Number(got)) > tolerance) mismatches.push(`${path}: ожидалось ${wanted}, получено ${got}`); };
     const compareAngle = (path, wanted, got) => { const difference = Math.abs((((Number(wanted) - Number(got)) % 360) + 540) % 360 - 180); if (!Number.isFinite(Number(got)) || difference > tolerance) mismatches.push(`${path}: ожидалось ${wanted}, получено ${got}`); };
@@ -446,10 +480,47 @@
   }
   function setDiffText(diff) { document.querySelector("#diff-create").textContent = diff.create.length; document.querySelector("#diff-update").textContent = diff.update.length + diff.adopt.length; document.querySelector("#diff-unchanged").textContent = diff.unchanged.length; document.querySelector("#diff-missing").textContent = diff.missing.length; document.querySelector("#diff-preserve").textContent = diff.preserve.length; document.querySelector("#diff-orphans").textContent = diff.orphans.length; document.querySelector("#diff-delete").textContent = diff.standardCandidates.length; }
   function renderStandardChecklist(diff) { const list = document.querySelector("#standard-checklist"); list.replaceChildren(); if (!diff?.standardCandidates?.length) { list.textContent = "No recognized default objects."; return; } diff.standardCandidates.forEach(item => { const label = element("label", "check-row"); const checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.value = String(item.id); label.append(checkbox, element("span", "", item.description || item.name || item.path || item.id)); list.append(label); }); }
+  function persistCreatedRecord(records, object, payload, result, options = {}) {
+    const designerId = result?.designerId || result?.id || options.designerId;
+    const path = result?.path || options.path;
+    if (!designerId || !path) throw new Error("Designer did not return the created object's UID and path");
+    if (result?.name) { object.name = result.name; payload.name = result.name; }
+    let ownedPaths = [];
+    let ownershipError = null;
+    if (options.owned) {
+      try { ownedPaths = validatedOwnedPaths(result, object.type); }
+      catch (error) { ownershipError = error; }
+    }
+    const record = {
+      pluginId: object.pluginId, designerId, path, type: object.type, name: object.name,
+      lastExported: canonical(payload), payload, readbackValid: options.readbackValid ?? null, adopted: Boolean(options.adopted),
+      liveCreated: Boolean(options.liveCreated), owned: Boolean(options.owned && !ownershipError), ownedPaths
+    };
+    records[object.pluginId] = record;
+    state.sync.objects = records;
+    persist(false);
+    if (ownershipError) throw ownershipError;
+    return record;
+  }
   async function syncToDesigner(diff) {
     const records = state.sync.objects || {};
     await syncEnvironmentIfChanged(diff.adapter);
-    for (const item of [...diff.create, ...diff.adopt]) { const owned = !item.designerId; let result; try { result = item.designerId ? await diff.adapter.updateObject(item.designerId, item.payload, item.candidate?.path, item.object.type) : await diff.adapter.createObject(item.payload); validateReadback(item.payload, result); if (result?.name) { item.object.name = result.name; item.payload.name = result.name; item.serialized = canonical(item.payload); } item.designerId = result?.designerId || result?.id || item.designerId; item.designerPath = result?.path || item.candidate?.path; } catch (error) { throw new Error(`${item.designerId ? "Update" : "Create"} "${item.object.name}": ${error.message || error}`); } const ownedPaths = owned ? validatedOwnedPaths(result, item.object.type) : []; records[item.object.pluginId] = { pluginId: item.object.pluginId, designerId: item.designerId || `dsg:${item.object.pluginId}`, path: item.designerPath, type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload, adopted: Boolean(item.candidate), owned, ownedPaths }; state.sync.objects = records; persist(false); }
+    for (const item of [...diff.create, ...diff.adopt]) {
+      const owned = !item.designerId;
+      const operation = owned ? "Create" : "Update";
+      let result;
+      try {
+        result = owned ? await diff.adapter.createObject(item.payload) : await diff.adapter.updateObject(item.designerId, item.payload, item.candidate?.path, item.object.type);
+        const record = persistCreatedRecord(records, item.object, item.payload, result, { owned, adopted: Boolean(item.candidate), designerId: item.designerId, path: item.candidate?.path });
+        item.designerId = record.designerId;
+        item.designerPath = record.path;
+        item.serialized = record.lastExported;
+        try { validateReadback(item.payload, result); record.readbackValid = true; persist(false); }
+        catch (validationError) { record.readbackValid = false; record.lastExported = null; persist(false); throw validationError; }
+      } catch (error) {
+        throw new Error(`${operation} "${item.object.name}": ${error.message || error}`);
+      }
+    }
     for (const item of diff.update) { const previousRecord = records[item.object.pluginId] || {}; try { const result = await diff.adapter.updateObject(item.designerId, item.changed, item.designerPath || previousRecord.path, item.object.type); validateReadback(item.payload, result); if (result?.name) { item.object.name = result.name; item.payload.name = result.name; item.serialized = canonical(item.payload); } item.designerPath = result?.path || item.designerPath; } catch (error) { throw new Error(`Update "${item.object.name}": ${error.message || error}`); } const nextPath = item.designerPath || previousRecord.path; records[item.object.pluginId] = { ...previousRecord, pluginId: item.object.pluginId, designerId: item.designerId, path: nextPath, ownedPaths: renamedOwnedPaths(previousRecord, nextPath), type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload }; state.sync.objects = records; persist(false); }
     state.sync.lastSyncAt = new Date().toISOString(); delete state.sync.errors.live; persist(false);
   }
@@ -507,13 +578,19 @@
     for (const object of state.objects) {
       if (!supported.has(object.type)) continue;
       const existing = records[object.pluginId];
-      if (existing?.designerId) continue;
       const payload = objectPayload(object);
+      if (existing?.designerId) {
+        if (existing.readbackValid === false) {
+          const result = await adapter.updateObject(existing.designerId, payload, existing.path, object.type);
+          validateReadback(payload, result);
+          existing.payload = payload; existing.lastExported = canonical(payload); existing.readbackValid = true; persist(false);
+        }
+        continue;
+      }
       const result = await adapter.createObject(payload);
-      validateReadback(payload, result);
-      const ownedPaths = validatedOwnedPaths(result, object.type);
-      if (result?.name) { object.name = result.name; payload.name = result.name; }
-      records[object.pluginId] = { pluginId: object.pluginId, designerId: result?.designerId || result?.id, path: result?.path, type: object.type, name: object.name, lastExported: canonical(payload), payload, liveCreated: true, owned: true, ownedPaths };
+      const record = persistCreatedRecord(records, object, payload, result, { owned: true, liveCreated: true });
+      try { validateReadback(payload, result); record.readbackValid = true; persist(false); }
+      catch (validationError) { record.readbackValid = false; record.lastExported = null; persist(false); throw validationError; }
     }
     state.sync.objects = records;
     persist(false);
@@ -613,6 +690,7 @@
     closeCanvasContextMenu();
     const rect = canvas.getBoundingClientRect();
     const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false));
+    if (projectorTargetPlacement) { commitProjectorTargetPlacement(point); return; }
     const targetOwner = hitTestProjectorTarget(event.clientX, event.clientY);
     let object = targetOwner || hitTest(event.clientX, event.clientY);
     if (!object) {
@@ -637,6 +715,11 @@
     render();
   });
   canvas.addEventListener("pointermove", event => {
+    if (projectorTargetPlacement) {
+      const rect = canvas.getBoundingClientRect();
+      updateProjectorTargetPlacement(toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false)));
+      return;
+    }
     if (!state.dragging) return;
     const rect = canvas.getBoundingClientRect();
     const point = toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false));
@@ -682,11 +765,11 @@
     refreshActiveValues();
   });
   function clearDragState(event, commit = true) { const pointerId = event?.pointerId; state.dragging = null; state.guides = []; if (commit) persist(); render(); if (pointerId !== undefined && canvas.hasPointerCapture?.(pointerId)) canvas.releasePointerCapture(pointerId); }
-  canvas.addEventListener("pointerup", event => clearDragState(event)); canvas.addEventListener("pointercancel", event => clearDragState(event)); canvas.addEventListener("lostpointercapture", event => { if (state.dragging) clearDragState(event); }); window.addEventListener("lostpointercapture", event => { if (state.dragging) clearDragState(event); }); window.addEventListener("blur", () => { if (state.dragging) clearDragState(undefined, false); }); document.addEventListener?.("visibilitychange", () => { if (document.hidden && state.dragging) clearDragState(undefined, false); }); window.addEventListener("resize", drawScene);
+  canvas.addEventListener("pointerup", event => clearDragState(event)); canvas.addEventListener("pointercancel", event => { cancelProjectorTargetPlacement(); clearDragState(event, false); }); canvas.addEventListener("lostpointercapture", event => { if (state.dragging) clearDragState(event); }); window.addEventListener("lostpointercapture", event => { if (state.dragging) clearDragState(event); }); window.addEventListener("blur", () => { cancelProjectorTargetPlacement(); if (state.dragging) clearDragState(undefined, false); }); document.addEventListener?.("visibilitychange", () => { if (document.hidden) { cancelProjectorTargetPlacement(); if (state.dragging) clearDragState(undefined, false); } }); window.addEventListener("resize", drawScene);
   canvas.addEventListener("wheel", event => { event.preventDefault(); state.zoom = clamp(state.zoom + (event.deltaY < 0 ? .1 : -.1), ZOOM_MIN, ZOOM_MAX); drawScene(); }, { passive: false });
   canvas.addEventListener("contextmenu", event => { event.preventDefault(); const object = hitTestProjectorTarget(event.clientX, event.clientY) || hitTest(event.clientX, event.clientY); if (object) openCanvasContextMenu(event, object); else { const rect = canvas.getBoundingClientRect(); openCanvasCreateMenu(event, toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false))); } });
   document.querySelectorAll("[data-create-type]").forEach(button => button.addEventListener("click", () => { const point = contextWorldPoint; const type = button.dataset.createType; closeCanvasContextMenu(); if (point) addObjectAt(type, point.x, point.z, true); }));
-  document.querySelectorAll("#canvas-context-menu [data-action]").forEach(button => button.addEventListener("click", () => { const id = contextObjectId; const action = button.dataset.action; if (!id) return; if (action === "bind-surface") { const list = document.querySelector("#surface-context-list"); list.hidden = !list.hidden; return; } if (action === "delete") { document.querySelector("#context-delete-confirm").hidden = false; return; } closeCanvasContextMenu(); if (action === "rotate-90") rotateObject90(id); else duplicateObject(id, action === "mirror-x" ? "x" : action === "mirror-z" ? "z" : null); })); document.querySelector("#context-delete-yes").addEventListener("click", () => { const id = contextObjectId; closeCanvasContextMenu(); if (id) deleteObject(id); }); document.querySelector("#context-delete-no").addEventListener("click", () => { document.querySelector("#context-delete-confirm").hidden = true; });
+  document.querySelectorAll("#canvas-context-menu [data-action]").forEach(button => button.addEventListener("click", () => { const id = contextObjectId; const action = button.dataset.action; if (!id) return; if (action === "bind-surface") { const list = document.querySelector("#surface-context-list"); list.hidden = !list.hidden; return; } if (action === "delete") { const object = state.objects.find(item => item.id === id); const record = object ? state.sync.objects?.[object.pluginId] : null; document.querySelector("#context-delete-confirm span").textContent = record?.designerId ? "Delete from Designer?" : "Delete object?"; document.querySelector("#context-delete-confirm").hidden = false; return; } closeCanvasContextMenu(); if (action === "rotate-90") rotateObject90(id); else duplicateObject(id, action === "mirror-x" ? "x" : action === "mirror-z" ? "z" : null); })); document.querySelector("#context-delete-yes").addEventListener("click", () => { const id = contextObjectId; const object = state.objects.find(item => item.id === id); const record = object ? state.sync.objects?.[object.pluginId] : null; closeCanvasContextMenu(); if (id) deleteObject(id, { deleteImportedFromDesigner: Boolean(record?.designerId && !record.owned) }); }); document.querySelector("#context-delete-no").addEventListener("click", () => { document.querySelector("#context-delete-confirm").hidden = true; });
   window.addEventListener("pointerdown", event => { if (!canvasContextMenu?.hidden && !canvasContextMenu.contains?.(event.target)) closeCanvasContextMenu(); });
 
   setupStaticInputs(); if (!loadPersisted()) { syncStaticInputs(); render(); } else { syncStaticInputs(); render(); }
@@ -708,5 +791,5 @@
     if (type === "camera" && paths.filter(path => path.startsWith("objects/camera/")).length < 2) throw new Error("Designer ownership metadata is incomplete for camera");
     return paths;
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, ensureLiveObjects, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
 })();

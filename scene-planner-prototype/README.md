@@ -10,6 +10,8 @@ LIVE uses the official WebSocket endpoint `ws://<director>/api/session/liveupdat
 
 Projectors use public `Projector.configPosition`, `Projector.configLookAt`, and `Projector.configThrowRatio`. Direction is either a rounded manual Look At point or a bound Projection Surface. Moving a projector sends only its position change; Look At, rotation, look distance, and field of view are accepted back from Designer. Dragging the Look At marker sends only the Look At change. The optical cone is an approximate planning aid based on Designer field of view and throw ratio. Designer body `rotation` and `configRotation` are not imported into the Planner contract. The adapter exposes a read-only `projectorReadbackProbe` for release validation.
 
+When a Projector is added, its temporary Look At point follows the cursor. The primary click commits Look At and then focuses Projector height; Designer creation is deferred until that commit. Designer numeric readback is accepted within `0.001 m`, and a returned UID/path is stored before validation so a readback error cannot create a duplicate on retry.
+
 The internal model still stores Scene dimensions under the legacy `stage` key, and inspection uses Designer's technical `stage.children` collection. Neither represents an additional user-facing Stage object.
 
 ## Install And Verify

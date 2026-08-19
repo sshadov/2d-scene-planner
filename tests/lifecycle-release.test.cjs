@@ -83,6 +83,12 @@ assert.match(rename, /"name": str\(getattr\(obj, "description", ""\)\)/);
 const manualRemove = scripts.deleteManagedScript([{ id: "manual-uid", path: "objects/camera/cam1.apx", owned: false }]);
 assert.match(manualRemove, /requested = json\.loads\("\[\]"\)/);
 
+const importedRemove = scripts.deleteScript([{ id: "imported-uid", path: "objects/projector/imported.apx" }]);
+assert.match(importedRemove, /candidate_id in target_ids/);
+assert.match(importedRemove, /path not in target_paths/);
+assert.match(importedRemove, /owned_resource_paths\(candidate\)/);
+assert.ok(importedRemove.indexOf("stage.save()") < importedRemove.indexOf("resourceManager.remove(resource_path)"));
+
 const remove = scripts.deleteManagedScript([{ id: "uid-1", path: "objects/projector/projector-1.apx", owned: true, ownedPaths: ["objects/projector/projector-1.apx", "objects/projectorconfig/projector-1_config0.apx"] }]);
 assert.doesNotMatch(remove, /requested = json\.loads\("\[\]"\)/);
 assert.match(remove, /candidate\.saveOnDelete\(\)/);

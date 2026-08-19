@@ -539,12 +539,12 @@ for collection_name in ${quote(deleteCollectionNames)}:
     for candidate in collection:
         try:
             candidate_id = str(getattr(candidate, "uid", ""))
+            path = str(getattr(candidate, "path", ""))
         except Exception:
             continue
-        if candidate_id in processed or candidate_id not in target_ids:
+        if candidate_id in processed or candidate_id not in target_ids or path not in target_paths:
             continue
         processed.add(candidate_id)
-        path = str(getattr(candidate, "path", ""))
         description = str(getattr(candidate, "description", ""))
         text = (path + " " + description).lower()
         standard = bool(re.search(r"(^|[/\\\\ _-])(surface|projector|camera|screen|light)[ _-]?1(?:\\.|$)", text))
@@ -943,6 +943,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     updateObject: (designerId, changed, designerPath, kind) => execute(updateScript(designerId, changed, designerPath, kind)),
     projectorReadbackProbe: designerId => execute(projectorProbeScript(designerId)),
     deleteObjects: designerIds => execute(deleteScript(designerIds)),
+    deleteDesignerObjects: designerIds => execute(deleteScript(designerIds)),
     deleteManagedObjects: designerIds => execute(deleteManagedScript(designerIds)),
     configureLiveScene,
     liveStart,
@@ -966,6 +967,6 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     }),
     getLiveLogs: () => liveLogEntries.slice(),
     clearLiveLogs: () => { liveLogEntries.length = 0; },
-    debugScripts: { inspectScript, createScript, updateScript, projectorProbeScript, deleteManagedScript }
+    debugScripts: { inspectScript, createScript, updateScript, projectorProbeScript, deleteScript, deleteManagedScript }
   };
 })();
