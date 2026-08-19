@@ -476,3 +476,11 @@
 - Runtime compatibility: Designer's embedded Python rejected exception chaining (`raise ... from ...`) even though local Python 3 accepts it. Generated lifecycle scripts use syntax verified in the installed Designer runtime.
 - Diagnostic detail: Designer can publish a failed create's package paths after an initially clean probe. Smoke cleanup now requires repeated clean probes across a stability window rather than trusting one immediate snapshot.
 - Regression test: generated lifecycle contracts, Python syntax checks, and `scripts/diagnose-composite-devices.py` cover composite builders, conflict detection, health/rollback paths, typed-list deletion, DirectProjection cleanup, and unchanged manual-resource baselines.
+
+## ERR-052: Every Planner action created another DMX Light
+
+- Date: 2026-08-20
+- Symptom: `DMX Light 4` was created successfully in Designer, but remained unsynchronized in Planner; each later click or edit created another numbered copy and blocked `Camera 2` from reaching Designer.
+- Cause: `app.js` ownership validation referenced `typeResourceFolders`, a private constant defined only in `designer-adapter.js`. The resulting `ReferenceError` happened after resource creation but before the Planner stored the Designer UID and owned paths.
+- Fix: validate simple-device ownership with an app-local folder contract matching the adapter (`FixtureGroup` uses `objects/fixturegroup/`), then persist the creation record normally.
+- Regression test: `tests/scene-planner.test.cjs` executes DMX Light ownership validation with the real `FixtureGroup` and `DirectProjection` path shape and fails if cross-file globals are required.

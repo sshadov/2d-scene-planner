@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.19.1 - 2026-08-20
+
+- Fixed DMX Light ownership validation so a successful Designer create is recorded instead of being retried after every Planner action.
+- Added a regression test for the `FixtureGroup` plus `DirectProjection` ownership contract.
+
 ## 0.18.0 - 2026-08-19
 
 - Completed the projector optical contract: `configPosition/configLookAt` are the only Planner-facing projector coordinates.

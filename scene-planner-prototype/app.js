@@ -702,7 +702,8 @@
   function validatedOwnedPaths(result, type) {
     const paths = [...new Set((Array.isArray(result?.ownedPaths) ? result.ownedPaths : []).map(String).filter(Boolean))];
     const mainPath = String(result?.path || "");
-    const requiredFolders = type === "camera" ? ["objects/camera/", "objects/perspectiveprojectionobject/"] : type === "projector" ? ["objects/projector/", "objects/projectorconfig/"] : [String(typeResourceFolders[type] ? `objects/${typeResourceFolders[type]}/` : ""), "objects/directprojection/"];
+    const ownedResourceFolders = { screen: "ledscreen", dmxScreen: "dmxscreen", surface: "screen2", dmxLight: "fixturegroup" };
+    const requiredFolders = type === "camera" ? ["objects/camera/", "objects/perspectiveprojectionobject/"] : type === "projector" ? ["objects/projector/", "objects/projectorconfig/"] : [`objects/${ownedResourceFolders[type] || ""}/`, "objects/directprojection/"];
     if (!mainPath || !paths.includes(mainPath) || requiredFolders.some(folder => !folder || !paths.some(path => path.startsWith(folder)))) throw new Error(`Designer ownership metadata is incomplete for ${type}`);
     if (type === "camera" && paths.filter(path => path.startsWith("objects/camera/")).length < 2) throw new Error("Designer ownership metadata is incomplete for camera");
     return paths;
