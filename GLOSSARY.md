@@ -1,24 +1,22 @@
 # Glossary
 
-- **Designer**: Disguise Designer application hosting the current project and stage.
-- **Stage**: `state.stage`, the single top-view plan boundary with `width` and `depth`, centred at world origin.
+- **Designer**: Disguise Designer application hosting the current project and its internal stage object.
+- **Scene**: the user-facing top-view planning boundary with `width` and `depth`, centred at world origin. The persisted legacy key is `state.stage`.
 - **Planner object**: an object in the local scene model with a stable `pluginId`.
-- **Managed object**: a Designer object proven to belong to this planner by `dsg-*` path or stored UID.
-- **Adopted object**: a recognized default Designer object that the planner updates in place and then maps to a `pluginId`.
+- **Managed object**: a Designer resource proven to belong to this planner by stored UID/path or a legacy `dsg-*` path.
+- **Adopted object**: a recognized default Designer object that the planner updates in place and maps to a `pluginId`.
 - **Manual object**: an object without planner ownership or a known default signature; always protected.
-- **Standard object**: a recognized Designer starter/default object such as `surface 1` or `projector 1`.
-- **Orphan**: a formerly mapped Designer object no longer present in the planner; reported but not deleted.
+- **Orphan**: a formerly mapped Designer object no longer present in the planner; reported but not automatically deleted.
 - **Plugin ID**: stable planner-side UUID used across edits and exports.
 - **Designer UID**: object identifier returned by Designer and stored in the sync table.
-- **X/Y/Z**: Designer position axes: width, vertical height, and depth.
-- **Rx/Ry/Rz**: rotations around Designer X, Y, and Z axes.
-- **Top view**: 2D projection of X/Z; Y is intentionally invisible.
-- **Bottom-centre anchor**: planner position for a screen/surface; Designer receives a centre pivot calculated as `Y + height/2`.
-- **Optical centre**: planner position for a projector or camera, written to its type-specific Designer transform.
+- **X/Y/Z**: Designer axes: width, vertical height, and depth.
+- **Top view**: 2D projection of X/Z; Y is edited numerically.
+- **Bottom-centre anchor**: planner position for a screen/surface; Designer receives `Y + height/2` as its centre pivot.
+- **Optical centre**: projector position written to `Projector.configPosition`.
 - **Look At**: projector target point in world coordinates, written to `Projector.configLookAt`.
 - **Target surface**: optional projection surface whose current centre supplies a projector's Look At point.
-- **PPI**: pixels per inch, stored only for LED screens in the planner metadata.
-- **Stage height**: not part of the plan model; object Y values remain independent world coordinates.
+- **PPI**: pixels per inch, stored as LED-screen planning metadata.
 - **Pixel pitch**: centre-to-centre LED pixel spacing in millimetres.
-- **Direction cone**: top-view indication of a projector, camera, or light heading derived from its `Ry` value.
-- **Diff**: internal classified operations used by the adapter; there is no user-facing export-apply command.
+- **Direction cone**: top-view indication of a projector, camera, or light heading.
+- **LIVE**: Designer Live Update WebSocket transport for subscribed scalar properties.
+- **`stage.children`**: internal Designer API collection used during inspection; it is not a second user-facing Stage entity.

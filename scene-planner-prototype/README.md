@@ -1,34 +1,24 @@
-# Disguise Stage Planner
+# Disguise Scene Planner
 
-Это независимый локальный прототип будущего плагина Disguise Designer. Он работает без установки зависимостей: откройте `index.html` в браузере или поднимите любой локальный HTTP-сервер в этой папке.
+Scene Planner is an embedded Disguise Designer plugin for planning supported scene equipment in a top X/Z view and keeping mapped Designer resources synchronized.
 
-В прототипе есть один Stage с размерами ширины и глубины, затем можно добавить LED-экраны, поверхности, камеры, проекторы и световые приборы через ПКМ в свободной точке плана. Объект из контекстного меню появляется в выбранной мировой координате. У экрана и поверхности сразу активируется ширина, Enter переводит на высоту; у нового проектора видимая точка `Look At` следует за курсором до следующего клика. `Ctrl + drag`, `Ctrl+C` и `Ctrl+V` создают копии. `Shift + click` выбирает все объекты того же типа для общего перемещения. Слева остаётся компактный список с top-view иконками, а физические параметры активного объекта показываются одной полосой над планом. Камера, проектор и световой прибор вращаются внешней круговой ручкой. Числа можно вводить вручную, менять стрелками или колесом. Колесо над планом управляет масштабом. Планы v11 сохраняются локально, а «JSON» создаёт переносимый файл.
+The fixed left panel contains Scene width/depth, grouped objects, and the selected object's properties. The remaining window is the 2D plan. Undo/redo overlay the top-left of the plan; Magnet and zoom overlay the top-right. Objects are added from the empty-canvas context menu. The supported types are LED Screen, DMX Screen, Projection Surface, DMX Light, Projector, and Camera.
 
-Переключатель `LIVE` использует официальный WebSocket Live Update адаптер. Внутренние Python/HTTP функции сохранены для inspection/create/delete; HTTP-таймер не выдаётся за Live Update.
+Camera, projector, and light direction can be changed after placement. Projector direction is represented by `configLookAt`, not body rotation. Default install heights are Camera `1.5 m`, DMX Light `5 m`, Projector `3 m`, and planar objects `0 m`; each type remembers its last edited height.
 
-Официальный Live Update подключается через `ws://<director>/api/session/liveupdate` с сообщениями `subscribe`, `valuesChanged`, `set` и `unsubscribe`. Адрес Director берётся из `?director=` (или из `window.DISGUISE_DIRECTOR`); при разрыве соединения LIVE сохраняет желаемое состояние, выполняет backoff reconnect и resubscribe, не переключаясь самопроизвольно в OFF. JSON export остаётся доступен.
+LIVE uses the official WebSocket endpoint `ws://<director>/api/session/liveupdate` with `subscribe`, `valuesChanged`, `set`, and `unsubscribe`. The Director is discovered through `?director=` or `window.DISGUISE_DIRECTOR`. Transient disconnects retain LIVE intent and trigger backoff reconnect/resubscribe. Resource creation, rename, and deletion use the Python Execution API; `object.description` is read-only in LIVE and names are changed with `Resource.rename`.
 
-Внутри Designer адаптер отправляет изменения через Python Execution API (`/api/session/python/execute`). Локальный тест по умолчанию использует Designer API `http://127.0.0.1`; адрес можно переопределить через `window.DISGUISE_API_ORIGIN`. Python Execution API предназначен для редких функциональных операций вроде создания объектов, а не для постоянного polling.
+Projectors use only `Projector.configPosition` and `Projector.configLookAt`. Designer body `rotation` and `configRotation` are not imported into the Planner contract. The adapter exposes a read-only `projectorReadbackProbe` for release validation.
 
-## Контракт адаптера Designer
+The internal model still stores Scene dimensions under the legacy `stage` key, and inspection uses Designer's technical `stage.children` collection. Neither represents an additional user-facing Stage object.
 
-Официальный Plugin API должен предоставить глобальный `window.disguiseSceneAdapter` с методами:
+## Install And Verify
 
-```js
-{
-  capabilities: { liveUpdate: true, liveTransport: "websocket", httpSync: true },
-  inspectScene: async () => ({ objects: [{ id: "designer-id", type: "surface" }], floorY: 0 }),
-  createObject: async (payload) => ({ designerId: "designer-id" }),
-  updateObject: async (designerId, changedFields, designerPath) => undefined,
-  deleteObjects: async (confirmedStandardIds) => undefined,
-  projectorReadbackProbe: async (designerId) => ({ contract: "Projector.configPosition/configLookAt" })
-}
+Place this directory under the Designer project's `plugins/scene-planner-prototype` folder with `d3plugin.json` at its root, or deploy the tracked source with:
+
+```powershell
+.\scripts\deploy-plugin.ps1 -ProjectPath 'D:\Disguise\Projects\start'
+npm run release-check
 ```
 
-`createObject` и `updateObject` получают только управляемые или явно принятые данные. `deleteObjects` вызывается только для выбранных стандартных объектов; объекты, исчезнувшие из плана, остаются в Designer.
-
-Полный запуск и тесты описаны в корневом `TESTING.md`.
-
-## Current interface contract
-
-The current runtime uses English Designer-facing labels. Supported equipment is `LedScreen`, `DmxScreen`, `Screen2` projection surface, `FixtureGroup` DMX light, `Projector`, and `Camera`; MR sets and skeletons are intentionally ignored. The open Designer project is imported on startup and is authoritative: typed collections and physical `stage.children` are reconciled by UID/path, while internal and non-physical helper entities are ignored. With LIVE enabled, new Planner objects are created through one Python API call and then bound to WebSocket updates; new or deleted objects in Designer are detected through Stage collection subscriptions and reconciled into the plan. Explicit deletion requires confirmation and removes only the selected resource. Stage is the single centred plan boundary with width/depth only. Object Y remains an absolute world coordinate. Projectors use `Projector.configPosition` and `Projector.configLookAt` as their complete physical contract; Designer `rotation` and `configRotation` are not imported or shown. The adapter exposes a read-only `projectorReadbackProbe` for release validation. Selecting or previewing a projector target surface highlights that surface on the plan. Designer resource names follow planner names without `dsg-`.
+The complete embedded Designer smoke checklist is in the repository root `TESTING.md`.
