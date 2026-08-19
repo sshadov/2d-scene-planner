@@ -1,4 +1,4 @@
-# Disguise Stage Planner: локальный прототип
+# Disguise Stage Planner
 
 Это независимый локальный прототип будущего плагина Disguise Designer. Он работает без установки зависимостей: откройте `index.html` в браузере или поднимите любой локальный HTTP-сервер в этой папке.
 
@@ -7,8 +7,6 @@
 Переключатель `LIVE` использует официальный WebSocket Live Update адаптер. Внутренние Python/HTTP функции сохранены для inspection/create/delete; HTTP-таймер не выдаётся за Live Update.
 
 Официальный Live Update подключается через `ws://<director>/api/session/liveupdate` с сообщениями `subscribe`, `valuesChanged`, `set` и `unsubscribe`. Адрес Director берётся из `?director=` (или из `window.DISGUISE_DIRECTOR`); при разрыве соединения LIVE сохраняет желаемое состояние, выполняет backoff reconnect и resubscribe, не переключаясь самопроизвольно в OFF. JSON export остаётся доступен.
-
-Кнопка «Clear plan» очищает только локальный план после подтверждения. Объекты Designer остаются нетронутыми.
 
 Внутри Designer адаптер отправляет изменения через Python Execution API (`/api/session/python/execute`). Локальный тест по умолчанию использует Designer API `http://127.0.0.1`; адрес можно переопределить через `window.DISGUISE_API_ORIGIN`. Python Execution API предназначен для редких функциональных операций вроде создания объектов, а не для постоянного polling.
 
@@ -22,7 +20,8 @@
   inspectScene: async () => ({ objects: [{ id: "designer-id", type: "surface" }], floorY: 0 }),
   createObject: async (payload) => ({ designerId: "designer-id" }),
   updateObject: async (designerId, changedFields, designerPath) => undefined,
-  deleteObjects: async (confirmedStandardIds) => undefined
+  deleteObjects: async (confirmedStandardIds) => undefined,
+  projectorReadbackProbe: async (designerId) => ({ contract: "Projector.configPosition/configLookAt" })
 }
 ```
 

@@ -135,7 +135,7 @@ try:
 except Exception:
     pass
 floor_size = getattr(stage, "floor_size", None)
-return json.dumps({"roomFloor": {"width": float(floor_size.x), "depth": float(floor_size.y)} if floor_size is not None else {"width": float(${Number(environment.room.width)}), "depth": float(${Number(environment.room.depth)})}, "floorY": float(stage.floor_pos.y), "sceneEnabled": scene_enabled, "sceneCube": {"designerId": str(scene_obj.uid), "path": scene_path} if scene_obj is not None else None})`;
+return json.dumps({"stageFootprint": {"width": float(floor_size.x), "depth": float(floor_size.y)} if floor_size is not None else {"width": float(${Number(environment.stage.width)}), "depth": float(${Number(environment.stage.depth)})}, "floorY": float(stage.floor_pos.y), "sceneEnabled": scene_enabled, "sceneCube": {"designerId": str(scene_obj.uid), "path": scene_path} if scene_obj is not None else None})`;
   }
 
   function readbackHelpers() {
@@ -175,6 +175,7 @@ def readback(obj, kind):
   function inspectScript() {
     return `import json
 import re
+from d3 import Path
 stage = state.stage
 objects = []
 warnings = []
@@ -229,7 +230,7 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
 floor = getattr(stage, "floor_pos", None)
 floor_y = float(floor.y) if floor is not None else 0.0
 floor_size = getattr(stage, "floor_size", None)
-return json.dumps({"objects": objects, "stageId": str(getattr(stage, "uid", "")), "floorY": floor_y, "floorPosition": vec_data(floor) if floor is not None else {"x": 0.0, "y": 0.0, "z": 0.0}, "roomFloor": {"width": float(floor_size.x), "depth": float(floor_size.y)} if floor_size is not None else None, "warnings": warnings, "sceneCube": scene_cube})`;
+return json.dumps({"objects": objects, "stageId": str(getattr(stage, "uid", "")), "floorY": floor_y, "floorPosition": vec_data(floor) if floor is not None else {"x": 0.0, "y": 0.0, "z": 0.0}, "stageFootprint": {"width": float(floor_size.x), "depth": float(floor_size.y)} if floor_size is not None else None, "warnings": warnings, "sceneCube": scene_cube})`;
   }
   function createScript(payload) {
     return `import json
@@ -269,6 +270,7 @@ return json.dumps({"designerId": str(obj.uid), "path": object_path, "readback": 
   function updateScript(designerId, changed, designerPath, kind) {
     return `import json
 import re
+from d3 import Path
 target_id = ${quote(String(designerId))}
 target_path = ${quote(String(designerPath || ""))}
 kind = ${quote(kind)}
@@ -299,8 +301,8 @@ if name_change:
     desired_path = folder + "/" + safe_name + ".apx"
     if desired_path != object_path:
         try:
-            assign("path", desired_path)
-            object_path = desired_path
+            obj.rename(Path(desired_path))
+            object_path = str(obj.path)
         except Exception as error:
             raise RuntimeError("Cannot rename Designer resource to {}: {}".format(desired_path, error))
 transform_change = changed.get("transform", {})

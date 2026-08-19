@@ -159,7 +159,7 @@ On startup the adapter inspects every typed collection and `stage.children`. The
 - Date: 2026-08-18
 - Status: accepted
 
-Readback validation has no configured tolerance. A mismatch is reported instead of being rounded away. Manual `Synchronize` remains available alongside the real WebSocket LIVE adapter.
+Readback validation uses only a `1e-6` machine epsilon for Designer float32 representation noise; meaningful mismatches are reported instead of being rounded away. LIVE is the active synchronization path, while Python HTTP remains an adapter implementation detail for create/update/delete operations that the WebSocket protocol cannot perform.
 
 ## ADR-020: Designer-facing English names
 

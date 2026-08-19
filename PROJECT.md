@@ -12,7 +12,7 @@ The project helps a video engineer create the first usable layout of an event in
 
 ## Product boundaries
 
-The planner owns only objects identified by a stable plugin ID or explicitly adopted known defaults. It never silently edits or deletes manual Designer objects. The plan has one Stage, not separate Room and Stage entities.
+The planner owns only objects identified by a stable plugin ID or explicitly adopted known defaults. It never silently edits or deletes manual Designer objects. The plan has one Stage boundary; there is no separate Room model.
 
 The current object set is LED screens, surfaces, cameras, projectors, and lights. LED screens carry physical size plus one chosen resolution/density input mode; projection surfaces carry size and resolution; projectors carry lens position, target, and resolution. Designer offsets, body Euler rotations, config rotations, parent-child constraints, lens models, podium geometry, calibration, and content routing do not belong in the operator UI.
 

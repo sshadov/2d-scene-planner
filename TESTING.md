@@ -44,7 +44,7 @@ $body = @{ script = 'return 1' } | ConvertTo-Json
 Invoke-RestMethod 'http://127.0.0.1/api/session/python/execute' -Method Post -ContentType 'application/json' -Body $body
 ```
 
-An HTTP 200 and a successful return value prove that the local session and Python endpoints are available. If they fail, the UI remains usable and JSON export still works, but live synchronization must be treated as unavailable.
+An HTTP 200 and a successful return value prove that the local session and Python endpoints are available. If they fail, the UI remains usable and JSON export still works, but LIVE must be treated as unavailable.
 
 ## Free Designer Starter
 
@@ -67,7 +67,7 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 
 ## Coordinate scenarios
 
-1. With a `20 × 12 m` room, verify its bounds are `X=-10..10`, `Z=-6..6` and the world origin is at the centre.
+1. With a `20 × 12 m` Stage, verify its bounds are `X=-10..10`, `Z=-6..6` and the world origin is at the centre.
 2. Set a screen to width `4`, height `2`, `X=3`, bottom `Y=0`, `Z=-5`, yaw `0`.
 3. Export and verify Designer `offset=(3,1,-5)`, `scale=(4,2,0.1)`, `rotation=(0,0,0)`; readback bottom is `Y=0`.
 4. Set screen bottom `Y=1.5`; it must occupy the vertical range `1.5..3.5`.
@@ -76,8 +76,8 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 7. Verify a camera resource is class `Camera` and uses `offset/rotation`; a light also uses `offset/rotation`.
 8. Verify the projector cone and target marker follow its Look At point and camera/light cones follow `Ry` in the top view.
 9. Force a readback difference above `0.001`; sync must stop and display the mismatched field.
-10. Load a v6 screen with `Y=0`; v10 must preserve its object world Y and convert the old stage-top floor reference correctly.
-11. Load a v7 plan with base `floorY=0.4`; v10 must keep `0.4` rather than subtracting stage height again.
+10. Load a v6 screen with `Y=0`; v11 must preserve its object world Y and convert the old stage-top floor reference correctly.
+11. Load a v7 plan with base `floorY=0.4`; v11 must keep `0.4` rather than subtracting stage height again.
 
 ## Physical UI and numeric input scenarios
 
@@ -86,7 +86,7 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 3. Enter `1,5` and `1.5` in a coordinate field; both must store `1.5`.
 4. Temporarily clear a field; the model must retain its previous value rather than writing zero.
 5. Scroll over a metric or density field; each wheel event changes it by `0.1`. Scroll over an angle; it changes by `1°`. Horizontal pointer movement over an input must do nothing.
-6. Add an object after entering comma-formatted room/stage values; the room/stage dimensions must remain unchanged.
+6. Add an object after entering comma-formatted Stage values; the Stage dimensions must remain unchanged.
 7. For an LED screen, switch between `Разрешение`, `PPI`, and `Шаг`; only the selected mode is visible and hidden values recalculate. For a projection surface, verify only size, position/yaw, and resolution. For a projector, verify only lens position, target/surface, and resolution with no rotation input.
 8. Toggle "Отсчитывать высоту объектов от сцены": a screen at world Y `0.8` displays `0` when stage top is `0.8`, then returns to `0.8` when unchecked.
 9. Select every object type; the canvas bounding-box height must not change.
@@ -99,7 +99,7 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 
 ## Direct manipulation scenarios
 
-Before these scenarios, verify the numeric workflow: screen/surface `Ширина -> Высота -> Высота от пола/сцены` advances on Enter, clicking an input selects all text, `4` displays as `4`, `1.5` as `1,5`, and negative world heights remain negative. LIVE should connect through the official WebSocket when the host supports it; manual synchronization remains available.
+Before these scenarios, verify the numeric workflow: screen/surface `Width -> Height -> Position Y` advances on Enter, clicking an input selects all text, `4` displays as `4`, `1.5` as `1,5`, and negative world heights remain negative. LIVE should connect through the official WebSocket when the host supports it.
 
 The `Очистить сцену` button requires confirmation, removes planner objects and keeps their Designer mappings as orphans; it must never call Designer deletion automatically.
 
@@ -109,7 +109,7 @@ The `Очистить сцену` button requires confirmation, removes planner 
 4. Select an LED screen or projection surface; its rotation handle must appear outside the top-right corner with a connector line.
 5. Press the handle without moving it; yaw must not jump. Drag it to `30°`; X/Z, height, dimensions, and resolution must remain unchanged.
 6. Ctrl-drag an object; an independent copy starts at the same coordinate and follows the pointer while the original remains in place.
-7. Shift-click one object; all objects of that type must highlight. Drag any highlighted member; all selected objects retain their relative X/Z offsets and remain inside the room.
+7. Shift-click one object; all objects of that type must highlight. Drag any highlighted member; all selected objects retain their relative X/Z offsets and remain inside the Stage.
 8. Right-click an object; the menu must show duplicate, 90-degree rotation, mirror X/Z, and confirmed deletion. A projector with available surfaces also shows surface binding.
 9. Plain context-menu duplicate adds `0.5 m` on X and receives a new readable name, plugin ID, and empty Designer mapping.
 10. Mirror a screen at `X=-6`, `Z=-3`, yaw `30°` around a stage centred at zero. X mirror must produce `(6,-3,-30°)`; Z mirror must produce `(-6,3,150°)`.
@@ -132,7 +132,7 @@ The `Очистить сцену` button requires confirmation, removes planner 
 
 ## Current v10.8 checks
 
-1. Reload the planner with an open Designer project. The room floor size/position and supported physical objects in typed collections or `stage.children` must appear in the 2D model. `internal/*`, `LookAtManipulable`, `Puck`, and other non-physical helpers must not appear.
+1. Reload the planner with an open Designer project. The Stage footprint and supported physical objects in typed collections or `stage.children` must appear in the 2D model. `internal/*`, `LookAtManipulable`, `Puck`, and other non-physical helpers must not appear.
 2. Toggle `Stage`. When checked, a managed `dsg-scene-cube.apx` appears in Designer with stage dimensions and is visible. When unchecked, no automatic deletion occurs. Change Stage `X/Z` fields and verify the cube moves; dragging the Stage outline does nothing.
 3. Set stage `floorY=1` and an object world `Y=1`. With `Y relative to Scene` enabled it displays `0`; entering `-3` stores world `Y=-2`. Turning the checkbox off shows `-2`.
 4. Import a projector with non-zero Designer `configRotation`; the 2D model preserves it, while the projector inspector still exposes only position, Look At, and resolution.
@@ -143,8 +143,8 @@ The `Очистить сцену` button requires confirmation, removes planner 
 9. Select a projector, choose a named surface in `Look At surface`, and verify that the surface name and outline are highlighted on the plan.
 10. Open the Look At selector and move through surfaces before committing; the corresponding surface name and outline must preview immediately, then revert on blur if no choice was committed.
 11. Delete a mapped object in Designer while it remains in the planner. The next inspection must show `Missing in Designer: 1`, send no create call, and leave the planner object untouched.
-12. Rename a planner object to `surface1`, synchronize, and verify the Designer resource description/path is `surface1`, not `dsg-*`.
-13. Synchronize with a changed Stage and verify no `stage.floor_size =` script is sent; `stage.floor_pos` succeeds without the Starter `Field` exception.
+12. Rename a planner object to `surface1`, trigger a LIVE/API update, and verify the Designer resource description/path is `surface1`, not `dsg-*`.
+13. Update a changed Stage and verify no `stage.floor_size =` script is sent; `stage.floor_pos` succeeds without the Starter `Field` exception.
 14. Run the confirmed default deletion flow and verify the adapter calls `saveOnDelete()` and `resourceManager.remove(path)`; collection detachment alone is not sufficient.
 15. Inspect a concrete `Camera` and verify readback uses `offset/rotation` only.
 

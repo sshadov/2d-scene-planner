@@ -27,7 +27,7 @@
 - Camera sensor/lens presets, field of view, target, and frustum visualization.
 - LED cabinet/module presets and automatic screen assembly.
 - Distribution, dimension-aware edge snapping, grouping, duplication, and multi-selection.
-- Room walls, stage origin, audience area, truss, and scenic models.
+- Stage walls, origin, audience area, truss, and scenic models.
 
 ## Integration work
 

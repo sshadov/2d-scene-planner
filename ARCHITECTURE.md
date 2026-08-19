@@ -42,7 +42,7 @@ The top toolbar creates objects at the stage centre. Right-clicking empty plan s
 
 Projectors expose a target marker/surface relation and share the external rotation handle with cameras and DMX lights. Dragging a manual marker edits Look At X/Z; selecting a surface locks the marker to that surface centre. LED screens show one source mode at a time: resolution, PPI, or millimetre pitch. The model recalculates the hidden companion values after edits. Dragging objects preserves the pointer offset and optional snapping can use the 1 m grid, 0.1 m grid, Stage edges, same-type coordinates, and mirrored distances. Ctrl-drag and Ctrl+C/Ctrl+V create independent copies. Shift-click selects the complete same-type set; group drag applies one clamped delta so relative positions stay unchanged. The context menu supports duplication, 90-degree rotation/direction change, projector surface binding, mirrored copies, and confirmed deletion.
 
-Every successful create/update returns a type-specific readback. The planner compares position, rotation, and planar geometry strictly, without a tolerance, before recording the sync version.
+Every successful create/update returns a type-specific readback. The planner compares position, rotation, and planar geometry with a `1e-6` machine epsilon for Designer float32 noise; meaningful differences still fail before the sync version is recorded.
 
 ## Synchronization
 
@@ -60,7 +60,7 @@ planner state -> inspect Designer -> classify -> diff -> confirm -> selective AP
 
 Update mode may adopt a same-type standard object and update it in place. Clean mode creates a new managed set and exposes remaining standards in the deletion checklist. Orphans are reported but never automatically deleted. A mapped object missing from Designer is reported as missing in the internal diff; LIVE never recreates a Designer object that was deleted, while a new Planner object without a Designer UID is created once through the resource API.
 
-The adapter repeats the default/managed check before deletion and removes selected resources through `resourceManager.remove(path)` after `saveOnDelete()`. Repeat sync resolves a managed object by Designer UID, saved resource path, or its legacy `dsg-*` path. Dangling typed references left in Designer stage collections after deletion are ignored in favour of typed collection truth. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful sync. Startup probes `/api/session/status/session` with a short timeout, while create/update calls have a longer timeout.
+The adapter repeats the default/managed check before deletion and removes selected resources through `resourceManager.remove(path)` after `saveOnDelete()`. Planner renames use the official `Resource.rename(Path(...))` API, followed by `save()`, and update the stored path from the returned resource. Repeat reconciliation resolves a managed object by Designer UID, saved resource path, or its legacy `dsg-*` path. Dangling typed references left in Designer stage collections after deletion are ignored in favour of typed collection truth. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful update. Startup probes `/api/session/status/session` with a short timeout, while create/update calls have a longer timeout.
 
 ## Persistence
 

@@ -439,6 +439,14 @@
 - Fix: build LIVE object expressions from the exact Designer UID using a hexadecimal `getByUID(0x...)` call; keep the name/path expression only as a fallback for invalid legacy IDs.
 - Regression test: adapter source checks UID conversion through `BigInt` and `getByUID`, while the Designer integration test verifies WebSocket and Python readback address the same resource.
 
+## ERR-050: Lifecycle rename used an unsupported path setter
+
+- Date: 2026-08-19
+- Symptom: a planner rename could mutate the in-memory `path` field without invoking Designer's resource lifecycle.
+- Cause: the adapter assigned `path` directly instead of using the official resource rename operation.
+- Fix: import `Path`, call `obj.rename(Path(desired_path))`, then save and persist the returned path. Deletion remains `saveOnDelete()` followed by `resourceManager.remove(path)`.
+- Regression test: `tests/lifecycle-release.test.cjs` checks generated update/delete scripts and the release package command.
+
 ## ERR-049: Float32 readback caused false LIVE errors and repeated writes
 
 - Date: 2026-08-19

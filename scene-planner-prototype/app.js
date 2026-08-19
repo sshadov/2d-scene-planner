@@ -8,7 +8,6 @@
   const GROUP_ORDER = ["screen", "dmxScreen", "surface", "projector", "dmxLight", "camera", "designer"];
   const defaults = {
     stage: { width: 20, depth: 12 },
-    counts: { screen: 0, dmxScreen: 0, projector: 0, dmxLight: 0, surface: 0, camera: 0 }
   };
   const typeConfig = {
     screen: { label: "LED Screen", group: "LED Screens", color: "#3dd9d4", geometry: { width: 4, height: 2 }, media: { inputMode: "resolution", resolutionX: 1920, resolutionY: 1200, pixelsPerInch: 10, pixelPitchMm: 2.54 } },
@@ -122,6 +121,7 @@
   }
   function loadPersisted() {
     try {
+      // Legacy v2-v10 saves may contain `room`; v11 persists only Stage.
       const keys = [STORAGE_KEY, "disguise-scene-generator-state-v10", "disguise-scene-generator-state-v9", "disguise-scene-generator-state-v8", "disguise-scene-generator-state-v7", "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
       const saved = JSON.parse(keys.map(key => localStorage.getItem(key)).find(Boolean) || "null"); if (!saved) return false;
       const sourceVersion = Number(saved.version) || (saved.objects?.some(object => object.position) ? 3 : 2);
@@ -156,21 +156,6 @@
     if (type === "projector") object.lookAt = { x: 0, y: stageFloorY(), z: 0 };
     return object;
   }
-  function generate() {
-    syncModelsFromInputs(); saveHistory(); state.objects = []; const bounds = stageBounds(); const counts = defaults.counts; const margin = .6;
-    for (let i = 0; i < counts.screen; i++) state.objects.push(newObject("screen", bounds.minX + state.stage.width * ((i + 1) / (counts.screen + 1)), bounds.minZ + margin));
-    for (let i = 0; i < counts.projector; i++) state.objects.push(newObject("projector", 0, bounds.maxZ - margin, { y: 180 }));
-    for (let i = 0; i < counts.dmxLight; i++) { const columns = 2; state.objects.push(newObject("dmxLight", bounds.minX + state.stage.width * ((i % columns + 1) / (columns + 1)), bounds.minZ + state.stage.depth * ((Math.floor(i / columns) + 1) / 3), { x: -45, y: 0 })); }
-    for (let i = 0; i < counts.surface; i++) state.objects.push(newObject("surface", bounds.minX + margin, 0, { y: 90 }));
-    for (let i = 0; i < counts.camera; i++) state.objects.push(newObject("camera", 0, bounds.maxZ - margin, { y: 180 }));
-    state.selectedId = state.objects[0]?.id ?? null; state.selectedIds = new Set(state.selectedId ? [state.selectedId] : []); persist(); render();
-  }
-  function clearPlannerScene() {
-    if (!state.objects.length) return;
-    if (!window.confirm("Clear planner objects? Objects already written to Designer will not be deleted.")) return;
-    saveHistory(); state.objects = []; state.selectedId = null; state.selectedIds = new Set(); state.placingProjectorId = null; state.guides = []; persist(); render();
-  }
-
   function syncStaticInputs() {
     Object.entries(state.stage).forEach(([key, value]) => { if (stageInputs[key] && typeof value !== "boolean") stageInputs[key].value = formatValue(value); });
   }
@@ -367,7 +352,7 @@
   }
   function getAdapter() { const adapter = globalThis.disguiseSceneAdapter; return adapter && ["inspectScene", "createObject", "updateObject"].every(method => typeof adapter[method] === "function") ? adapter : null; }
   function environmentKey() { return canonical({ stage: state.stage }); }
-  async function syncEnvironmentIfChanged(adapter) { if (typeof adapter?.syncEnvironment !== "function") return false; const key = environmentKey(); if (state.sync.environment === key) return false; const adapterStage = { ...state.stage, enabled: true, height: 0 }; await adapter.syncEnvironment({ room: { width: state.stage.width, depth: state.stage.depth }, stage: adapterStage }); state.sync.environment = key; persist(false); return true; }
+  async function syncEnvironmentIfChanged(adapter) { if (typeof adapter?.syncEnvironment !== "function") return false; const key = environmentKey(); if (state.sync.environment === key) return false; const adapterStage = { ...state.stage, enabled: true, height: 0 }; await adapter.syncEnvironment({ stage: adapterStage }); state.sync.environment = key; persist(false); return true; }
   function typeOfSceneObject(item) { return item.type || ({ ledScreens: "screen", dmxScreens: "dmxScreen", surfaces: "surface", dmxLights: "dmxLight", cameras: "camera", projectors: "projector" }[item.collection]); }
   function isStandardCandidate(item) { return Boolean(item.standard || /(^|[\\/ _-])(surface|projector|camera|screen|light)[ _-]?1(?:\.|$)/i.test(`${item.path || ""} ${item.description || ""} ${item.name || ""}`)); }
   async function makeDiff(adapter, mode = "update") {
@@ -484,7 +469,7 @@
   async function importDesignerScene(adapter, options = {}) {
     const inspection = await adapter.inspectScene();
     adapter.configureLiveScene?.(inspection.stageId);
-    if (inspection.roomFloor) { state.stage.width = Math.max(2, finite(inspection.roomFloor.width, state.stage.width)); state.stage.depth = Math.max(2, finite(inspection.roomFloor.depth, state.stage.depth)); }
+    if (inspection.stageFootprint) { state.stage.width = Math.max(2, finite(inspection.stageFootprint.width, state.stage.width)); state.stage.depth = Math.max(2, finite(inspection.stageFootprint.depth, state.stage.depth)); }
     const imported = (inspection.objects || []).map(importedObject);
     const importedPluginIds = new Set(imported.map(object => object.pluginId));
     const localOnly = options.preserveLocal ? state.objects.filter(object => !state.sync.objects?.[object.pluginId]?.designerId && !importedPluginIds.has(object.pluginId)) : [];
@@ -640,5 +625,5 @@
     adapterStatus.textContent = "Checking Designer API…";
     Promise.resolve(adapter.sessionStatus?.()).then(() => { adapterStatus.textContent = "Designer API available"; finishStartup(); }).catch(() => { adapterStatus.textContent = "Designer API unavailable · JSON available"; finishStartup(); });
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, clearPlannerScene, newObject, fieldSections, nextDimensionField, effectiveLookAt, addObjectAt, selectObject, previewTargetSurface, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, rotateHandleGeometry, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, effectiveLookAt, addObjectAt, selectObject, previewTargetSurface, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, rotateHandleGeometry, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject };
 })();

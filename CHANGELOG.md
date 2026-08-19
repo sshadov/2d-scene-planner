@@ -14,6 +14,12 @@
 - Added protocol-level WebSocket state-machine coverage.
 - Bumped the deployed plugin cache version to `v11.5`.
 
+## 0.19.0 - 2026-08-19
+
+- Hardened Designer lifecycle operations: planner renames now use `Resource.rename(Path(...))`, while deletion keeps `saveOnDelete()` plus `resourceManager.remove(path)`.
+- Removed the obsolete local clear-plan helper and separated the v11 Stage footprint contract from legacy room migration data.
+- Added package scripts for check, tests, deployment, and release verification.
+
 ## 0.17.1 - 2026-08-19
 
 - Tolerated only `1e-6` float32 representation noise in Designer readback validation.
