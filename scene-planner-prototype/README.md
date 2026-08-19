@@ -6,7 +6,7 @@
 
 Переключатель `LIVE` использует официальный WebSocket Live Update адаптер. Внутренние Python/HTTP функции сохранены для inspection/create/delete; HTTP-таймер не выдаётся за Live Update.
 
-Официальный Live Update подключается через `ws://<director>/api/session/liveupdate` с сообщениями `subscribe`, `valuesChanged` и `set`. Если окно Designer не предоставляет WebSocket, LIVE отключается с понятным статусом, а JSON export остаётся доступен.
+Официальный Live Update подключается через `ws://<director>/api/session/liveupdate` с сообщениями `subscribe`, `valuesChanged`, `set` и `unsubscribe`. Адрес Director берётся из `?director=` (или из `window.DISGUISE_DIRECTOR`); при разрыве соединения LIVE сохраняет желаемое состояние, выполняет backoff reconnect и resubscribe, не переключаясь самопроизвольно в OFF. JSON export остаётся доступен.
 
 Кнопка «Clear plan» очищает только локальный план после подтверждения. Объекты Designer остаются нетронутыми.
 

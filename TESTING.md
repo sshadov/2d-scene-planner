@@ -95,7 +95,7 @@ The supported local test addresses are UI `http://127.0.0.1:4173/` and Designer 
 12. Link a projector to a surface and move the surface; the projector target marker and exported Look At must follow its centre.
 13. Switch the projector to `Ручная точка на плане` and drag the marker; only Look At X/Z change.
 14. Scroll over empty canvas; zoom changes by 10% and object coordinates remain unchanged.
-15. Enable LIVE and verify a WebSocket connection to `ws://127.0.0.1/api/session/liveupdate`; no HTTP polling loop is started. Add a new Planner object and verify it is created in Designer; add a supported object in Designer and verify the Stage collection event imports it into Planner; delete it from either side with confirmation and verify the other side removes it. If the host has no WebSocket runtime, LIVE must revert to off with a clear error and manual Synchronize must remain available.
+15. Enable LIVE and verify a WebSocket connection to `ws://127.0.0.1/api/session/liveupdate`; no HTTP polling loop is started. Add a new Planner object and verify it is created in Designer; add a supported object in Designer and verify the Stage collection event imports it into Planner; delete it from either side with confirmation and verify the other side removes it. Close the socket and verify the toggle stays on while reconnect/backoff and resubscribe occur.
 
 ## Direct manipulation scenarios
 
@@ -136,7 +136,7 @@ The `Очистить сцену` button requires confirmation, removes planner 
 2. Toggle `Stage`. When checked, a managed `dsg-scene-cube.apx` appears in Designer with stage dimensions and is visible. When unchecked, no automatic deletion occurs. Change Stage `X/Z` fields and verify the cube moves; dragging the Stage outline does nothing.
 3. Set stage `floorY=1` and an object world `Y=1`. With `Y relative to Scene` enabled it displays `0`; entering `-3` stores world `Y=-2`. Turning the checkbox off shows `-2`.
 4. Import a projector with non-zero Designer `configRotation`; the 2D model preserves it, while the projector inspector still exposes only position, Look At, and resolution.
-5. Enable LIVE and confirm the status reports a WebSocket connection. If the host rejects WebSocket, confirm LIVE returns to off with the error visible and `Synchronize` remains enabled.
+5. Enable LIVE and confirm the status reports a WebSocket connection. If the host rejects WebSocket, confirm the status shows the error/reconnect state without silently changing the user's LIVE choice.
 6. A narrow screen or surface is selectable only inside its rendered rectangle/thickness. A click 10 CSS pixels outside is not a hit.
 7. Change an object name in the active property strip, reload, and verify the local name remains associated with the stored Designer UID/path.
 8. Verify strict readback: a `0.0001` coordinate mismatch is reported rather than accepted by tolerance.

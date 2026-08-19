@@ -1,6 +1,14 @@
 (() => {
   const localTest = ["127.0.0.1", "localhost"].includes(window.location.hostname) && window.location.port;
-  const API_ORIGIN = window.DISGUISE_API_ORIGIN || (localTest ? "http://127.0.0.1" : window.location.origin);
+  function directorOrigin() {
+    let value = window.DISGUISE_DIRECTOR || "";
+    try { value = new URLSearchParams(window.location.search || "").get("director") || value; } catch {}
+    if (!value) return localTest ? "http://127.0.0.1" : window.location.origin;
+    value = String(value).trim();
+    if (!/^https?:\/\//i.test(value)) value = `http://${value}`;
+    return value.replace(/\/$/, "");
+  }
+  const API_ORIGIN = window.DISGUISE_API_ORIGIN || directorOrigin();
   const EXECUTE_PATH = "/api/session/python/execute";
   const STATUS_PATH = "/api/session/status/session";
   const LIVE_PATH = "/api/session/liveupdate";
@@ -19,6 +27,10 @@
   let liveOnSceneChanged = () => {};
   let liveStageId = null;
   let liveSceneReady = false;
+  let liveWanted = false;
+  let liveReconnectTimer = null;
+  let liveReconnectAttempt = 0;
+  let liveSocketGeneration = 0;
   const liveLogEntries = [];
   const LIVE_LOG_LIMIT = 300;
   const LIVE_FLOAT_EPSILON = 1e-6;
@@ -480,22 +492,27 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   function liveFlushSets() {
     const changes = [];
     for (const binding of liveBindings.values()) {
-      if (binding.id === null || binding.value === undefined || !binding.initialized) continue;
-      if (binding.lastSent !== undefined && liveValuesEqual(binding.lastSent, binding.value)) continue;
-      changes.push({ id: binding.id, value: binding.value });
-      binding.lastSent = binding.value;
+      if (binding.id === null || binding.desired === undefined || !binding.initialized || binding.writable === false || !binding.dirty || binding.inFlight !== undefined) continue;
+      changes.push({ id: binding.id, value: binding.desired });
+      binding.inFlight = binding.desired;
     }
     if (changes.length) liveSend({ set: changes });
   }
+  function liveUnsubscribe(ids) {
+    const validIds = ids.filter(id => Number.isInteger(id));
+    if (validIds.length === 1) liveSend({ unsubscribe: { id: validIds[0] } });
+    else if (validIds.length > 1) liveSend({ unsubscribe: { ids: validIds } });
+  }
   function liveResetSubscriptionIds() {
     livePendingSubscriptions.clear();
-    for (const binding of liveBindings.values()) { binding.id = null; binding.lastSent = undefined; binding.initialized = false; }
-    for (const binding of liveSceneBindings.values()) binding.id = null;
+    for (const binding of liveBindings.values()) { binding.id = null; binding.initialized = false; binding.inFlight = undefined; }
+    for (const binding of liveSceneBindings.values()) { binding.id = null; binding.initialized = false; }
     liveSceneReady = false;
   }
   function configureLiveScene(stageId) {
     const nextStageId = stageId ? String(stageId) : null;
     if (nextStageId === liveStageId && liveSceneBindings.size) return;
+    liveUnsubscribe([...liveSceneBindings.values()].map(binding => binding.id));
     liveStageId = nextStageId;
     liveSceneBindings = new Map();
     liveSceneReady = false;
@@ -507,7 +524,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     if (!stagePath) return;
     const collections = ["ledScreens", "dmxScreens", "dmxLights", "surfaces", "projectors", "cameras"];
     const properties = collections.map(collection => `object.${collection}`);
-    collections.forEach((collection, index) => liveSceneBindings.set(collection, { collection, objectPath: stagePath, propertyPath: properties[index], id: null }));
+    collections.forEach((collection, index) => liveSceneBindings.set(collection, { collection, objectPath: stagePath, propertyPath: properties[index], id: null, initialized: false, writable: false }));
     liveSend({ subscribe: { object: stagePath, properties } });
   }
   function liveHandleMessage(raw) {
@@ -522,6 +539,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
         if (!binding) return;
         const isNewSubscription = binding.id !== subscription.id;
         binding.id = subscription.id;
+        binding.writable = subscription.writable !== false;
         livePendingSubscriptions.delete(`${binding.objectPath}|${binding.propertyPath}`);
         if (isNewSubscription) liveLog("subscribed", { id: subscription.id, pluginId: binding.pluginId, field: binding.field, object: binding.objectPath, property: binding.propertyPath });
       });
@@ -536,12 +554,25 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       }
       const binding = [...liveBindings.values()].find(candidate => candidate.id === change.id);
       if (!binding) return;
-      binding.lastSent = change.value;
-      // Designer may quantize numeric fields on readback. Treat that value as
-      // the current LIVE baseline so the same rounded value is not re-sent.
-      binding.value = change.value;
+      const wasInitialized = binding.initialized;
+      const wasPending = binding.dirty || binding.inFlight !== undefined;
+      binding.remote = change.value;
       binding.initialized = true;
-      liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath });
+      if (binding.desired === undefined) binding.desired = change.value;
+      if (!wasInitialized) {
+        binding.dirty = !liveValuesEqual(binding.desired, change.value);
+        binding.inFlight = undefined;
+      } else if (liveValuesEqual(binding.desired, change.value)) {
+        binding.dirty = false;
+        binding.inFlight = undefined;
+      } else if (binding.inFlight !== undefined && !liveValuesEqual(binding.inFlight, change.value)) {
+        binding.inFlight = undefined;
+        binding.dirty = true;
+      } else if (!wasPending) {
+        binding.desired = change.value;
+        binding.dirty = false;
+        liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath });
+      }
     });
     if (Array.isArray(message.valuesChanged)) liveFlushSets();
     if (message.error) {
@@ -578,33 +609,72 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       liveDefinitions(payload).forEach(definition => {
         const key = liveDescriptorKey(payload.pluginId, definition.field);
         const previous = liveBindings.get(key);
-        nextBindings.set(key, { ...(previous || {}), ...definition, key, pluginId: payload.pluginId, objectPath, propertyPath: definition.property, id: previous?.id ?? null, value: definition.encode(liveFieldValue(payload, definition.field)) });
+        const desired = definition.encode(liveFieldValue(payload, definition.field));
+        const unchangedDesired = previous?.desired !== undefined && liveValuesEqual(previous.desired, desired);
+        nextBindings.set(key, { ...(previous || {}), ...definition, key, pluginId: payload.pluginId, objectPath, propertyPath: definition.property, id: previous?.id ?? null, desired, dirty: previous?.initialized ? !liveValuesEqual(previous.remote, desired) : false, inFlight: unchangedDesired ? previous?.inFlight : undefined, writable: previous?.writable !== false });
       });
     });
+    const removedIds = [...liveBindings.values()].filter(binding => binding.id !== null && !nextBindings.has(binding.key)).map(binding => binding.id);
+    liveUnsubscribe(removedIds);
     liveBindings = nextBindings;
     liveSubscribeBindings();
     liveFlushSets();
   }
+  function liveScheduleReconnect(reason = "connection closed") {
+    if (!liveWanted || liveReconnectTimer) return;
+    const delay = Math.min(5000, 250 * (2 ** Math.min(liveReconnectAttempt, 5)));
+    liveReconnectAttempt += 1;
+    liveLog("reconnect", { delay, reason, attempt: liveReconnectAttempt });
+    liveOnStatus({ status: "reconnecting", detail: `${reason}; retrying in ${delay}ms` });
+    liveReconnectTimer = setTimeout(() => { liveReconnectTimer = null; liveOpenSocket(); }, delay);
+  }
+  function liveOpenSocket(resolveStart) {
+    if (!liveWanted || typeof WebSocket !== "function") return;
+    let opened = false;
+    const generation = ++liveSocketGeneration;
+    liveLog("connect", { url: LIVE_URL, attempt: liveReconnectAttempt + 1 });
+    let socket;
+    try { socket = new WebSocket(LIVE_URL); } catch (error) { liveLog("error", { phase: "constructor", message: error.message || String(error) }); resolveStart?.(); liveScheduleReconnect(error.message || String(error)); return; }
+    liveSocket = socket;
+    socket.onopen = () => {
+      if (generation !== liveSocketGeneration || socket !== liveSocket) return;
+      opened = true; liveReconnectAttempt = 0; liveConnectPromise = null;
+      liveLog("open", { url: LIVE_URL }); liveOnStatus({ status: "open", detail: LIVE_URL });
+      liveResetSubscriptionIds(); liveSubscribeScene(); liveSubscribeBindings(); liveFlushSets(); resolveStart?.();
+    };
+    socket.onmessage = event => { if (generation === liveSocketGeneration) liveHandleMessage(event.data); };
+    socket.onerror = () => {
+      const detail = `Live Update WebSocket connection failed: ${LIVE_URL}`;
+      liveLog("error", { phase: "socket", message: detail }); liveOnStatus({ status: "error", detail });
+      if (!opened) { liveConnectPromise = null; resolveStart?.(); liveScheduleReconnect(detail); }
+    };
+    socket.onclose = event => {
+      if (generation !== liveSocketGeneration) return;
+      liveSocket = null; liveResetSubscriptionIds(); liveConnectPromise = null;
+      const detail = `Live Update connection closed (code ${event.code}${event.reason ? `: ${event.reason}` : ""})`;
+      liveLog("close", { code: event.code, reason: event.reason || "" });
+      if (liveWanted) liveScheduleReconnect(detail); else liveOnStatus({ status: "closed", detail });
+    };
+  }
   function liveStart(callbacks = {}) {
     liveOnStatus = callbacks.onStatus || (() => {}); liveOnValuesChanged = callbacks.onValuesChanged || (() => {}); liveOnSceneChanged = callbacks.onSceneChanged || (() => {});
+    liveWanted = true;
     if (liveSocket?.readyState === 1) return Promise.resolve();
     if (liveConnectPromise) return liveConnectPromise;
-    if (typeof WebSocket !== "function") { liveLog("error", { phase: "support", message: "WebSocket is not available in this plugin window" }); return Promise.reject(new Error("WebSocket is not available in this plugin window")); }
-    liveConnectPromise = new Promise((resolve, reject) => {
-      let opened = false;
-      liveLog("connect", { url: LIVE_URL });
-      const socket = new WebSocket(LIVE_URL); liveSocket = socket;
-      socket.onopen = () => { opened = true; liveConnectPromise = null; liveLog("open", { url: LIVE_URL }); liveOnStatus({ status: "open", detail: LIVE_URL }); liveSubscribeScene(); liveSubscribeBindings(); liveFlushSets(); resolve(); };
-      socket.onmessage = event => liveHandleMessage(event.data);
-      socket.onerror = () => { const error = new Error(`Live Update WebSocket connection failed: ${LIVE_URL}`); liveLog("error", { phase: "socket", message: error.message }); liveOnStatus({ status: "error", detail: error.message }); if (!opened) { liveConnectPromise = null; reject(error); } };
-      socket.onclose = event => { liveSocket = null; liveResetSubscriptionIds(); liveConnectPromise = null; const detail = `Live Update connection closed (code ${event.code}${event.reason ? `: ${event.reason}` : ""})`; liveLog("close", { code: event.code, reason: event.reason || "" }); liveOnStatus({ status: "closed", detail }); };
-    });
+    if (typeof WebSocket !== "function") { liveWanted = false; liveLog("error", { phase: "support", message: "WebSocket is not available in this plugin window" }); return Promise.reject(new Error("WebSocket is not available in this plugin window")); }
+    liveConnectPromise = new Promise(resolve => liveOpenSocket(resolve));
     return liveConnectPromise;
   }
-  function liveStop() { if (liveSocket) { try { liveSocket.close(); } catch {} } liveSocket = null; liveConnectPromise = null; liveResetSubscriptionIds(); liveBindings = new Map(); liveSceneBindings = new Map(); liveOnStatus({ status: "closed", detail: "Live Update disabled" }); }
+  function liveStop() {
+    liveWanted = false; liveReconnectAttempt = 0; if (liveReconnectTimer) { clearTimeout(liveReconnectTimer); liveReconnectTimer = null; }
+    liveUnsubscribe([...liveBindings.values(), ...liveSceneBindings.values()].map(binding => binding.id));
+    liveSocketGeneration += 1;
+    if (liveSocket) { try { liveSocket.close(); } catch {} }
+    liveSocket = null; liveConnectPromise = null; liveResetSubscriptionIds(); liveBindings = new Map(); liveSceneBindings = new Map(); liveOnStatus({ status: "closed", detail: "Live Update disabled" });
+  }
 
   window.disguiseSceneAdapter = {
-    capabilities: { liveUpdate: true, liveTransport: "websocket", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API + Live Update WebSocket", apiOrigin: API_ORIGIN, liveUrl: LIVE_URL },
+    capabilities: { liveUpdate: true, liveTransport: "websocket", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API + Live Update WebSocket", apiOrigin: API_ORIGIN, liveUrl: LIVE_URL, director: API_ORIGIN },
     sessionStatus,
     syncEnvironment: environment => execute(environmentScript(environment)),
     inspectScene: () => execute(inspectScript()),
@@ -617,6 +687,22 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     liveStart,
     liveStop,
     liveSync,
+    getLiveState: () => ({
+      wanted: liveWanted,
+      socket: liveSocket ? "open" : "closed",
+      reconnectAttempt: liveReconnectAttempt,
+      bindings: [...liveBindings.values()].map(binding => ({
+        pluginId: binding.pluginId,
+        field: binding.field,
+        id: binding.id,
+        remote: binding.remote,
+        desired: binding.desired,
+        dirty: Boolean(binding.dirty),
+        inFlight: binding.inFlight,
+        initialized: Boolean(binding.initialized),
+        writable: binding.writable !== false
+      }))
+    }),
     getLiveLogs: () => liveLogEntries.slice(),
     clearLiveLogs: () => { liveLogEntries.length = 0; },
     debugScripts: { inspectScript, createScript, updateScript, projectorProbeScript, deleteManagedScript }

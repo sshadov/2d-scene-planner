@@ -6,6 +6,14 @@
 - Excluded Designer body `rotation` and calculated `configRotation` from projector readback and UI state.
 - Added a read-only `projectorReadbackProbe` and a protocol-level mock test; live Designer probe verified against the installed project.
 
+## 0.18.1 - 2026-08-19
+
+- Added Director discovery from `?director=` and `window.DISGUISE_DIRECTOR`.
+- Reworked LIVE bindings around `remote`, `desired`, `dirty`, `inFlight`, `initialized`, and `writable` state.
+- Added official `unsubscribe`, reconnect backoff, session-id invalidation, and automatic resubscribe without auto-disabling LIVE.
+- Added protocol-level WebSocket state-machine coverage.
+- Bumped the deployed plugin cache version to `v11.5`.
+
 ## 0.17.1 - 2026-08-19
 
 - Tolerated only `1e-6` float32 representation noise in Designer readback validation.
