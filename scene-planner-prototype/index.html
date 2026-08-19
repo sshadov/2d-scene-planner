@@ -6,88 +6,49 @@
     <meta name="disguise-plugin-window-size" content="1440,900" />
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
-    <title>Disguise Stage Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=11.2" />
+    <title>Disguise Scene Planner v11.3</title>
+    <link rel="stylesheet" href="./styles.css?v=11.3" />
   </head>
   <body>
     <main class="app-shell">
-      <header class="app-header">
-        <div class="brand-block">
-          <p class="eyebrow">STAGE PLANNER</p>
-        <h1>Disguise <span class="app-version">v11.2</span></h1>
-        </div>
-
-        <div class="header-actions">
-          <label class="live-toggle" title="Official WebSocket Live Update">
-            <span>LIVE</span>
-            <input id="live-toggle" type="checkbox" />
-            <i aria-hidden="true"></i>
-          </label>
-          <button class="icon-button" id="undo-button" type="button" aria-label="Undo" title="Undo">↶</button>
-          <button class="icon-button" id="redo-button" type="button" aria-label="Redo" title="Redo">↷</button>
-          <button class="button secondary" id="json-button" type="button">Export JSON</button>
-        </div>
-      </header>
-
-      <section class="environment-bar" aria-label="Stage dimensions">
-        <div class="environment-group">
-          <b>Stage</b>
-          <label>Width <span class="input-shell"><input id="stage-width" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
-          <label>Depth <span class="input-shell"><input id="stage-depth" type="text" inputmode="decimal" value="8" /><i>m</i></span></label>
-        </div>
-        <div class="environment-actions">
-          <button class="text-button danger-text" id="clear-scene-button" type="button">Clear plan</button>
-        </div>
-      </section>
-
-      <section class="workspace" aria-label="Stage editor">
-        <aside class="object-rail" id="object-rail" hidden>
-          <div class="rail-heading"><h2>Objects</h2><span id="object-count">0</span></div>
-          <div id="object-groups" class="object-groups"></div>
-          <div class="legend" aria-label="Legend">
-            <span><i class="swatch screen"></i>LED Screen</span>
-            <span><i class="swatch dmx-screen"></i>DMX Screen</span>
-            <span><i class="swatch surface"></i>Projection Surface</span>
-            <span><i class="swatch projector"></i>Projector</span>
-            <span><i class="swatch light"></i>DMX Light</span>
-            <span><i class="swatch camera"></i>Camera</span>
-          </div>
+      <section class="workspace" aria-label="Scene editor">
+        <aside class="object-rail designer-panel" id="object-rail">
+          <section class="scene-config" aria-label="Scene dimensions">
+            <div class="panel-heading"><h1>Scene</h1><span id="object-count">0</span></div>
+            <div class="scene-dimensions">
+              <label>Width <span class="input-shell"><input id="scene-width" type="text" inputmode="decimal" value="20" /><i>m</i></span></label>
+              <label>Depth <span class="input-shell"><input id="scene-depth" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
+            </div>
+            <div class="panel-actions">
+              <label class="live-toggle" title="Official WebSocket Live Update"><span>LIVE</span><input id="live-toggle" type="checkbox" /><i aria-hidden="true"></i></label>
+              <button class="text-button" id="json-button" type="button">Export JSON</button>
+              <button class="text-button live-log-button" id="live-log-button" type="button">LIVE log</button>
+            </div>
+          </section>
+          <section class="object-list-panel" aria-label="Scene objects">
+            <div class="rail-heading"><h2>Objects</h2><span id="object-count-shadow" aria-hidden="true"></span></div>
+            <div id="object-groups" class="object-groups"></div>
+          </section>
+          <section class="inspector-panel" aria-label="Selected object properties">
+            <div class="inspector-heading">Properties</div>
+            <div class="active-object-strip" id="active-object-strip" aria-live="polite"></div>
+          </section>
+          <span id="status-synced" hidden>0</span><span id="status-changed" hidden>0</span><span id="status-errors" hidden>0</span><span id="status-error-chip" hidden></span><span id="scene-summary" hidden>Scene</span><span id="adapter-status" hidden>Designer API: not connected</span>
         </aside>
 
         <section class="stage-panel">
-          <div class="active-object-strip" id="active-object-strip" aria-live="polite"></div>
-          <div class="stage-toolbar">
-            <button class="tool-button" id="objects-toggle" type="button" aria-expanded="false">Objects</button>
-            <span class="view-label"><i></i>Plan X/Z</span>
-            <div class="snap-controls" aria-label="Snapping">
-              <select id="snap-mode" aria-label="Snap mode">
-                <option value="free">Free</option>
-                <option value="grid-01">Grid 0.1 m</option>
-                <option value="grid-1" selected>Grid 1 m</option>
-              </select>
-              <button class="tool-button" id="align-x" type="button" title="Align to stage centre on X">X centre</button>
-              <button class="tool-button" id="align-z" type="button" title="Align to stage centre on Z">Z centre</button>
-            </div>
-            <div class="zoom-controls">
-              <button class="icon-button" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
-              <button class="zoom-level" id="zoom-reset" type="button" title="Reset zoom and view" aria-label="Reset zoom and view">100%</button>
-              <button class="icon-button" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
-            </div>
-          </div>
           <div class="canvas-wrap" id="canvas-wrap">
-            <canvas id="scene-canvas" aria-label="Stage plan, top view"></canvas>
+            <canvas id="scene-canvas" aria-label="Scene plan, top view"></canvas>
             <div class="empty-hint" id="empty-hint">Right-click to add an object</div>
-          </div>
-          <footer class="stage-footer">
-            <div class="sync-counters">
-              <span class="status-chip synced">Synced <b id="status-synced">0</b></span>
-              <span class="status-chip changed">Changed <b id="status-changed">0</b></span>
-              <span class="status-chip error" id="status-error-chip" hidden>Errors <b id="status-errors">0</b></span>
+            <div class="canvas-overlay overlay-left" aria-label="History controls">
+              <button class="icon-button" id="undo-button" type="button" aria-label="Undo" title="Undo">↶</button>
+              <button class="icon-button" id="redo-button" type="button" aria-label="Redo" title="Redo">↷</button>
             </div>
-            <span id="scene-summary">Stage 20 × 12 m</span>
-            <span id="adapter-status">Designer API: not connected</span>
-            <button class="text-button live-log-button" id="live-log-button" type="button">LIVE log</button>
-          </footer>
+            <div class="canvas-overlay overlay-right" aria-label="View controls">
+              <label class="magnet-control"><span>Magnet</span><select id="snap-mode" aria-label="Magnet"><option value="free">Off</option><option value="grid-01">0.1 m</option><option value="grid-1" selected>1 m</option></select></label>
+              <div class="zoom-controls"><button class="icon-button" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button><button class="zoom-level" id="zoom-reset" type="button" title="Reset zoom and view" aria-label="Reset zoom and view">100%</button><button class="icon-button" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button></div>
+            </div>
+          </div>
         </section>
       </section>
     </main>
@@ -122,7 +83,7 @@
          <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Delete object?</span><button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button></div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=11.2"></script>
-    <script src="./app.js?v=11.2"></script>
+    <script src="./designer-adapter.js?v=11.3"></script>
+    <script src="./app.js?v=11.3"></script>
   </body>
 </html>
