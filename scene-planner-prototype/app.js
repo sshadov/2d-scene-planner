@@ -523,7 +523,7 @@
         kind: "group", id: object.id, pending: true, ctrlKey: false, startPoint: point, startClientX: event.clientX, startClientY: event.clientY,
         positions: state.objects.filter(item => state.selectedIds.has(item.id)).map(item => ({ id: item.id, x: item.transform.position.x, z: item.transform.position.z }))
       };
-    } else state.dragging = { kind: "object", id: object.id, pending: true, ctrlKey: event.ctrlKey || modifierState.ctrl, startPoint: point, startClientX: event.clientX, startClientY: event.clientY, offsetX: object.transform.position.x - point.x, offsetZ: object.transform.position.z - point.z };
+    } else state.dragging = { kind: "object", id: object.id, pending: true, ctrlKey: event.ctrlKey || event.metaKey || modifierState.ctrl, startPoint: point, startClientX: event.clientX, startClientY: event.clientY, offsetX: object.transform.position.x - point.x, offsetZ: object.transform.position.z - point.z };
     canvas.setPointerCapture?.(event.pointerId);
     render();
   });
@@ -577,8 +577,8 @@
       const dz = clamp(targetZ - primaryStart.z, minDz, maxDz);
       state.dragging.positions.forEach(position => { const item = state.objects.find(candidate => candidate.id === position.id); if (item) { item.transform.position.x = Number((position.x + dx).toFixed(3)); item.transform.position.z = Number((position.z + dz).toFixed(3)); } });
     } else if (state.dragging.kind === "lookAt") {
-      object.lookAt.x = Number((point.x + state.dragging.offsetX).toFixed(3));
-      object.lookAt.z = Number((point.z + state.dragging.offsetZ).toFixed(3));
+      object.lookAt.x = Number(clamp(point.x + state.dragging.offsetX, bounds.minX, bounds.maxX).toFixed(3));
+      object.lookAt.z = Number(clamp(point.z + state.dragging.offsetZ, bounds.minZ, bounds.maxZ).toFixed(3));
     } else {
       const x = Number(clamp(snapCoordinate("x", point.x + state.dragging.offsetX, object), bounds.minX, bounds.maxX).toFixed(3));
       const z = Number(clamp(snapCoordinate("z", point.z + state.dragging.offsetZ, object), bounds.minZ, bounds.maxZ).toFixed(3));
