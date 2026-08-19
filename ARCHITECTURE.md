@@ -2,13 +2,12 @@
 
 ## Components
 
-`scene-planner-prototype/index.html` and `styles.css` provide the English Designer-oriented UI. `app.js` owns the scene model, 2D canvas, local persistence, diff, and synchronization workflow. `designer-adapter.js` is the only layer that creates Python scripts or calls Designer HTTP endpoints. It creates resources in class-named folders, marks them dirty before mutation, and saves them after successful changes.
+`scene-planner-prototype/index.html` and `styles.css` provide the English Designer-oriented UI. `app.js` owns the Stage model, 2D canvas, local persistence, diff, and LIVE workflow. `designer-adapter.js` is the only layer that creates Python scripts or calls Designer HTTP endpoints. It creates resources in class-named folders, marks them dirty before mutation, and saves them after successful changes.
 
 ## Scene model
 
 ```text
-room: { width, depth }
-stage: { enabled, centerX, centerZ, floorY, width, depth, height, measureFromStage }
+stage: { width, depth }
 object:
   pluginId
   type, name
@@ -33,15 +32,15 @@ Designer coordinates are authoritative:
 | `position.y` | `Vec.y` vertical | not projected |
 | `position.z` | `Vec.z` depth | vertical canvas axis |
 
-The room is a viewport frame centred on world `X=0, Z=0` and never changes object coordinates. Its bounds are `-width/2 ... +width/2` and `-depth/2 ... +depth/2`. The stage is a separate positioned rectangle. Stage dimensions precede numeric position fields in the environment bar; Stage position is edited numerically and is deliberately not a draggable canvas object. The grid interval is always 1 m and shows absolute Designer values.
+The Stage is the only plan boundary, centred on world `X=0, Z=0`; it never changes object coordinates. Its bounds are `-width/2 ... +width/2` and `-depth/2 ... +depth/2`. The grid interval is always 1 m and shows absolute Designer values.
 
-Dragging updates `transform.position.x/z` only. The saved numeric `Y` is always absolute. `floorY` is the hidden Designer floor/base reference; the top of the stage is `floorY + height`. With `measureFromStage` enabled, object Y fields display and accept offsets from that top without changing the saved world coordinate.
+Dragging updates `transform.position.x/z` only. The saved numeric `Y` is always absolute. Stage dimensions do not define object height.
 
 For LED screens, DMX screens, and projection surfaces, position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and `rotation = Vec(0, yaw, 0)`. Resolution and LED PPI are planning metadata until a matching Designer media property is explicitly mapped. Projectors use `configPosition/configLookAt`; setting inherited body transforms or `configRotation` changes the optical configuration unexpectedly. A projector may target a surface by stable plugin ID; its exported Look At is then recomputed from the surface centre. Cameras use the concrete `Camera` class with `offset/rotation`. DMX lights use the concrete `FixtureGroup` class with `offset/rotation`.
 
 The top toolbar creates objects at the stage centre. Right-clicking empty plan space opens the same equipment choices and creates at that world X/Z. New screens and surfaces focus width, then move to height on Enter. New projectors enter a temporary cursor-follow target-placement state until the next primary click. The left rail groups and selects objects but contains no property inspectors. A fixed strip above the plan shows only the selected object's physical values, so changing object type cannot resize the canvas. Numeric fields accept comma or dot, keyboard arrows, and wheel changes (`0.1` for metres/density and `1°` for angles); the old horizontal pointer scrubbing is removed. Wheel input over the free canvas controls zoom.
 
-Projectors expose lens position and a target marker/surface relation, never user-facing Euler rotation. Dragging a manual marker edits Look At X/Z; selecting a surface locks the marker to that surface centre. LED screens show one source mode at a time: resolution, PPI, or millimetre pitch. The model recalculates the hidden companion values after edits. Dragging objects preserves the pointer offset and optional snapping can use the 1 m grid, 0.1 m grid, stage centre/edges, same-type coordinates, and mirrored distances. Ctrl-drag first creates an independent copy without offset and then moves it. Shift-click selects the complete same-type set; group drag applies one clamped delta so relative positions stay unchanged. Selected screens and surfaces expose an external rotation handle that changes yaw only. The context menu supports duplication, 90-degree rotation/direction change, projector surface binding, mirrored copies, and confirmed deletion.
+Projectors expose a target marker/surface relation and share the external rotation handle with cameras and DMX lights. Dragging a manual marker edits Look At X/Z; selecting a surface locks the marker to that surface centre. LED screens show one source mode at a time: resolution, PPI, or millimetre pitch. The model recalculates the hidden companion values after edits. Dragging objects preserves the pointer offset and optional snapping can use the 1 m grid, 0.1 m grid, Stage edges, same-type coordinates, and mirrored distances. Ctrl-drag and Ctrl+C/Ctrl+V create independent copies. Shift-click selects the complete same-type set; group drag applies one clamped delta so relative positions stay unchanged. The context menu supports duplication, 90-degree rotation/direction change, projector surface binding, mirrored copies, and confirmed deletion.
 
 Every successful create/update returns a type-specific readback. The planner compares position, rotation, and planar geometry strictly, without a tolerance, before recording the sync version.
 
@@ -49,7 +48,7 @@ Every successful create/update returns a type-specific readback. The planner com
 
 ### Numeric workflow and LIVE
 
-For screens and surfaces, Enter advances measured values in the order `width -> height -> height above floor/stage`. Numeric focus selects the complete value and integer formatting omits a decimal suffix. Height is a signed world coordinate and may be below the floor or stage; the relative mode displays the signed offset without changing it. The official Live Update transport is a WebSocket with `subscribe`/`valuesChanged`/`set`. Object properties are addressed with `getByUID(0x...)` expressions. It updates writable scalar transforms for mapped objects; creation/deletion uses explicit Python resource operations, and Stage collection subscriptions trigger import/reconciliation for objects created or deleted in Designer.
+For screens and surfaces, Enter advances measured values in the order `width -> height -> position Y`. Numeric focus selects the complete value and integer formatting omits a decimal suffix. Height is a signed world coordinate. The official Live Update transport is a WebSocket with `subscribe`/`valuesChanged`/`set`. Object properties are addressed with `getByUID(0x...)` expressions. It updates writable scalar transforms for mapped objects; creation/deletion uses explicit Python resource operations, and Stage collection subscriptions trigger import/reconciliation for objects created or deleted in Designer.
 
 ```text
 planner state -> inspect Designer -> classify -> diff -> confirm -> selective API calls -> save mappings
@@ -59,16 +58,16 @@ planner state -> inspect Designer -> classify -> diff -> confirm -> selective AP
 - Standard: a recognized default name/path such as `surface 1` or `projector 1`.
 - Manual: everything else.
 
-Update mode may adopt a same-type standard object and update it in place. Clean mode creates a new managed set and exposes remaining standards in the deletion checklist. Orphans are reported but never automatically deleted. A mapped object missing from Designer is reported as missing during explicit Synchronize; LIVE never recreates a Designer object that was deleted, while a new Planner object without a Designer UID is created once through the resource API.
+Update mode may adopt a same-type standard object and update it in place. Clean mode creates a new managed set and exposes remaining standards in the deletion checklist. Orphans are reported but never automatically deleted. A mapped object missing from Designer is reported as missing in the internal diff; LIVE never recreates a Designer object that was deleted, while a new Planner object without a Designer UID is created once through the resource API.
 
 The adapter repeats the default/managed check before deletion and removes selected resources through `resourceManager.remove(path)` after `saveOnDelete()`. Repeat sync resolves a managed object by Designer UID, saved resource path, or its legacy `dsg-*` path. Dangling typed references left in Designer stage collections after deletion are ignored in favour of typed collection truth. API errors stop the operation and include the failing planner object plus the Designer HTTP response; the UI never reports a false successful sync. Startup probes `/api/session/status/session` with a short timeout, while create/update calls have a longer timeout.
 
 ## Persistence
 
-Browser state uses localStorage key `disguise-scene-generator-state-v10`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v9 keys are read only as migration sources. `sync.objects` stores every imported UID/path mapping and `sync.sceneCube` stores the managed Scene cube mapping.
+Browser state uses localStorage key `disguise-scene-generator-state-v11`. It is runtime state, not project history. Durable knowledge lives in Git, Markdown, schema, and fixtures. The v2-v10 keys are read only as migration sources. `sync.objects` stores every imported UID/path mapping; the old managed cube mapping remains adapter metadata only.
 
-## Current v10.8 Contract
+## Current v11 Contract
 
-The UI is English and uses Designer-facing type names. `stage.enabled` is derived from the inspected managed Stage cube at startup, so an empty local store does not create preset equipment or overwrite the open Designer project. When enabled, `syncEnvironment` writes only the supported `stage.floor_pos` field and maintains the managed real cube `objects/object/dsg-scene-cube.apx`; room dimensions remain planner metadata because Free Designer Starter rejects `stage.floor_size`. Its geometry reuses the valid 8-vertex/12-triangle topology of Designer's built-in `LookAtManipulable` helper; the plugin changes only vertex positions because the current API does not expose a supported `Triangle` constructor. Stage-relative object height is `position.y - stage.floorY`, never an offset from stage height.
+The UI is English and uses Designer-facing type names. Stage owns only width and depth and is centred at the world origin. Internal adapter calls still receive a compatibility environment object so existing Python/HTTP behavior and UID mappings remain unchanged; the user-facing export-apply workflow is removed. Default install heights are Camera 1.5 m, DMX Light 5 m, Projector 3 m, and planar objects 0 m. The next object of each class reuses that class's last edited height.
 
-Startup inspection reads typed collections and `stage.children`, deduplicates by Designer UID, imports only physical user objects (`Object`/`Prop` with `needsMesh`) plus supported equipment, and ignores `internal/*`, MR Sets, Skeletons, and non-physical Designer helpers. Projector config rotation is read as Designer data and is never normalized or exposed as a user input. Selecting or previewing a projector target surface highlights that surface's name and outline on the plan. Strict readback comparison uses no tolerance. The explicit Synchronize button remains available; LIVE connects to the official WebSocket when the host provides a WebSocket runtime and reports connection failures without falling back to HTTP polling.
+Startup inspection reads typed collections and `stage.children`, deduplicates by Designer UID, imports only physical user objects (`Object`/`Prop` with `needsMesh`) plus supported equipment, and ignores `internal/*`, MR Sets, Skeletons, and non-physical Designer helpers. Selecting or previewing a projector target surface highlights that surface's name and outline on the plan. Strict readback comparison uses no tolerance. LIVE connects to the official WebSocket when the host provides a WebSocket runtime and reports connection failures without falling back to HTTP polling.

@@ -6,15 +6,15 @@
     <meta name="disguise-plugin-window-size" content="1440,900" />
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
-    <title>Disguise Scene Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=10.25" />
+    <title>Disguise Stage Planner</title>
+    <link rel="stylesheet" href="./styles.css?v=11.0" />
   </head>
   <body>
     <main class="app-shell">
       <header class="app-header">
         <div class="brand-block">
-          <p class="eyebrow">SCENE PLANNER</p>
-          <h1>Disguise <span class="app-version">v10.25</span></h1>
+          <p class="eyebrow">STAGE PLANNER</p>
+          <h1>Disguise <span class="app-version">v11.0</span></h1>
         </div>
 
         <div class="header-actions">
@@ -26,31 +26,21 @@
           <button class="icon-button" id="undo-button" type="button" aria-label="Undo" title="Undo">↶</button>
           <button class="icon-button" id="redo-button" type="button" aria-label="Redo" title="Redo">↷</button>
           <button class="button secondary" id="json-button" type="button">Export JSON</button>
-          <button class="button primary" id="export-button" type="button">Synchronize</button>
         </div>
       </header>
 
-      <section class="environment-bar" aria-label="Room and stage dimensions">
+      <section class="environment-bar" aria-label="Stage dimensions">
         <div class="environment-group">
-          <b>Room</b>
-          <label>Width <span class="input-shell"><input id="room-width" type="text" inputmode="decimal" value="20" /><i>m</i></span></label>
-          <label>Depth <span class="input-shell"><input id="room-depth" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
-        </div>
-        <div class="environment-group">
-          <label class="compact-checkbox scene-toggle"><input id="stage-enabled" type="checkbox" checked /><b>Stage</b></label>
+          <b>Stage</b>
           <label>Width <span class="input-shell"><input id="stage-width" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
           <label>Depth <span class="input-shell"><input id="stage-depth" type="text" inputmode="decimal" value="8" /><i>m</i></span></label>
-          <label>Height <span class="input-shell"><input id="stage-height" type="text" inputmode="decimal" value="0.8" /><i>m</i></span></label>
-          <label>X <span class="input-shell"><input id="stage-center-x" type="text" inputmode="decimal" value="0" /><i>m</i></span></label>
-          <label>Z <span class="input-shell"><input id="stage-center-z" type="text" inputmode="decimal" value="0" /><i>m</i></span></label>
-          <label class="compact-checkbox"><input id="measure-from-stage" type="checkbox" /><span>Y relative to Stage</span></label>
         </div>
         <div class="environment-actions">
           <button class="text-button danger-text" id="clear-scene-button" type="button">Clear plan</button>
         </div>
       </section>
 
-      <section class="workspace" aria-label="Scene editor">
+      <section class="workspace" aria-label="Stage editor">
         <aside class="object-rail" id="object-rail" hidden>
           <div class="rail-heading"><h2>Objects</h2><span id="object-count">0</span></div>
           <div id="object-groups" class="object-groups"></div>
@@ -75,8 +65,8 @@
                 <option value="grid-01">Grid 0.1 m</option>
                 <option value="grid-1" selected>Grid 1 m</option>
               </select>
-              <button class="tool-button" id="align-x" type="button" title="Align to scene centre on X">X centre</button>
-              <button class="tool-button" id="align-z" type="button" title="Align to scene centre on Z">Z centre</button>
+              <button class="tool-button" id="align-x" type="button" title="Align to stage centre on X">X centre</button>
+              <button class="tool-button" id="align-z" type="button" title="Align to stage centre on Z">Z centre</button>
             </div>
             <div class="zoom-controls">
               <button class="icon-button" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
@@ -85,7 +75,7 @@
             </div>
           </div>
           <div class="canvas-wrap" id="canvas-wrap">
-            <canvas id="scene-canvas" aria-label="Scene plan, top view"></canvas>
+            <canvas id="scene-canvas" aria-label="Stage plan, top view"></canvas>
             <div class="empty-hint" id="empty-hint">Right-click to add an object</div>
           </div>
           <footer class="stage-footer">
@@ -94,7 +84,7 @@
               <span class="status-chip changed">Changed <b id="status-changed">0</b></span>
               <span class="status-chip error" id="status-error-chip" hidden>Errors <b id="status-errors">0</b></span>
             </div>
-            <span id="scene-summary">Room 20 × 12 m</span>
+            <span id="scene-summary">Stage 20 × 12 m</span>
             <span id="adapter-status">Designer API: not connected</span>
             <button class="text-button live-log-button" id="live-log-button" type="button">LIVE log</button>
           </footer>
@@ -106,24 +96,6 @@
       <summary>LIVE diagnostics</summary>
       <pre id="live-log-output">No LIVE events yet.</pre>
     </details>
-
-    <div class="modal-backdrop" id="sync-modal" hidden>
-        <section class="sync-modal" role="dialog" aria-modal="true" aria-labelledby="sync-title">
-        <div class="section-heading"><h2 id="sync-title">Synchronize scene</h2><button class="icon-button" id="close-sync" type="button" aria-label="Close">×</button></div>
-        <p class="modal-copy" id="sync-message"></p>
-        <fieldset class="sync-modes">
-          <legend>Current Designer scene</legend>
-          <label><input type="radio" name="sync-mode" value="update" checked /><span><b>Update current scene</b><small>Adopt recognized defaults and preserve other objects.</small></span></label>
-          <label><input type="radio" name="sync-mode" value="clean" /><span><b>Create a clean set</b><small>Create a new managed set; defaults are removed only below.</small></span></label>
-        </fieldset>
-        <div class="diff-grid">
-          <span>Create <b id="diff-create">0</b></span><span>Update <b id="diff-update">0</b></span><span>Unchanged <b id="diff-unchanged">0</b></span><span>Missing in Designer <b id="diff-missing">0</b></span><span>Preserve <b id="diff-preserve">0</b></span><span>Orphans <b id="diff-orphans">0</b></span><span>Defaults to clean <b id="diff-delete">0</b></span>
-        </div>
-        <p class="modal-warning" id="sync-warning" hidden></p>
-        <details class="cleanup-panel"><summary>Select defaults to delete</summary><div id="standard-checklist" class="standard-checklist"></div><button class="button danger" id="delete-standards" type="button">Delete selected defaults</button></details>
-        <div class="modal-actions"><button class="button secondary" id="cancel-sync" type="button">Cancel</button><button class="button primary" id="confirm-sync" type="button">Apply changes</button></div>
-      </section>
-    </div>
 
     <menu class="canvas-context-menu" id="canvas-context-menu" hidden>
       <div class="empty-context-actions" id="empty-context-actions" hidden>
@@ -150,7 +122,7 @@
          <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Delete object?</span><button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button></div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=10.25"></script>
-    <script src="./app.js?v=10.25"></script>
+    <script src="./designer-adapter.js?v=11.0"></script>
+    <script src="./app.js?v=11.0"></script>
   </body>
 </html>

@@ -1,7 +1,7 @@
 # Glossary
 
 - **Designer**: Disguise Designer application hosting the current project and stage.
-- **Stage**: `state.stage`, the current collection root used by the Python API.
+- **Stage**: `state.stage`, the single top-view plan boundary with `width` and `depth`, centred at world origin.
 - **Planner object**: an object in the local scene model with a stable `pluginId`.
 - **Managed object**: a Designer object proven to belong to this planner by `dsg-*` path or stored UID.
 - **Adopted object**: a recognized default Designer object that the planner updates in place and then maps to a `pluginId`.
@@ -18,9 +18,7 @@
 - **Look At**: projector target point in world coordinates, written to `Projector.configLookAt`.
 - **Target surface**: optional projection surface whose current centre supplies a projector's Look At point.
 - **PPI**: pixels per inch, stored only for LED screens in the planner metadata.
-- **Stage-relative height**: UI-only offset from `stage.floorY + stage.height`; saved plans still store absolute Designer Y.
-- **Room frame**: visible plan boundary centred on world `X=0, Z=0`; it never offsets object coordinates.
-- **Stage footprint**: positioned X/Z rectangle with physical width, depth, height, and top elevation used for initial object placement.
+- **Stage height**: not part of the plan model; object Y values remain independent world coordinates.
 - **Pixel pitch**: centre-to-centre LED pixel spacing in millimetres.
 - **Direction cone**: top-view indication of a projector, camera, or light heading derived from its `Ry` value.
-- **Diff**: classified operations computed before synchronization.
+- **Diff**: internal classified operations used by the adapter; there is no user-facing export-apply command.
