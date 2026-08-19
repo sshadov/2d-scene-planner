@@ -216,3 +216,10 @@ For screens and surfaces, Enter follows the physical setup order `geometry.width
 LIVE now uses the documented `ws://<director>/api/session/liveupdate` endpoint. The adapter subscribes to the exact resource using the stored Designer UID and the official `getByUID(0x...)` expression, then maps returned subscription IDs to planner fields. Type/name expressions are only a legacy fallback because normalized filenames can resolve separately from the object attached to the Stage. Stage collection arrays are also subscribed through the Stage UID to detect object creation and deletion. Local changes send `set` messages after a short debounce; missing Planner objects are created with one Python resource operation before binding. Explicit deletion uses a confirmed `resourceManager.remove(path)` operation. If the plugin host does not expose WebSocket or the endpoint rejects the connection, LIVE returns to off and explicit Python HTTP synchronization remains available.
 
 Subscription ids are session-scoped. The adapter therefore invalidates all ids on socket close and recovers from an `invalid id` error by resubscribing before sending further sets.
+
+## ADR-026: Projector optical contract and readback probe
+
+- Date: 2026-08-19
+- Status: accepted
+
+The Planner's projector contract is `Projector.configPosition` plus `Projector.configLookAt`. Generic `rotation` and calculated `configRotation` are Designer implementation state and are never imported, displayed, or written by the Planner. Readback exposes a zero UI rotation and validates only the config vectors. The adapter provides a read-only `projectorReadbackProbe`; a protocol-level mock covers the request/response contract, while a live Designer probe remains a release prerequisite.

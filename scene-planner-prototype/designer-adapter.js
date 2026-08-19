@@ -142,11 +142,9 @@ def readback(obj, kind):
             "geometry": {"width": float(size.x), "height": float(size.y)}
         }
     if kind == "projector":
-        # Preserve the actual Designer optical rotation when the build exposes it.
-        config_rotation = getattr(obj, "configRotation", None)
-        if config_rotation is None:
-            config_rotation = getattr(obj, "rotation", None)
-        return {"transform": {"position": vec_data(obj.configPosition), "rotation": vec_data(config_rotation) if config_rotation is not None else {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": vec_data(obj.configLookAt)}
+        # Projector optical state is defined only by the public config contract.
+        # Do not read the inherited body rotation/configRotation into Planner.
+        return {"transform": {"position": vec_data(obj.configPosition), "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": vec_data(obj.configLookAt)}
     if kind == "camera":
         return {"transform": {"position": vec_data(obj.offset), "rotation": vec_data(obj.rotation)}}
     position = getattr(obj, "offset", None)
@@ -340,6 +338,26 @@ else:
 obj.save()
 ${readbackHelpers()}
 return json.dumps({"designerId": str(obj.uid), "path": object_path, "readback": readback(obj, kind)})`;
+  }
+  function projectorProbeScript(designerId = null) {
+    const targetId = designerId == null ? "" : String(designerId);
+    return `import json
+def vec_data(value):
+    return {"x": float(value.x), "y": float(value.y), "z": float(value.z)}
+target_id = ${quote(targetId)}
+matches = []
+for candidate in state.stage.projectors:
+    candidate_id = str(candidate.uid)
+    if target_id and candidate_id != target_id:
+        continue
+    matches.append({
+        "designerId": candidate_id,
+        "path": str(candidate.path),
+        "className": type(candidate).__name__,
+        "configPosition": vec_data(candidate.configPosition),
+        "configLookAt": vec_data(candidate.configLookAt)
+    })
+return json.dumps({"contract": "Projector.configPosition/configLookAt", "projectors": matches})`;
   }
   function deleteScript(designerIds) {
     return `import json
@@ -592,6 +610,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     inspectScene: () => execute(inspectScript()),
     createObject: payload => execute(createScript(payload)),
     updateObject: (designerId, changed, designerPath, kind) => execute(updateScript(designerId, changed, designerPath, kind)),
+    projectorReadbackProbe: designerId => execute(projectorProbeScript(designerId)),
     deleteObjects: designerIds => execute(deleteScript(designerIds)),
     deleteManagedObjects: designerIds => execute(deleteManagedScript(designerIds)),
     configureLiveScene,
@@ -600,6 +619,6 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     liveSync,
     getLiveLogs: () => liveLogEntries.slice(),
     clearLiveLogs: () => { liveLogEntries.length = 0; },
-    debugScripts: { inspectScript, createScript, updateScript, deleteManagedScript }
+    debugScripts: { inspectScript, createScript, updateScript, projectorProbeScript, deleteManagedScript }
   };
 })();

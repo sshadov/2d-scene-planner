@@ -147,3 +147,11 @@ The `Очистить сцену` button requires confirmation, removes planner 
 13. Synchronize with a changed Stage and verify no `stage.floor_size =` script is sent; `stage.floor_pos` succeeds without the Starter `Field` exception.
 14. Run the confirmed default deletion flow and verify the adapter calls `saveOnDelete()` and `resourceManager.remove(path)`; collection detachment alone is not sufficient.
 15. Inspect a concrete `Camera` and verify readback uses `offset/rotation` only.
+
+## Projector contract probe
+
+Run `node tests/projector-contract.test.cjs`. The test starts a protocol-level mock of
+`/api/session/python/execute`, invokes the adapter's `projectorReadbackProbe`, and checks
+structured `configPosition/configLookAt` data. It rejects scripts that use `configRotation`.
+Before release, run the same read-only probe against the installed Designer project; the
+probe must report at least one concrete `Projector` and must not mutate its resource.

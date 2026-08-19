@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.0 - 2026-08-19
+
+- Completed the projector optical contract: `configPosition/configLookAt` are the only Planner-facing projector coordinates.
+- Excluded Designer body `rotation` and calculated `configRotation` from projector readback and UI state.
+- Added a read-only `projectorReadbackProbe` and a protocol-level mock test; live Designer probe verified against the installed project.
+
 ## 0.17.1 - 2026-08-19
 
 - Tolerated only `1e-6` float32 representation noise in Designer readback validation.

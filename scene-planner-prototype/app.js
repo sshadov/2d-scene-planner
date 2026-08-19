@@ -114,6 +114,7 @@
     };
     if (type === "projector") {
       normalized.lookAt = vector(object.lookAt || lookAtFromRotation(position, rotation));
+      normalized.transform.rotation = { x: 0, y: 0, z: 0 };
       if (object.targetSurfacePluginId) normalized.targetSurfacePluginId = String(object.targetSurfacePluginId);
     }
     if (object.designer) normalized.designer = object.designer;
@@ -473,7 +474,10 @@
     const object = { id: existing?.id || nextId++, pluginId, type: knownType, name, transform: item.transform || { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 } } };
     if (item.geometry && typeConfig[knownType].geometry) object.geometry = { width: finite(item.geometry.width, typeConfig[knownType].geometry.width), height: finite(item.geometry.height, typeConfig[knownType].geometry.height) };
     if (typeConfig[knownType].media) object.media = { resolutionX: Math.max(1, Math.round(finite(item.media?.resolutionX, typeConfig[knownType].media.resolutionX))), resolutionY: Math.max(1, Math.round(finite(item.media?.resolutionY, typeConfig[knownType].media.resolutionY))), ...(knownType === "screen" ? { inputMode: existing?.media?.inputMode || "resolution", pixelsPerInch: finite(item.media?.pixelsPerInch, existing?.media?.pixelsPerInch || typeConfig.screen.media.pixelsPerInch), pixelPitchMm: finite(item.media?.pixelPitchMm, existing?.media?.pixelPitchMm || typeConfig.screen.media.pixelPitchMm) } : {}) };
-    if (knownType === "projector") object.lookAt = item.lookAt || lookAtFromRotation(object.transform.position, object.transform.rotation);
+    if (knownType === "projector") {
+      object.lookAt = item.lookAt || lookAtFromRotation(object.transform.position, object.transform.rotation);
+      object.transform.rotation = { x: 0, y: 0, z: 0 };
+    }
     object.designer = { designerId: String(item.id || item.uid || ""), path: item.path, className: item.className, collection: item.collection };
     return object;
   }
