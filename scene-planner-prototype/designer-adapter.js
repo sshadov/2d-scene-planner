@@ -472,7 +472,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
   function liveDefinitions(payload) {
     const type = payload.type;
-    const definitions = [{ field: "name", property: "object.description", encode: value => String(value ?? ""), decode: value => String(value ?? "") }];
+    const definitions = [{ field: "name", property: "object.description", encode: value => String(value ?? ""), decode: value => String(value ?? ""), writable: false }];
     const add = (field, property, encode = value => value, decode = value => value) => definitions.push({ field, property, encode, decode });
     const transformPrefix = type === "projector" ? "configPosition" : "offset";
     ["x", "y", "z"].forEach(axis => add(`transform.position.${axis}`, `object.${transformPrefix}.${axis}`));
@@ -541,7 +541,10 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
         if (!binding) return;
         const isNewSubscription = binding.id !== subscription.id;
         binding.id = subscription.id;
-        binding.writable = subscription.writable !== false;
+        // Resource.description is remote metadata.  Designer exposes it for
+        // readback, but names are changed through Resource.rename, never by
+        // Live Update set.
+        binding.writable = binding.writable !== false && subscription.writable !== false;
         livePendingSubscriptions.delete(`${binding.objectPath}|${binding.propertyPath}`);
         if (isNewSubscription) liveLog("subscribed", { id: subscription.id, pluginId: binding.pluginId, field: binding.field, object: binding.objectPath, property: binding.propertyPath });
       });
@@ -564,6 +567,12 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
       if (!wasInitialized) {
         binding.dirty = !liveValuesEqual(binding.desired, change.value);
         binding.inFlight = undefined;
+        if (binding.writable === false) {
+          // Read-only metadata is authoritative on first readback.  Do not
+          // turn the planner's initial name into a failed Live Update write.
+          binding.desired = change.value;
+          binding.dirty = false;
+        }
       } else if (liveValuesEqual(binding.desired, change.value)) {
         binding.dirty = false;
         binding.inFlight = undefined;
@@ -585,7 +594,17 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
         liveOnStatus({ status: "recovering", detail: `${detail}; resubscribing` });
         liveSubscribeBindings();
         liveSubscribeScene();
-      } else liveOnStatus({ status: "error", detail });
+      } else {
+        const failed = [];
+        for (const binding of liveBindings.values()) {
+          if (binding.inFlight === undefined) continue;
+          failed.push({ id: binding.id, pluginId: binding.pluginId, field: binding.field, property: binding.propertyPath });
+          binding.inFlight = undefined;
+          binding.dirty = true;
+        }
+        liveLog("set-error", { detail, bindings: failed });
+        liveOnStatus({ status: "error", detail });
+      }
     }
   }
   function liveSubscribeBindings() {
@@ -613,7 +632,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
         const previous = liveBindings.get(key);
         const desired = definition.encode(liveFieldValue(payload, definition.field));
         const unchangedDesired = previous?.desired !== undefined && liveValuesEqual(previous.desired, desired);
-        nextBindings.set(key, { ...(previous || {}), ...definition, key, pluginId: payload.pluginId, objectPath, propertyPath: definition.property, id: previous?.id ?? null, desired, dirty: previous?.initialized ? !liveValuesEqual(previous.remote, desired) : false, inFlight: unchangedDesired ? previous?.inFlight : undefined, writable: previous?.writable !== false });
+        nextBindings.set(key, { ...(previous || {}), ...definition, key, pluginId: payload.pluginId, objectPath, propertyPath: definition.property, id: previous?.id ?? null, desired, dirty: previous?.initialized ? !liveValuesEqual(previous.remote, desired) : false, inFlight: unchangedDesired ? previous?.inFlight : undefined, writable: definition.writable !== false && previous?.writable !== false });
       });
     });
     const removedIds = [...liveBindings.values()].filter(binding => binding.id !== null && !nextBindings.has(binding.key)).map(binding => binding.id);

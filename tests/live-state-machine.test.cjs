@@ -22,14 +22,14 @@ function valuesForSubscriptions(socket) {
   for (const message of socket.sent.filter(item => item.subscribe)) {
     for (const property of message.subscribe.properties) {
       const subscriptionId = id++;
-      subscriptions.push({ id: subscriptionId, objectPath: message.subscribe.object, propertyPath: property, writable: !property.startsWith("object.ledScreens") });
+      subscriptions.push({ id: subscriptionId, objectPath: message.subscribe.object, propertyPath: property, writable: property !== "object.description" && !property.startsWith("object.ledScreens") });
       if (!property.startsWith("object.")) continue;
       const value = property === "object.description" ? "old" : property.endsWith(".x") ? 0 : property.endsWith(".y") ? (property.includes("scale") ? 2 : 0) : property.endsWith(".z") ? 0 : 0;
       values.push({ id: subscriptionId, value });
     }
   }
   socket.message({ subscriptions });
-  return values.filter(change => subscriptions.find(item => item.id === change.id)?.writable);
+  return values;
 }
 
 (async () => {
@@ -51,7 +51,8 @@ function valuesForSubscriptions(socket) {
   adapter.configureLiveScene("32");
   const payload = { pluginId: "screen-1", type: "screen", name: "screen", transform: { position: { x: 1, y: 0, z: 2 }, rotation: { x: 0, y: 0, z: 0 } }, geometry: { width: 4, height: 2 } };
   adapter.liveSync([{ payload, record: { designerId: "16", path: "objects/ledscreen/screen.apx" } }]);
-  const startPromise = adapter.liveStart({ onStatus() {}, onValuesChanged() {}, onSceneChanged() {} });
+  const statuses = [];
+  const startPromise = adapter.liveStart({ onStatus(status) { statuses.push(status); }, onValuesChanged() {}, onSceneChanged() {} });
   const first = MockWebSocket.instances[0];
   assert.equal(first.url, "ws://director.example/api/session/liveupdate");
   first.open();
@@ -60,14 +61,38 @@ function valuesForSubscriptions(socket) {
   first.message({ valuesChanged: initialValues });
   const stateAfterInitial = adapter.getLiveState();
   assert.ok(stateAfterInitial.bindings.every(binding => binding.initialized));
-  assert.ok(stateAfterInitial.bindings.some(binding => binding.dirty && binding.inFlight !== undefined));
+  const nameBinding = stateAfterInitial.bindings.find(binding => binding.field === "name");
+  assert.equal(nameBinding.writable, false);
+  assert.equal(nameBinding.dirty, false);
+  assert.equal(nameBinding.inFlight, undefined);
+  assert.ok(stateAfterInitial.bindings.some(binding => binding.field !== "name" && binding.dirty && binding.inFlight !== undefined));
   const setCount = first.sent.filter(item => item.set).length;
   assert.ok(setCount >= 1);
   const pending = first.sent.filter(item => item.set).flatMap(item => item.set);
+  const descriptionSubscription = first.sent.filter(item => item.subscribe).flatMap(item => item.subscribe.properties.map(property => ({ property })) ).find(item => item.property === "object.description");
+  assert.ok(descriptionSubscription);
+  const descriptionId = first.sent.length ? (() => {
+    const subscriptions = [];
+    let id = 100;
+    for (const message of first.sent.filter(item => item.subscribe)) for (const property of message.subscribe.properties) { subscriptions.push({ id: id++, property }); }
+    return subscriptions.find(item => item.property === "object.description")?.id;
+  })() : null;
+  assert.ok(pending.every(change => change.id !== descriptionId));
+  assert.ok(pending.every(change => change.property !== "object.description"));
   first.message({ valuesChanged: pending.map(change => ({ id: change.id, value: change.value })) });
   assert.equal(first.sent.filter(item => item.set).length, setCount);
   const converged = adapter.getLiveState().bindings.filter(binding => binding.id !== null);
   assert.ok(converged.every(binding => !binding.dirty && binding.inFlight === undefined));
+  const writableBinding = adapter.getLiveState().bindings.find(binding => binding.writable && binding.id !== null);
+  assert.ok(writableBinding);
+  adapter.liveSync([{ payload: { ...payload, transform: { ...payload.transform, position: { ...payload.transform.position, x: 9 } } }, record: { designerId: "16", path: "objects/ledscreen/screen.apx" } }]);
+  assert.ok(adapter.getLiveState().bindings.find(binding => binding.field === "transform.position.x").inFlight !== undefined);
+  first.message({ error: "property is not writable" });
+  const afterError = adapter.getLiveState().bindings.find(binding => binding.field === "transform.position.x");
+  assert.equal(afterError.inFlight, undefined);
+  assert.equal(afterError.dirty, true);
+  assert.ok(adapter.getLiveLogs().some(entry => entry.event === "set-error"));
+  assert.ok(statuses.some(status => status.status === "error"));
   adapter.liveSync([]);
   assert.ok(first.sent.some(item => item.unsubscribe?.ids?.length || item.unsubscribe?.id));
   first.close();
