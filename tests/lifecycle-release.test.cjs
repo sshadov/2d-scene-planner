@@ -28,9 +28,9 @@ assert.match(update, /obj\.save\(\)/);
 const create = scripts.createScript({ pluginId: "dmx-light-2", type: "dmxLight", name: "DMX Light 2", transform: { position: { x: 1, y: 5, z: 2 }, rotation: { x: 0, y: 0, z: 0 } } });
 assert.match(create, /resourceManager\.exists\(Path\(path\)\)/);
 assert.match(create, /resourceManager\.package\.findAllBeginsWith/);
-assert.match(create, /while resource_path_taken\(object_path\)/);
+assert.match(create, /while resource_path_taken\(candidate\)/);
 assert.match(create, /resourceManager\.loadOrCreate\(Path\(object_path\), expected_type\)/);
-assert.match(create, /if not present:/);
+assert.match(create, /append_typed\(obj, collection\)/);
 assert.match(create, /"name": resolved_name/);
 
 const cameraCreate = scripts.createScript({ pluginId: "camera-2", type: "camera", name: "Camera 2", transform: { position: { x: 1, y: 1.5, z: 2 }, rotation: { x: 0, y: 180, z: 0 } } });
@@ -38,18 +38,18 @@ assert.match(cameraCreate, /PerspectiveProjectionObject/);
 assert.match(cameraCreate, /PerspectiveProjection/);
 assert.match(cameraCreate, /projection_object\.projection = projection/);
 assert.match(cameraCreate, /obj\.add\(projection_object\)/);
-assert.match(cameraCreate, /obj\.isBad/);
+assert.match(cameraCreate, /isBad/);
 assert.match(cameraCreate, /rollback/);
 
 const projectorCreate = scripts.createScript({ pluginId: "projector-2", type: "projector", name: "Projector 2", transform: { position: { x: 1, y: 3, z: 2 }, rotation: { x: 0, y: 0, z: 0 } }, lookAt: { x: 0, y: 1, z: 0 }, optics: { throwRatio: 1.5 } });
 assert.match(projectorCreate, /ProjectorConfig/);
 assert.match(projectorCreate, /obj\.config/);
-assert.match(projectorCreate, /obj\.isBad/);
+assert.match(projectorCreate, /isBad/);
 assert.match(projectorCreate, /rollback/);
 
 const simpleCreate = scripts.createScript({ pluginId: "screen-2", type: "screen", name: "LED Screen 2", transform: { position: { x: 1, y: 0, z: 2 }, rotation: { x: 0, y: 0, z: 0 } }, geometry: { width: 4, height: 2 } });
 assert.match(simpleCreate, /createSimpleDisplay/);
-assert.doesNotMatch(simpleCreate, /PerspectiveProjectionObject/);
+assert.doesNotMatch(simpleCreate, /projection_object/);
 
 const rename = scripts.updateScript("uid-1", { name: "DMX Light 2" }, "objects/dmxlight/dmx light 1.apx", "dmxLight");
 assert.match(rename, /resourceManager\.exists\(Path\(desired_path\)\)/);

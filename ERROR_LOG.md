@@ -463,3 +463,11 @@
 - Fix: create missing Planner objects through the Python resource API before binding their UID, subscribe to Stage equipment collections for Designer-side additions/deletions, and run a debounced scene reconciliation. Explicit Planner deletion calls `resourceManager.remove(path)` after confirmation.
 - Regression test: the current Designer watcher observed `dmxScreens` collection events for a temporary create/delete probe; DmxScreen and FixtureGroup create/readback/delete probes completed successfully.
 - Note: after `resourceManager.remove(path)`, Designer can retain a stale typed object in the generic `stage.children` hierarchy until refresh. Inspection now trusts typed collections for supported equipment and ignores typed-class entries encountered through `children`.
+
+## ERR-051: Bare composite devices destabilized Designer lifecycle
+
+- Date: 2026-08-19
+- Symptom: cameras were absent from the Device list, projectors could trigger native render access violations, and deleting/recreating devices left stale resources or duplicate entries.
+- Cause: a bare `Camera` or `Projector` resource was treated as a complete device. Camera projection children and projector config resources were not created or validated, and package resources could be removed before Stage references were detached.
+- Fix: create cameras with a named `PerspectiveProjection` and `PerspectiveProjectionObject`, create projectors with a named `ProjectorConfig`, validate public health flags and typed Stage membership, rollback only resources created by the operation, and save Stage before removing main or auxiliary resources.
+- Regression test: generated lifecycle contracts and Python syntax checks cover composite builders, conflict detection, health/rollback paths, and two-phase deletion.
