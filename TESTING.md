@@ -86,6 +86,26 @@ Use disposable resources only.
 7. Manual/unowned Designer objects remain protected.
 8. Startup inspection deduplicates typed collections and technical `stage.children` entries by UID and ignores internal helpers, MR Sets, and Skeletons.
 
+### Composite Device Smoke
+
+With the disposable `scenegen2` project active, run:
+
+```powershell
+python scripts/diagnose-composite-devices.py --dry-run
+python scripts/diagnose-composite-devices.py --kind all
+```
+
+The live command uses `debugScripts.createScript` and `debugScripts.deleteManagedScript` from the tracked adapter. It creates only `dsg-smoke-*` resources and checks:
+
+1. DMX Light is a healthy `FixtureGroup` in `stage.dmxLights`.
+2. Camera is healthy and owns one healthy `PerspectiveProjectionObject` linked to a named `PerspectiveProjection`.
+3. Projector and its named `ProjectorConfig` are healthy; Designer returns derived field of view and look distance.
+4. Cleanup removes the exact typed Stage reference before the main, child/config, and `DirectProjection` package resources.
+5. Cleanup is restricted to the explicit `ownedPaths` returned by creation; imported/manual resources are never accepted by managed deletion.
+6. No `dsg-smoke-*` typed Stage entry, `stage.children` entry, or package resource reappears during the cleanup stability window, and the UIDs/classes of manual `1`, `2`, `3`, `cam1`, `projector 1`, and `surface 1` resources are unchanged.
+
+Run one kind at a time with `--kind dmxLight`, `--kind camera`, or `--kind projector` when isolating a Designer failure. Do not run this against a production project.
+
 ## Release Evidence
 
 Before packaging or submitting to Disguise, retain:

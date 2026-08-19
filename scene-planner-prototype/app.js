@@ -363,7 +363,9 @@
     try {
       const result = await adapter.updateObject(record.designerId, { name: nextName }, record.path, object.type);
       object.name = result?.name || nextName;
-      record.path = result?.path || record.path;
+      const nextPath = result?.path || record.path;
+      record.ownedPaths = renamedOwnedPaths(record, nextPath);
+      record.path = nextPath;
       record.name = object.name;
       record.payload = objectPayload(object);
       record.lastExported = canonical(record.payload);
@@ -396,9 +398,12 @@
     const detachedTargets = new Map(state.objects.filter(item => item.type === "projector" && item.targetSurfacePluginId === removed.pluginId).map(projector => [projector.id, { target: effectiveLookAt(projector), surfacePluginId: projector.targetSurfacePluginId }]));
     state.objects.splice(index, 1); state.selectedIds.delete(id); detachedTargets.forEach((target, projectorId) => { const projector = state.objects.find(item => item.id === projectorId); if (projector) { projector.lookAt = target; delete projector.targetSurfacePluginId; } }); if (state.selectedId === id) selectObject(state.objects[index] || state.objects[index - 1] || null);
     persist(); render();
-    if (!record?.designerId || !getAdapter()?.deleteManagedObjects) return;
+    if (!record?.designerId) return;
+    if (!record.owned) { delete state.sync.objects[removed.pluginId]; persist(false); renderStatus(); return; }
+    if (!getAdapter()?.deleteManagedObjects) return;
     try {
-      const result = await getAdapter().deleteManagedObjects([{ id: record.designerId, path: record.path }]);
+      if (!Array.isArray(record.ownedPaths) || !record.ownedPaths.length) throw new Error("Designer ownership metadata is incomplete; refusing physical deletion");
+      const result = await getAdapter().deleteManagedObjects([{ id: record.designerId, path: record.path, owned: true, ownedPaths: record.ownedPaths }]);
       if (!result?.deleted?.map(String).includes(String(record.designerId))) throw new Error(result?.skipped?.join("; ") || "Designer did not confirm deletion");
       delete state.sync.objects[removed.pluginId]; persist(false); renderStatus();
     } catch (error) {
@@ -444,8 +449,8 @@
   async function syncToDesigner(diff) {
     const records = state.sync.objects || {};
     await syncEnvironmentIfChanged(diff.adapter);
-    for (const item of [...diff.create, ...diff.adopt]) { try { const result = item.designerId ? await diff.adapter.updateObject(item.designerId, item.payload, item.candidate?.path, item.object.type) : await diff.adapter.createObject(item.payload); validateReadback(item.payload, result); if (result?.name) { item.object.name = result.name; item.payload.name = result.name; item.serialized = canonical(item.payload); } item.designerId = result?.designerId || result?.id || item.designerId; item.designerPath = result?.path || item.candidate?.path; } catch (error) { throw new Error(`${item.designerId ? "Update" : "Create"} "${item.object.name}": ${error.message || error}`); } records[item.object.pluginId] = { pluginId: item.object.pluginId, designerId: item.designerId || `dsg:${item.object.pluginId}`, path: item.designerPath, type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload, adopted: Boolean(item.candidate) }; state.sync.objects = records; persist(false); }
-    for (const item of diff.update) { try { const result = await diff.adapter.updateObject(item.designerId, item.changed, item.designerPath || records[item.object.pluginId]?.path, item.object.type); validateReadback(item.payload, result); if (result?.name) { item.object.name = result.name; item.payload.name = result.name; item.serialized = canonical(item.payload); } item.designerPath = result?.path || item.designerPath; } catch (error) { throw new Error(`Update "${item.object.name}": ${error.message || error}`); } records[item.object.pluginId] = { ...(records[item.object.pluginId] || {}), pluginId: item.object.pluginId, designerId: item.designerId, path: item.designerPath || records[item.object.pluginId]?.path, type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload }; state.sync.objects = records; persist(false); }
+    for (const item of [...diff.create, ...diff.adopt]) { const owned = !item.designerId; let result; try { result = item.designerId ? await diff.adapter.updateObject(item.designerId, item.payload, item.candidate?.path, item.object.type) : await diff.adapter.createObject(item.payload); validateReadback(item.payload, result); if (result?.name) { item.object.name = result.name; item.payload.name = result.name; item.serialized = canonical(item.payload); } item.designerId = result?.designerId || result?.id || item.designerId; item.designerPath = result?.path || item.candidate?.path; } catch (error) { throw new Error(`${item.designerId ? "Update" : "Create"} "${item.object.name}": ${error.message || error}`); } const ownedPaths = owned ? validatedOwnedPaths(result, item.object.type) : []; records[item.object.pluginId] = { pluginId: item.object.pluginId, designerId: item.designerId || `dsg:${item.object.pluginId}`, path: item.designerPath, type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload, adopted: Boolean(item.candidate), owned, ownedPaths }; state.sync.objects = records; persist(false); }
+    for (const item of diff.update) { const previousRecord = records[item.object.pluginId] || {}; try { const result = await diff.adapter.updateObject(item.designerId, item.changed, item.designerPath || previousRecord.path, item.object.type); validateReadback(item.payload, result); if (result?.name) { item.object.name = result.name; item.payload.name = result.name; item.serialized = canonical(item.payload); } item.designerPath = result?.path || item.designerPath; } catch (error) { throw new Error(`Update "${item.object.name}": ${error.message || error}`); } const nextPath = item.designerPath || previousRecord.path; records[item.object.pluginId] = { ...previousRecord, pluginId: item.object.pluginId, designerId: item.designerId, path: nextPath, ownedPaths: renamedOwnedPaths(previousRecord, nextPath), type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload }; state.sync.objects = records; persist(false); }
     state.sync.lastSyncAt = new Date().toISOString(); delete state.sync.errors.live; persist(false);
   }
   function renderLiveLog() { const output = document.querySelector("#live-log-output"); const logs = getAdapter()?.getLiveLogs?.() || []; if (output) output.textContent = logs.length ? logs.map(entry => JSON.stringify(entry)).join("\n") : "No LIVE events yet."; }
@@ -506,8 +511,9 @@
       const payload = objectPayload(object);
       const result = await adapter.createObject(payload);
       validateReadback(payload, result);
+      const ownedPaths = validatedOwnedPaths(result, object.type);
       if (result?.name) { object.name = result.name; payload.name = result.name; }
-      records[object.pluginId] = { pluginId: object.pluginId, designerId: result?.designerId || result?.id, path: result?.path, type: object.type, name: object.name, lastExported: canonical(payload), payload, liveCreated: true };
+      records[object.pluginId] = { pluginId: object.pluginId, designerId: result?.designerId || result?.id, path: result?.path, type: object.type, name: object.name, lastExported: canonical(payload), payload, liveCreated: true, owned: true, ownedPaths };
     }
     state.sync.objects = records;
     persist(false);
@@ -583,7 +589,7 @@
     pendingFocusPath = selected && selected.pluginId === previousSelectedPluginId ? activeFieldPath : null;
     // Designer is authoritative at startup, including whether a managed Stage
     // cube exists. Local storage keeps mappings and UI preferences only.
-    const importedRecords = Object.fromEntries(imported.map(object => [object.pluginId, { pluginId: object.pluginId, designerId: object.designer?.designerId, path: object.designer?.path, type: object.type, name: object.name, lastExported: canonical(objectPayload(object)), payload: objectPayload(object), imported: true }]));
+    const importedRecords = Object.fromEntries(imported.map(object => { const previous = state.sync.objects?.[object.pluginId]; const sameResource = previous && (String(previous.designerId || "") === String(object.designer?.designerId || "") || String(previous.path || "") === String(object.designer?.path || "")); const hasOwnership = Array.isArray(previous?.ownedPaths) && previous.ownedPaths.length > 0; const owned = Boolean(sameResource && previous.owned && hasOwnership); return [object.pluginId, { pluginId: object.pluginId, designerId: object.designer?.designerId, path: object.designer?.path, type: object.type, name: object.name, lastExported: canonical(objectPayload(object)), payload: objectPayload(object), imported: true, owned, ownedPaths: owned ? previous.ownedPaths : [] }]; }));
     state.sync.objects = { ...(options.preserveLocal ? state.sync.objects : {}), ...importedRecords };
     state.sync.environment = environmentKey(); state.sync.lastSyncAt = new Date().toISOString(); persist(false); render();
   }
@@ -692,5 +698,14 @@
     adapterStatus.textContent = "Checking Designer API…";
     Promise.resolve(adapter.sessionStatus?.()).then(() => { adapterStatus.textContent = "Designer API available"; finishStartup(); }).catch(() => { adapterStatus.textContent = "Designer API unavailable · JSON available"; finishStartup(); });
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject };
+  function renamedOwnedPaths(record, nextPath) { const paths = Array.isArray(record?.ownedPaths) ? record.ownedPaths : []; return paths.map(path => String(path) === String(record?.path) ? nextPath : path); }
+  function validatedOwnedPaths(result, type) {
+    const paths = [...new Set((Array.isArray(result?.ownedPaths) ? result.ownedPaths : []).map(String).filter(Boolean))];
+    const mainPath = String(result?.path || "");
+    const requiredFolders = type === "camera" ? ["objects/camera/", "objects/perspectiveprojectionobject/"] : type === "projector" ? ["objects/projector/", "objects/projectorconfig/"] : [String(typeResourceFolders[type] ? `objects/${typeResourceFolders[type]}/` : ""), "objects/directprojection/"];
+    if (!mainPath || !paths.includes(mainPath) || requiredFolders.some(folder => !folder || !paths.some(path => path.startsWith(folder)))) throw new Error(`Designer ownership metadata is incomplete for ${type}`);
+    if (type === "camera" && paths.filter(path => path.startsWith("objects/camera/")).length < 2) throw new Error("Designer ownership metadata is incomplete for camera");
+    return paths;
+  }
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject };
 })();

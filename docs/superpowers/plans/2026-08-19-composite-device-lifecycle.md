@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-19-composite-device-lifecycle-design.md`
 
+**Status (2026-08-19):** Tasks 1-6 implemented and verified, including explicit main/auxiliary ownership, rollback cleanup, and the live `scenegen2` composite smoke. Individual historical checkboxes in Tasks 1-5 retain the original execution wording; Task 6 records the final validation directly.
+
 ## Global Constraints
 
 - Never report a bare `Camera` or bare `Projector` as a successful creation.
@@ -70,7 +72,7 @@
 
 **Files:** `scripts/diagnose-composite-devices.py` (diagnostic only), `TESTING.md`
 
-- [ ] **Step 1: Create a diagnostic script using the Designer Execution API that creates only `dsg-smoke-*` camera/projector/DMX-Light resources, checks typed collection membership and health, checks the camera child and projector config, then deletes typed references before package resources.
-- [ ] **Step 2: Run it against active `scenegen2` and stop on any native exception. Verify no `dsg-smoke-*` paths remain and the manual `1`, `2`, `3` samples are unchanged.
-- [ ] **Step 3: Document the command and expected checks in `TESTING.md`.
-- [ ] **Step 4: Run `npm test`, `git diff --check`, and `git status --short`; confirm only intended files remain.
+- [x] **Step 1: Create a diagnostic script using the Designer Execution API that creates only `dsg-smoke-*` camera/projector/DMX-Light resources, checks typed collection membership and health, checks the camera child and projector config, then deletes typed references before package resources.
+- [x] **Step 2: Run it against active `scenegen2` and stop on any native exception. Verify no `dsg-smoke-*` paths remain and the manual `1`, `2`, `3` samples are unchanged.
+- [x] **Step 3: Document the command and expected checks in `TESTING.md`.
+- [x] **Step 4: Run `npm test`, `git diff --check`, and `git status --short`; confirm only intended files remain.

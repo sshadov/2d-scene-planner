@@ -244,8 +244,121 @@ return json.dumps({"objects": objects, "stageId": str(getattr(stage, "uid", ""))
     const helper = `import re\nfrom d3 import Path, Resource\n\ndef resource_class(path):\n    try:\n        return type(resourceManager.load(Path(path), Resource)).__name__\n    except Exception:\n        return None\n\ndef resource_path_taken(path):\n    try:\n        if resourceManager.exists(Path(path)):\n            return True\n    except Exception:\n        pass\n    try:\n        for candidate_path in resourceManager.package.findAllBeginsWith(path.rsplit(\"/\", 1)[0] + \"/\"):\n            if str(candidate_path).lower() == path.lower():\n                return True\n    except Exception:\n        pass\n    return False\n\ndef allocate_path(folder, base_name, expected_class):\n    safe = re.sub(r\"[\\\\/:*?\\\"<>|]\", \"-\", str(base_name)).strip() or \"object\"\n    resolved = safe\n    candidate = folder + \"/\" + resolved.lower() + \".apx\"\n    suffix = 2\n    while resource_path_taken(candidate):\n        actual = resource_class(candidate)\n        if actual is not None and actual != expected_class:\n            raise RuntimeError(\"existing resource class conflict: {} is {}, expected {}\".format(candidate, actual, expected_class))\n        resolved = safe + \" \" + str(suffix)\n        candidate = folder + \"/\" + resolved.lower() + \".apx\"\n        suffix += 1\n    return resolved, candidate\n\ndef assert_healthy(resource, label):\n    for flag in [\"isBad\", \"isIncomplete\", \"isInError\"]:\n        try:\n            if bool(getattr(resource, flag)):\n                raise RuntimeError(\"{} is unhealthy ({}): {}\".format(label, flag, getattr(resource, flag)))\n        except AttributeError:\n            pass\n\ndef rollback(created_paths, stage, attached, collection):\n    if attached:\n        try:\n            attached.remove()\n        except Exception:\n            pass\n    try:\n        stage.save()\n    except Exception:\n        pass\n    for path in reversed(created_paths):\n        try:\n            resourceManager.remove(path)\n        except Exception:\n            pass\n\ndef append_typed(obj, collection):\n    for candidate in collection:\n        try:\n            if str(getattr(candidate, \"uid\", \"\")) == str(obj.uid):\n                return\n        except Exception:\n            pass\n    collection.append(obj)\n\ndef createSimpleDisplay(payload):\n    kind = payload[\"type\"]\n    expected_type = ${typeClasses[payload.type]}\n    folder = \"objects/${typeResourceFolders[payload.type]}\"\n    resolved_name, object_path = allocate_path(folder, payload.get(\"name\") or payload.get(\"pluginId\"), expected_type)\n    created_paths = []\n    obj = None\n    collection = getattr(stage, ${quote(typeCollections[payload.type])})\n    try:\n        obj = resourceManager.loadOrCreate(Path(object_path), expected_type)\n        created_paths.append(object_path)\n        markDirty(obj)\n        transform = payload[\"transform\"]\n        pos = transform[\"position\"]\n        rot = transform[\"rotation\"]\n        ${assignHelpers()}\n        if kind in [\"screen\", \"dmxScreen\", \"surface\"]:\n            geometry = payload[\"geometry\"]\n            assign(\"offset\", Vec(pos[\"x\"], pos[\"y\"] + geometry[\"height\"] / 2.0, pos[\"z\"]))\n            assign(\"scale\", Vec(geometry[\"width\"], geometry[\"height\"], 0.1))\n            assign(\"rotation\", Vec(0.0, rot[\"y\"], 0.0))\n        else:\n            assign(\"offset\", Vec(pos[\"x\"], pos[\"y\"], pos[\"z\"]))\n            assign(\"rotation\", Vec(rot[\"x\"], rot[\"y\"], rot[\"z\"]))\n        append_typed(obj, collection)\n        obj.save()\n        stage.save()\n        assert_healthy(obj, kind)\n        return obj, resolved_name, object_path\n    except Exception:\n        rollback(created_paths, stage, obj if obj is not None else None, collection)\n        raise\n\n`;
     const body = simple ? `payload = json.loads(${payloadText(payload)})\nstage = state.stage\nobj, resolved_name, object_path = createSimpleDisplay(payload)\nkind = payload[\"type\"]\n${readbackHelpers()}\nreturn json.dumps({\"designerId\": str(obj.uid), \"path\": object_path, \"name\": resolved_name, \"readback\": readback(obj, kind)})` : payload.type === "camera" ? `from d3 import Camera, PerspectiveProjection, PerspectiveProjectionObject\npayload = json.loads(${payloadText(payload)})\nstage = state.stage\ncreated_paths = []\nobj = projection = projection_object = None\ncollection = stage.cameras\ntry:\n    resolved_name, object_path = allocate_path(\"objects/camera\", payload.get(\"name\") or payload.get(\"pluginId\"), \"Camera\")\n    projection_name, projection_path = allocate_path(\"objects/camera\", resolved_name + \" (perspective)\", \"PerspectiveProjection\")\n    projection_object_name, projection_object_path = allocate_path(\"objects/perspectiveprojectionobject\", resolved_name + \" (perspective)\", \"PerspectiveProjectionObject\")\n    obj = Camera(); projection = PerspectiveProjection(); projection_object = PerspectiveProjectionObject()\n    obj.path = Path(object_path); projection.path = Path(projection_path); projection_object.path = Path(projection_object_path)\n    projection_object.projection = projection\n    obj.add(projection_object)\n    created_paths.extend([object_path, projection_path, projection_object_path])\n    transform = payload[\"transform\"]; pos = transform[\"position\"]; rot = transform[\"rotation\"]\n    obj.offset = Vec(pos[\"x\"], pos[\"y\"], pos[\"z\"]); obj.rotation = Vec(rot[\"x\"], rot[\"y\"], rot[\"z\"])\n    append_typed(obj, collection)\n    projection.save(); projection_object.save(); obj.save(); stage.save()\n    assert_healthy(projection, \"camera projection\"); assert_healthy(projection_object, \"camera projection object\"); assert_healthy(obj, \"camera\")\n    child_count = 0\n    for child in obj.children:\n        if type(child).__name__ == \"PerspectiveProjectionObject\": child_count += 1\n    if child_count != 1: raise RuntimeError(\"camera must have exactly one PerspectiveProjectionObject\")\nexcept Exception:\n    rollback(created_paths, stage, obj, collection)\n    raise\nkind = \"camera\"\n${readbackHelpers()}\nreturn json.dumps({\"designerId\": str(obj.uid), \"path\": object_path, \"name\": resolved_name, \"readback\": readback(obj, kind)})` : `from d3 import Projector, ProjectorConfig\npayload = json.loads(${payloadText(payload)})\nstage = state.stage\ncreated_paths = []\nobj = config = None\ncollection = stage.projectors\ntry:\n    resolved_name, object_path = allocate_path(\"objects/projector\", payload.get(\"name\") or payload.get(\"pluginId\"), \"Projector\")\n    config_name, config_path = allocate_path(\"objects/projectorconfig\", resolved_name + \"_config0\", \"ProjectorConfig\")\n    obj = Projector(); config = ProjectorConfig()\n    obj.path = Path(object_path); config.path = Path(config_path); obj.config = config\n    created_paths.extend([object_path, config_path])\n    transform = payload[\"transform\"]; pos = transform[\"position\"]\n    obj.configPosition = Vec(pos[\"x\"], pos[\"y\"], pos[\"z\"])\n    look_at = payload.get(\"lookAt\", pos); obj.configLookAt = Vec(look_at[\"x\"], look_at[\"y\"], look_at[\"z\"])\n    optics = payload.get(\"optics\", {})\n    if \"throwRatio\" in optics: obj.configThrowRatio = float(optics[\"throwRatio\"])\n    append_typed(obj, collection)\n    config.save(); obj.save(); stage.save()\n    assert_healthy(config, \"projector config\"); assert_healthy(obj, \"projector\")\n    if getattr(obj, \"config\", None) is not config: raise RuntimeError(\"projector config reference was not retained\")\nexcept Exception:\n    rollback(created_paths, stage, obj, collection)\n    raise\nkind = \"projector\"\n${readbackHelpers()}\nreturn json.dumps({\"designerId\": str(obj.uid), \"path\": object_path, \"name\": resolved_name, \"readback\": readback(obj, kind)})`;
     return `${helper}${body}`
-      .replace('from d3 import Path, Resource', 'from d3 import Path, Resource, LedScreen, DmxScreen, Screen2, FixtureGroup, Camera, Projector, ProjectorConfig, PerspectiveProjection, PerspectiveProjectionObject')
+      .replace('from d3 import Path, Resource', 'from d3 import Path, Resource, DirectProjection, LedScreen, DmxScreen, Screen2, FixtureGroup, Camera, Projector, ProjectorConfig, PerspectiveProjection, PerspectiveProjectionObject')
       .replace('import re\nfrom d3', 'import json\nimport re\nfrom d3')
+      .replace(`def assert_healthy(resource, label):
+    for flag in ["isBad", "isIncomplete", "isInError"]:
+        try:
+            if bool(getattr(resource, flag)):
+                raise RuntimeError("{} is unhealthy ({}): {}".format(label, flag, getattr(resource, flag)))
+        except AttributeError:
+            pass`, `def assert_healthy(resource, label):
+    checks = [("isBad", bool(resource.isBad)), ("isIncomplete", bool(resource.isIncomplete)), ("isInError", bool(resource.isInError))]
+    for flag, failed in checks:
+        if failed:
+            raise RuntimeError("{} is unhealthy ({})".format(label, flag))`)
+      .replace(`def rollback(created_paths, stage, attached, collection):
+    if attached:
+        try:
+            attached.remove()
+        except Exception:
+            pass`, `def assert_typed_membership(stage, collection_name, resource):
+    resource_id = str(getattr(resource, "uid", ""))
+    matches = [candidate for candidate in getattr(stage, collection_name) if str(getattr(candidate, "uid", "")) == resource_id]
+    if len(matches) != 1:
+        raise RuntimeError("{} must contain exactly one resource {}".format(collection_name, resource_id))
+
+def owned_resource_paths(resource, created_paths):
+    paths = list(created_paths)
+    if resource is not None:
+        try:
+            for projection in resource.findResourcesPointingToThis(DirectProjection):
+                screens = getattr(projection, "screens", [])
+                if len(screens) == 1 and str(getattr(screens[0], "uid", "")) == str(getattr(resource, "uid", "")):
+                    projection_path = str(getattr(projection, "path", ""))
+                    if projection_path: paths.append(projection_path)
+        except Exception:
+            pass
+    return list(dict.fromkeys(paths))
+
+def rollback(created_paths, stage, attached, collection_name):
+    errors = []
+    rollback_paths = owned_resource_paths(attached, created_paths)
+    if attached:
+        try:
+            attached_id = str(getattr(attached, "uid", ""))
+            typed_collection = getattr(stage, collection_name)
+            setattr(stage, collection_name, [candidate for candidate in typed_collection if str(getattr(candidate, "uid", "")) != attached_id])
+        except Exception as error:
+            errors.append("detach: " + str(error))`)
+      .replace(`    try:
+        stage.save()
+    except Exception:
+        pass
+    for path in reversed(created_paths):`, `    try:
+        stage.save()
+    except Exception as error:
+        errors.append("stage save: " + str(error))
+    if errors: return errors
+    for path in reversed(rollback_paths):`)
+      .replace(`    for path in reversed(rollback_paths):
+        try:
+            resourceManager.remove(path)
+        except Exception:
+            pass`, `    for path in reversed(rollback_paths):
+        try:
+            created_resource = resourceManager.load(Path(path), Resource)
+            created_resource.saveOnDelete()
+        except Exception as error:
+            errors.append("saveOnDelete " + path + ": " + str(error))
+        try:
+            resourceManager.remove(path)
+        except Exception as error:
+            errors.append("remove " + path + ": " + str(error))
+    return errors`)
+      .replaceAll('rollback(created_paths, stage, obj if obj is not None else None, collection)', `rollback(created_paths, stage, obj if obj is not None else None, ${quote(typeCollections[payload.type])})`)
+      .replaceAll('rollback(created_paths, stage, obj, collection)', `rollback(created_paths, stage, obj, ${quote(typeCollections[payload.type])})`)
+      .replace('        assert_healthy(obj, kind)\n        return obj, resolved_name, object_path', `        assert_healthy(obj, kind)\n        assert_typed_membership(stage, ${quote(typeCollections[payload.type])}, obj)\n        return obj, resolved_name, object_path, owned_resource_paths(obj, created_paths)`)
+      .replace(`    except Exception:
+        rollback(created_paths, stage, obj if obj is not None else None, ${quote(typeCollections[payload.type])})
+        raise`, `    except Exception as create_error:
+        rollback_errors = rollback(created_paths, stage, obj if obj is not None else None, ${quote(typeCollections[payload.type])})
+        if rollback_errors: raise RuntimeError("create failed: " + str(create_error) + "; rollback failed: " + "; ".join(rollback_errors))
+        raise`)
+      .replace('obj, resolved_name, object_path = createSimpleDisplay(payload)', 'obj, resolved_name, object_path, owned_paths = createSimpleDisplay(payload)')
+      .replace('"name": resolved_name, "readback": readback(obj, kind)', '"name": resolved_name, "ownedPaths": owned_paths, "readback": readback(obj, kind)')
+      .replace('    obj.path = Path(object_path); projection.path = Path(projection_path); projection_object.path = Path(projection_object_path)', '    obj.path = Path(object_path); created_paths.append(object_path)\n    projection.path = Path(projection_path); created_paths.append(projection_path)\n    projection_object.path = Path(projection_object_path); created_paths.append(projection_object_path)')
+      .replace('    created_paths.extend([object_path, projection_path, projection_object_path])\n', '')
+      .replace(`    child_count = 0
+    for child in obj.children:
+        if type(child).__name__ == "PerspectiveProjectionObject": child_count += 1
+    if child_count != 1: raise RuntimeError("camera must have exactly one PerspectiveProjectionObject")`, `    assert_typed_membership(stage, "cameras", obj)
+    projection_children = [child for child in obj.children if type(child).__name__ == "PerspectiveProjectionObject"]
+    if len(projection_children) != 1: raise RuntimeError("camera must have exactly one PerspectiveProjectionObject")
+    expected_projection_path = projection_path
+    projection_path = str(getattr(getattr(projection_children[0], "projection", None), "path", ""))
+    if projection_path != expected_projection_path: raise RuntimeError("camera projection reference was not retained")`)
+      .replace(`except Exception:
+    rollback(created_paths, stage, obj, "cameras")
+    raise
+kind = "camera"`, `except Exception as create_error:
+    rollback_errors = rollback(created_paths, stage, obj, "cameras")
+    if rollback_errors: raise RuntimeError("camera create failed: " + str(create_error) + "; rollback failed: " + "; ".join(rollback_errors))
+    raise
+kind = "camera"
+owned_paths = owned_resource_paths(obj, created_paths)`)
+      .replace('    obj.path = Path(object_path); config.path = Path(config_path); obj.config = config\n    created_paths.extend([object_path, config_path])', '    obj.path = Path(object_path); created_paths.append(object_path)\n    config.path = Path(config_path); created_paths.append(config_path)\n    obj.config = config')
+      .replace('    assert_healthy(config, "projector config"); assert_healthy(obj, "projector")', '    assert_healthy(config, "projector config"); assert_healthy(obj, "projector")\n    assert_typed_membership(stage, "projectors", obj)')
+      .replace(`except Exception:
+    rollback(created_paths, stage, obj, "projectors")
+    raise
+kind = "projector"`, `except Exception as create_error:
+    rollback_errors = rollback(created_paths, stage, obj, "projectors")
+    if rollback_errors: raise RuntimeError("projector create failed: " + str(create_error) + "; rollback failed: " + "; ".join(rollback_errors))
+    raise
+kind = "projector"
+owned_paths = owned_resource_paths(obj, created_paths)`)
+      .replaceAll('"name": resolved_name, "readback": readback(obj, kind)', '"name": resolved_name, "ownedPaths": owned_paths, "readback": readback(obj, kind)')
       .replace('allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type)', 'allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type.__name__)')
       .replace('        def assign(field, value):\n    try:\n        setattr(obj, field, value)\n    except Exception as error:\n        raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, object_path, error))', '        def assign(field, value):\n            try:\n                setattr(obj, field, value)\n            except Exception as error:\n                raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, object_path, error))')
       .replace('if getattr(obj, "config", None) is not config: raise RuntimeError("projector config reference was not retained")', 'retained_config = getattr(obj, "config", None)\n    if retained_config is None or str(getattr(retained_config, "path", "")) != config_path: raise RuntimeError("projector config reference was not retained")');
@@ -378,10 +491,10 @@ for candidate in state.stage.projectors:
 return json.dumps({"contract": "Projector.configPosition/configLookAt", "projectors": matches})`;
   }
   function deleteScript(designerIds) {
-    const deleteCollectionNames = [...new Set([...Object.values(typeCollections), "children"].filter(collection => collection !== "displays"))];
+    const deleteCollectionNames = [...new Set(Object.values(typeCollections).filter(collection => collection !== "displays"))];
     return `import json
 import re
-from d3 import Path, Resource
+from d3 import Path, Resource, DirectProjection
 requested = json.loads(${payloadText(designerIds)})
 target_ids = set(str(item.get("id", item)) if isinstance(item, dict) else str(item) for item in requested)
 target_paths = set(str(item.get("path", "")) for item in requested if isinstance(item, dict) and item.get("path"))
@@ -390,6 +503,7 @@ deleted = []
 skipped = []
 processed = set()
 pending = []
+class_collections = {"LedScreen": "ledScreens", "DmxScreen": "dmxScreens", "Screen2": "surfaces", "FixtureGroup": "dmxLights", "Camera": "cameras", "Projector": "projectors"}
 def owned_resource_paths(candidate):
     paths = []
     config_path = str(getattr(getattr(candidate, "config", None), "path", ""))
@@ -399,6 +513,14 @@ def owned_resource_paths(candidate):
         if child_path: paths.append(child_path)
         projection_path = str(getattr(getattr(child, "projection", None), "path", ""))
         if projection_path: paths.append(projection_path)
+    try:
+        for projection in candidate.findResourcesPointingToThis(DirectProjection):
+            screens = getattr(projection, "screens", [])
+            if len(screens) == 1 and str(getattr(screens[0], "uid", "")) == str(getattr(candidate, "uid", "")):
+                projection_path = str(getattr(projection, "path", ""))
+                if projection_path: paths.append(projection_path)
+    except Exception:
+        pass
     return list(dict.fromkeys(paths))
 for resource_path in target_paths:
     try:
@@ -406,7 +528,9 @@ for resource_path in target_paths:
         candidate_id = str(getattr(candidate, "uid", ""))
         if candidate_id in target_ids and resource_path != "objects/object/dsg-scene-cube.apx":
             processed.add(candidate_id)
-            pending.append((candidate_id, resource_path, candidate, owned_resource_paths(candidate)))
+            collection_name = class_collections.get(type(candidate).__name__)
+            if collection_name:
+                pending.append((candidate_id, resource_path, candidate, owned_resource_paths(candidate), collection_name))
     except Exception:
         pass
 for collection_name in ${quote(deleteCollectionNames)}:
@@ -431,25 +555,26 @@ for collection_name in ${quote(deleteCollectionNames)}:
         if not resource_path:
             skipped.append(candidate_id)
             continue
-        pending.append((candidate_id, resource_path, candidate, owned_resource_paths(candidate)))
+        pending.append((candidate_id, resource_path, candidate, owned_resource_paths(candidate), collection_name))
 detached = []
-for candidate_id, resource_path, candidate, owned_paths in pending:
+for collection_name in ${quote(deleteCollectionNames)}:
+    selected = [item for item in pending if item[4] == collection_name]
+    if not selected:
+        continue
+    selected_ids = set(item[0] for item in selected)
     try:
-        try:
-            if candidate.isInActiveStage():
-                candidate.remove()
-        except Exception:
-            candidate.remove()
-        detached.append((candidate_id, resource_path, candidate, owned_paths))
+        typed_collection = getattr(stage, collection_name)
+        setattr(stage, collection_name, [candidate for candidate in typed_collection if str(getattr(candidate, "uid", "")) not in selected_ids])
+        detached.extend(selected)
     except Exception as error:
-        skipped.append("detach " + candidate_id + ": " + str(error))
+        skipped.append("detach " + collection_name + ": " + str(error))
 stage_saved = True
 try:
     stage.save()
 except Exception as error:
     stage_saved = False
     skipped.append("stage save: " + str(error))
-for candidate_id, resource_path, candidate, owned_paths in (detached if stage_saved else []):
+for candidate_id, resource_path, candidate, owned_paths, collection_name in (detached if stage_saved else []):
     try:
         candidate.saveOnDelete()
         for owned_path in owned_paths:
@@ -461,11 +586,13 @@ for candidate_id, resource_path, candidate, owned_paths in (detached if stage_sa
         skipped.append(warnings)
 return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
-function deleteManagedScript(designerIds) {
-    const deleteCollectionNames = [...new Set([...Object.values(typeCollections), "children"].filter(collection => collection !== "displays"))];
+  function deleteManagedScript(designerIds) {
+    const deleteCollectionNames = [...new Set(Object.values(typeCollections).filter(collection => collection !== "displays"))];
+    const ownedDesignerIds = designerIds.filter(item => item && typeof item === "object" && item.owned === true);
     return `import json
-from d3 import Path, Resource
-requested = json.loads(${payloadText(designerIds)})
+from d3 import Path, Resource, DirectProjection
+requested = json.loads(${payloadText(ownedDesignerIds)})
+allowed_owned_paths = {str(path) for item in requested for path in item.get("ownedPaths", [])}
 target_ids = set(str(item.get("id", item)) if isinstance(item, dict) else str(item) for item in requested)
 target_paths = set(str(item.get("path", "")) for item in requested if isinstance(item, dict) and item.get("path"))
 stage = state.stage
@@ -473,23 +600,34 @@ deleted = []
 skipped = []
 processed = set()
 pending = []
+class_collections = {"LedScreen": "ledScreens", "DmxScreen": "dmxScreens", "Screen2": "surfaces", "FixtureGroup": "dmxLights", "Camera": "cameras", "Projector": "projectors"}
 def owned_resource_paths(candidate):
     paths = []
     config_path = str(getattr(getattr(candidate, "config", None), "path", ""))
-    if config_path: paths.append(config_path)
+    if config_path and config_path in allowed_owned_paths: paths.append(config_path)
     for child in getattr(candidate, "children", []):
         child_path = str(getattr(child, "path", ""))
-        if child_path: paths.append(child_path)
+        if child_path and child_path in allowed_owned_paths: paths.append(child_path)
         projection_path = str(getattr(getattr(child, "projection", None), "path", ""))
-        if projection_path: paths.append(projection_path)
+        if projection_path and projection_path in allowed_owned_paths: paths.append(projection_path)
+    try:
+        for projection in candidate.findResourcesPointingToThis(DirectProjection):
+            screens = getattr(projection, "screens", [])
+            if len(screens) == 1 and str(getattr(screens[0], "uid", "")) == str(getattr(candidate, "uid", "")):
+                projection_path = str(getattr(projection, "path", ""))
+                if projection_path and projection_path in allowed_owned_paths: paths.append(projection_path)
+    except Exception:
+        pass
     return list(dict.fromkeys(paths))
 for resource_path in target_paths:
     try:
         candidate = resourceManager.load(Path(resource_path), Resource)
         candidate_id = str(getattr(candidate, "uid", ""))
-        if candidate_id in target_ids and resource_path != "objects/object/dsg-scene-cube.apx":
+        if candidate_id in target_ids and resource_path != "objects/object/dsg-scene-cube.apx" and resource_path in allowed_owned_paths:
             processed.add(candidate_id)
-            pending.append((candidate_id, resource_path, candidate, owned_resource_paths(candidate)))
+            collection_name = class_collections.get(type(candidate).__name__)
+            if collection_name:
+                pending.append((candidate_id, resource_path, candidate, owned_resource_paths(candidate), collection_name))
     except Exception:
         pass
 for collection_name in ${quote(deleteCollectionNames)}:
@@ -501,31 +639,32 @@ for collection_name in ${quote(deleteCollectionNames)}:
             path = str(getattr(candidate, "path", ""))
         except Exception:
             continue
-        if candidate_id in processed or candidate_id not in target_ids or path == "objects/object/dsg-scene-cube.apx":
+        if candidate_id in processed or candidate_id not in target_ids or path == "objects/object/dsg-scene-cube.apx" or path not in allowed_owned_paths:
             continue
         processed.add(candidate_id)
         if not path:
             skipped.append(candidate_id)
             continue
-        pending.append((candidate_id, path, candidate, owned_resource_paths(candidate)))
+        pending.append((candidate_id, path, candidate, owned_resource_paths(candidate), collection_name))
 detached = []
-for candidate_id, path, candidate, owned_paths in pending:
+for collection_name in ${quote(deleteCollectionNames)}:
+    selected = [item for item in pending if item[4] == collection_name]
+    if not selected:
+        continue
+    selected_ids = set(item[0] for item in selected)
     try:
-        try:
-            if candidate.isInActiveStage():
-                candidate.remove()
-        except Exception:
-            candidate.remove()
-        detached.append((candidate_id, path, candidate, owned_paths))
+        typed_collection = getattr(stage, collection_name)
+        setattr(stage, collection_name, [candidate for candidate in typed_collection if str(getattr(candidate, "uid", "")) not in selected_ids])
+        detached.extend(selected)
     except Exception as error:
-        skipped.append("detach " + candidate_id + ": " + str(error))
+        skipped.append("detach " + collection_name + ": " + str(error))
 stage_saved = True
 try:
     stage.save()
 except Exception as error:
     stage_saved = False
     skipped.append("stage save: " + str(error))
-for candidate_id, path, candidate, owned_paths in (detached if stage_saved else []):
+for candidate_id, path, candidate, owned_paths, collection_name in (detached if stage_saved else []):
     try:
         candidate.saveOnDelete()
         for owned_path in owned_paths:
