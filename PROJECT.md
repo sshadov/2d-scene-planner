@@ -25,7 +25,7 @@ The current object set is LED screens, surfaces, cameras, projectors, and lights
 - Only the active object's physical parameters appear in a fixed strip above the plan.
 - Numeric controls accept comma/dot, arrow keys, and wheel changes; horizontal scrubbing is absent.
 - Selecting on the plan preserves position; dragging preserves the pointer offset and offers basic alignment snapping.
-- Ctrl-drag duplicates in place and moves the copy; Shift-click selects and moves all objects of the same type without changing their relative spacing.
+- Ctrl-drag duplication is intentionally unsupported in the embedded Designer host; use the object context menu or the planner clipboard. Shift-click selects and moves all objects of the same type without changing their relative spacing.
 - The UI and JSON preserve absolute world `X/Y/Z`, planar yaw where physically meaningful, and projector Look At without exposing Designer config rotation.
 - Screens/surfaces use bottom-centre anchors with editable width/height and fixed thickness.
 - Existing local plans migrate to the single Stage contract without changing object world coordinates.
@@ -38,7 +38,7 @@ The current object set is LED screens, surfaces, cameras, projectors, and lights
 - Object deletion requires an inline confirmation before changing the local plan.
 - Opening object controls must not resize or move the top-view canvas.
 - A projector target is visible on the plan and may follow a selected projection surface centre.
-- Selected cameras, projectors, lights, screens, and surfaces rotate from an external handle without changing position.
+- Cameras and DMX lights expose numeric Yaw controls. Projectors use a draggable Look At target and do not expose a rotation handle.
 - Right-click duplication supports independent plain, X-mirrored, and Z-mirrored copies.
 - LED screens show resolution, PPI, or pixel-pitch mode rather than all density inputs at once.
 - Camera, projector, and DMX light have top-view UI icons; their default install heights are 1.5 m, 3 m, and 5 m respectively.

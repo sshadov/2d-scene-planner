@@ -30,11 +30,11 @@ Scene width and depth define only the centred X/Z planning bounds. Object Y is a
 
 For LED screens, DMX screens, and projection surfaces, planner position is the bottom centre. The adapter writes `offset = Vec(X, Y + height/2, Z)`, `scale = Vec(width, height, 0.1)`, and yaw through `rotation`. Cameras use `Camera.offset/rotation`; DMX lights use `FixtureGroup.offset/rotation`.
 
-Projectors use only `Projector.configPosition` and `Projector.configLookAt`. Inherited body transforms, `rotation`, and `configRotation` are excluded from the Planner contract. The projector rotation handle changes the Look At vector while preserving its X/Z distance. Manual target dragging edits Look At X/Z; a bound surface supplies its centre. Readback exposes zero hidden UI rotation plus the two config vectors.
+Projectors use public `Projector.configPosition`, `Projector.configLookAt`, and `Projector.configThrowRatio`. Inherited body transforms and `configRotation` are excluded from the Planner contract. Direction is a rounded manual Look At point or a bound surface. Moving a projector changes only its position binding; dragging the Look At marker changes only the Look At binding. Designer remains authoritative for derived rotation, look distance, and field of view. The planner draws an approximate optical cone from the returned field of view and throw ratio.
 
 ## Interaction
 
-Right-clicking empty canvas space creates one of the six supported types at that X/Z coordinate. Camera, projector, and DMX light use top-view direction icons and rotation handles. Ctrl-drag duplicates once based on the modifier captured at `pointerdown`; pointerup, pointercancel, lost capture, window blur, and document visibility changes clear drag state. Ctrl+C/Ctrl+V use the planner's internal clipboard. Shift/Ctrl-click supports multi-selection and group drag.
+Right-clicking empty canvas space creates one of the six supported types at that X/Z coordinate. Camera and DMX light use top-view direction icons; projectors expose a draggable Look At marker and no rotation handle. Pointerup, pointercancel, lost capture, window blur, and document visibility changes clear drag state. Ctrl-drag duplication is intentionally unsupported in the embedded Designer window; Ctrl+C/Ctrl+V use the planner's internal clipboard instead. Shift/Ctrl-click supports multi-selection and group drag.
 
 Numeric inputs accept comma or dot decimals. Right-click restores the field default where one exists. Empty-canvas left drag pans; zoom is limited to `10-300%`, and clicking the zoom value restores `100%` and the initial view.
 
@@ -42,7 +42,7 @@ Numeric inputs accept comma or dot decimals. Right-click restores the field defa
 
 Startup inspection reads supported typed collections and the technical Designer `stage.children` collection, deduplicates by UID, and ignores internal/non-physical helpers. `stage.children` is an API identifier, not a user-facing model.
 
-Creation, adoption, rename, and deletion are explicit Python Execution API operations. Mutations call `markDirty`, successful resources call `save`, rename uses `Resource.rename(Path(...))`, and confirmed deletion uses `saveOnDelete()` plus `resourceManager.remove(path)`. Reconciliation resolves resources by UID, stored path, or legacy managed path and must not recreate a mapped object deleted in Designer.
+Creation, adoption, rename, and deletion are explicit Python Execution API operations. The ResourceManager package is checked for name/path collisions before creation or rename. Mutations call `markDirty`, successful resources call `save`, rename uses `Resource.rename(Path(...))`, and confirmed deletion first detaches the Stage object with `Object.remove()` and saves the Stage, then uses `saveOnDelete()` plus `resourceManager.remove(path)`. Reconciliation resolves resources by UID, stored path, or legacy managed path and must not recreate a mapped object deleted in Designer.
 
 ## LIVE State Machine
 

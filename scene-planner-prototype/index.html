@@ -7,7 +7,7 @@
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
     <title>Disguise Scene Planner v11.5</title>
-    <link rel="stylesheet" href="./styles.css?v=11.5" />
+    <link rel="stylesheet" href="./styles.css?v=11.5.9" />
   </head>
   <body>
     <main class="app-shell">
@@ -21,6 +21,7 @@
             </div>
             <div class="panel-actions">
               <label class="live-toggle" title="Official WebSocket Live Update"><span>LIVE</span><input id="live-toggle" type="checkbox" /><i aria-hidden="true"></i></label>
+              <span class="live-status" id="adapter-status">LIVE off</span>
               <button class="text-button" id="json-button" type="button">Export JSON</button>
               <button class="text-button live-log-button" id="live-log-button" type="button">LIVE log</button>
             </div>
@@ -33,7 +34,7 @@
             <div class="inspector-heading">Properties</div>
             <div class="active-object-strip" id="active-object-strip" aria-live="polite"></div>
           </section>
-          <span id="status-synced" hidden>0</span><span id="status-changed" hidden>0</span><span id="status-errors" hidden>0</span><span id="status-error-chip" hidden></span><span id="scene-summary" hidden>Scene</span><span id="adapter-status" hidden>Designer API: not connected</span>
+          <span id="status-synced" hidden>0</span><span id="status-changed" hidden>0</span><span id="status-errors" hidden>0</span><span id="status-error-chip" hidden></span><span id="scene-summary" hidden>Scene</span>
         </aside>
 
         <section class="stage-panel">
@@ -83,7 +84,7 @@
          <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Delete object?</span><button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button></div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=11.5"></script>
-    <script src="./app.js?v=11.5"></script>
+    <script src="./designer-adapter.js?v=11.5.9"></script>
+    <script src="./app.js?v=11.5.9"></script>
   </body>
 </html>

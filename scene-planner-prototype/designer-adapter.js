@@ -33,7 +33,9 @@
   let liveSocketGeneration = 0;
   const liveLogEntries = [];
   const LIVE_LOG_LIMIT = 300;
-  const LIVE_FLOAT_EPSILON = 1e-6;
+  // Live Update returns Designer float32 values; this absorbs representation
+  // noise without hiding a real measurement change.
+  const LIVE_FLOAT_EPSILON = 1e-5;
 
   function liveLog(event, details = {}) {
     const entry = { at: new Date().toISOString(), event, ...details };
@@ -156,7 +158,15 @@ def readback(obj, kind):
     if kind == "projector":
         # Projector optical state is defined only by the public config contract.
         # Do not read the inherited body rotation/configRotation into Planner.
-        return {"transform": {"position": vec_data(obj.configPosition), "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": vec_data(obj.configLookAt)}
+        def scalar(name, fallback=0.0):
+            try:
+                return float(getattr(obj, name))
+            except Exception:
+                return float(fallback)
+        position = vec_data(obj.configPosition)
+        look_at = vec_data(obj.configLookAt)
+        distance = ((look_at["x"] - position["x"]) ** 2 + (look_at["y"] - position["y"]) ** 2 + (look_at["z"] - position["z"]) ** 2) ** 0.5
+        return {"transform": {"position": position, "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": look_at, "optics": {"throwRatio": scalar("configThrowRatio", 1.5), "fieldOfView": scalar("fieldOfView", 40.0), "lookDistance": scalar("configLookDistance", distance)}}
     if kind == "camera":
         return {"transform": {"position": vec_data(obj.offset), "rotation": vec_data(obj.rotation)}}
     position = getattr(obj, "offset", None)
@@ -223,7 +233,7 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
             objects.append({
                 "id": uid, "path": path, "description": description, "collection": collection_name, "type": kind,
                 "className": type(obj).__name__, "managed": "dsg-" in path.lower(), "pluginId": match.group(1) if match else None, "standard": standard,
-                "transform": data["transform"], "geometry": data.get("geometry"), "lookAt": data.get("lookAt")
+                "transform": data["transform"], "geometry": data.get("geometry"), "lookAt": data.get("lookAt"), "optics": data.get("optics")
             })
         except Exception as error:
             warnings.append(collection_name + ": " + str(error))
@@ -234,11 +244,37 @@ return json.dumps({"objects": objects, "stageId": str(getattr(stage, "uid", ""))
   }
   function createScript(payload) {
     return `import json
+import re
+from d3 import Path, Resource
 payload = json.loads(${payloadText(payload)})
 stage = state.stage
 kind = payload["type"]
-object_path = ${quote(resourcePath(payload))}
-obj = resourceManager.loadOrCreate(object_path, ${typeClasses[payload.type]})
+expected_type = ${typeClasses[payload.type]}
+folder = "objects/" + ${quote(typeResourceFolders[payload.type])}
+base_name = re.sub(r"[\\/:*?\"<>|]", "-", str(payload.get("name") or payload.get("pluginId") or "object")).strip() or "object"
+def path_slug(value):
+    return str(value).lower()
+def resource_path_taken(path):
+    try:
+        if resourceManager.exists(Path(path)):
+            return True
+    except Exception:
+        pass
+    try:
+        for candidate_path in resourceManager.package.findAllBeginsWith(folder + "/"):
+            if str(candidate_path).lower() == path.lower():
+                return True
+    except Exception:
+        pass
+    return False
+resolved_name = base_name
+object_path = folder + "/" + path_slug(resolved_name) + ".apx"
+suffix_number = 2
+while resource_path_taken(object_path):
+    resolved_name = base_name + " " + str(suffix_number)
+    object_path = folder + "/" + path_slug(resolved_name) + ".apx"
+    suffix_number += 1
+obj = resourceManager.loadOrCreate(Path(object_path), expected_type)
 transform = payload["transform"]
 pos = transform["position"]
 rot = transform["rotation"]
@@ -254,6 +290,9 @@ elif kind == "projector":
     assign("configPosition", position_value)
     look_at = payload.get("lookAt", {"x": pos["x"], "y": pos["y"], "z": pos["z"]})
     assign("configLookAt", Vec(look_at["x"], look_at["y"], look_at["z"]))
+    optics = payload.get("optics", {})
+    if "throwRatio" in optics:
+        assign("configThrowRatio", float(optics["throwRatio"]))
 elif kind == "camera":
     assign("offset", Vec(pos["x"], pos["y"], pos["z"]))
     assign("rotation", Vec(rot["x"], rot["y"], rot["z"]))
@@ -261,11 +300,19 @@ else:
     assign("offset", Vec(pos["x"], pos["y"], pos["z"]))
     assign("rotation", Vec(rot["x"], rot["y"], rot["z"]))
 collection = getattr(stage, ${quote(typeCollections[payload.type])})
-if obj not in collection:
+present = False
+for candidate in collection:
+    try:
+        if str(getattr(candidate, "uid", "")) == str(obj.uid) or str(getattr(candidate, "path", "")) == object_path:
+            present = True
+            break
+    except Exception:
+        continue
+if not present:
     collection.append(obj)
 obj.save()
 ${readbackHelpers()}
-return json.dumps({"designerId": str(obj.uid), "path": object_path, "readback": readback(obj, kind)})`;
+return json.dumps({"designerId": str(obj.uid), "path": object_path, "name": resolved_name, "readback": readback(obj, kind)})`;
   }
   function updateScript(designerId, changed, designerPath, kind) {
     return `import json
@@ -300,6 +347,24 @@ if name_change:
     folder = object_path.rsplit("/", 1)[0] if "/" in object_path else "objects"
     desired_path = folder + "/" + safe_name + ".apx"
     if desired_path != object_path:
+        conflict = False
+        try:
+            conflict = bool(resourceManager.exists(Path(desired_path)))
+        except Exception:
+            conflict = False
+        if not conflict:
+            try:
+                for candidate_path in resourceManager.package.findAllBeginsWith(folder + "/"):
+                    candidate_path = str(candidate_path)
+                    if candidate_path.lower() == desired_path.lower() and candidate_path.lower() != object_path.lower():
+                        conflict = True
+                        break
+            except Exception:
+                pass
+        if desired_path.lower() == object_path.lower():
+            conflict = False
+        if conflict:
+            raise RuntimeError("Resource name already exists in Designer Resource list: " + safe_name)
         try:
             obj.rename(Path(desired_path))
             object_path = str(obj.path)
@@ -335,6 +400,9 @@ elif kind == "projector":
         current_look = obj.configLookAt
         value = Vec(look_change.get("x", current_look.x), look_change.get("y", current_look.y), look_change.get("z", current_look.z))
         assign("configLookAt", value)
+    optics_change = changed.get("optics", {})
+    if "throwRatio" in optics_change:
+        assign("configThrowRatio", float(optics_change["throwRatio"]))
 elif kind == "camera":
     current_pos = obj.offset
     current_rot = obj.rotation
@@ -351,7 +419,7 @@ else:
         assign("rotation", Vec(rotation_change.get("x", current_rot.x), rotation_change.get("y", current_rot.y), rotation_change.get("z", current_rot.z)))
 obj.save()
 ${readbackHelpers()}
-return json.dumps({"designerId": str(obj.uid), "path": object_path, "readback": readback(obj, kind)})`;
+return json.dumps({"designerId": str(obj.uid), "path": object_path, "name": str(getattr(obj, "description", "")), "readback": readback(obj, kind)})`;
   }
   function projectorProbeScript(designerId = null) {
     const targetId = designerId == null ? "" : String(designerId);
@@ -374,16 +442,30 @@ for candidate in state.stage.projectors:
 return json.dumps({"contract": "Projector.configPosition/configLookAt", "projectors": matches})`;
   }
   function deleteScript(designerIds) {
+    const deleteCollectionNames = [...new Set([...Object.values(typeCollections), "children"].filter(collection => collection !== "displays"))];
     return `import json
 import re
-target_ids = set(json.loads(${payloadText(designerIds.map(String))}))
+from d3 import Path, Resource
+requested = json.loads(${payloadText(designerIds)})
+target_ids = set(str(item.get("id", item)) if isinstance(item, dict) else str(item) for item in requested)
+target_paths = set(str(item.get("path", "")) for item in requested if isinstance(item, dict) and item.get("path"))
 stage = state.stage
 deleted = []
 skipped = []
 processed = set()
-for collection_name in ${quote([...new Set([...Object.values(typeCollections), "children"])])}:
+pending = []
+for resource_path in target_paths:
+    try:
+        candidate = resourceManager.load(Path(resource_path), Resource)
+        candidate_id = str(getattr(candidate, "uid", ""))
+        if candidate_id in target_ids and resource_path != "objects/object/dsg-scene-cube.apx":
+            processed.add(candidate_id)
+            pending.append((candidate_id, resource_path, candidate))
+    except Exception:
+        pass
+for collection_name in ${quote(deleteCollectionNames)}:
     collection = getattr(stage, collection_name, [])
-    for candidate in list(collection):
+    for candidate in collection:
         try:
             candidate_id = str(getattr(candidate, "uid", ""))
         except Exception:
@@ -402,29 +484,58 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
         if not resource_path:
             skipped.append(candidate_id)
             continue
+        pending.append((candidate_id, resource_path, candidate))
+detached = []
+for candidate_id, resource_path, candidate in pending:
+    try:
         try:
-            candidate.saveOnDelete()
-            resourceManager.remove(resource_path)
-            try:
-                collection.remove(candidate)
-            except Exception:
-                pass
-            deleted.append(candidate_id)
-        except Exception as error:
-            warnings = "delete " + candidate_id + ": " + str(error)
-            skipped.append(warnings)
+            if candidate.isInActiveStage():
+                candidate.remove()
+        except Exception:
+            candidate.remove()
+        detached.append((candidate_id, resource_path, candidate))
+    except Exception as error:
+        skipped.append("detach " + candidate_id + ": " + str(error))
+stage_saved = True
+try:
+    stage.save()
+except Exception as error:
+    stage_saved = False
+    skipped.append("stage save: " + str(error))
+for candidate_id, resource_path, candidate in (detached if stage_saved else []):
+    try:
+        candidate.saveOnDelete()
+        resourceManager.remove(resource_path)
+        deleted.append(candidate_id)
+    except Exception as error:
+        warnings = "delete " + candidate_id + ": " + str(error)
+        skipped.append(warnings)
 return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
   function deleteManagedScript(designerIds) {
+    const deleteCollectionNames = [...new Set([...Object.values(typeCollections), "children"].filter(collection => collection !== "displays"))];
     return `import json
-target_ids = set(json.loads(${payloadText(designerIds.map(String))}))
+from d3 import Path, Resource
+requested = json.loads(${payloadText(designerIds)})
+target_ids = set(str(item.get("id", item)) if isinstance(item, dict) else str(item) for item in requested)
+target_paths = set(str(item.get("path", "")) for item in requested if isinstance(item, dict) and item.get("path"))
 stage = state.stage
 deleted = []
 skipped = []
 processed = set()
-for collection_name in ${quote([...new Set([...Object.values(typeCollections), "children"])])}:
+pending = []
+for resource_path in target_paths:
+    try:
+        candidate = resourceManager.load(Path(resource_path), Resource)
+        candidate_id = str(getattr(candidate, "uid", ""))
+        if candidate_id in target_ids and resource_path != "objects/object/dsg-scene-cube.apx":
+            processed.add(candidate_id)
+            pending.append((candidate_id, resource_path, candidate))
+    except Exception:
+        pass
+for collection_name in ${quote(deleteCollectionNames)}:
     collection = getattr(stage, collection_name, [])
-    for candidate in list(collection):
+    for candidate in collection:
         try:
             candidate_id = str(getattr(candidate, "uid", ""))
             path = str(getattr(candidate, "path", ""))
@@ -433,19 +544,34 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
         if candidate_id in processed or candidate_id not in target_ids or path == "objects/object/dsg-scene-cube.apx":
             continue
         processed.add(candidate_id)
-        if type(candidate).__name__ not in ["LedScreen", "DmxScreen", "Screen2", "FixtureGroup", "Camera", "Projector", "Object", "ObjectBox", "Prop"]:
+        if not path:
             skipped.append(candidate_id)
             continue
+        pending.append((candidate_id, path, candidate))
+detached = []
+for candidate_id, path, candidate in pending:
+    try:
         try:
-            candidate.saveOnDelete()
-            resourceManager.remove(path)
-            try:
-                collection.remove(candidate)
-            except Exception:
-                pass
-            deleted.append(candidate_id)
-        except Exception as error:
-            skipped.append(candidate_id + ": " + str(error))
+            if candidate.isInActiveStage():
+                candidate.remove()
+        except Exception:
+            candidate.remove()
+        detached.append((candidate_id, path, candidate))
+    except Exception as error:
+        skipped.append("detach " + candidate_id + ": " + str(error))
+stage_saved = True
+try:
+    stage.save()
+except Exception as error:
+    stage_saved = False
+    skipped.append("stage save: " + str(error))
+for candidate_id, path, candidate in (detached if stage_saved else []):
+    try:
+        candidate.saveOnDelete()
+        resourceManager.remove(path)
+        deleted.append(candidate_id)
+    except Exception as error:
+        skipped.append(candidate_id + ": " + str(error))
 return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
 
@@ -473,16 +599,22 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   function liveDefinitions(payload) {
     const type = payload.type;
     const definitions = [{ field: "name", property: "object.description", encode: value => String(value ?? ""), decode: value => String(value ?? ""), writable: false }];
-    const add = (field, property, encode = value => value, decode = value => value) => definitions.push({ field, property, encode, decode });
-    const transformPrefix = type === "projector" ? "configPosition" : "offset";
-    ["x", "y", "z"].forEach(axis => add(`transform.position.${axis}`, `object.${transformPrefix}.${axis}`));
+    const add = (field, property, encode = value => value, decode = value => value, writable = true) => definitions.push({ field, property, encode, decode, writable });
+    if (type === "projector") {
+      // These coupled vectors must not pass through transient mixed states.
+      add("transform.position", "object.configPosition");
+      add("lookAt", "object.configLookAt");
+      add("optics.throwRatio", "object.configThrowRatio", value => { const numeric = Number(value); return Number.isFinite(numeric) ? Math.max(.1, numeric) : 1.5; }, value => Number(value));
+      add("optics.fieldOfView", "object.fieldOfView", value => Number(value), value => Number(value), false);
+      add("optics.lookDistance", "object.configLookDistance", value => Number(value), value => Number(value), false);
+    } else {
+      ["x", "y", "z"].forEach(axis => add(`transform.position.${axis}`, `object.offset.${axis}`));
+    }
     if (["screen", "dmxScreen", "surface"].includes(type)) {
       add("geometry.width", "object.scale.x"); add("geometry.height", "object.scale.y", value => value, value => value);
       add("transform.position.y", "object.offset.y", value => Number(value) + Number(payload.geometry?.height || 0) / 2, value => Number(value) - Number(payload.geometry?.height || 0) / 2);
       add("transform.rotation.y", "object.rotation.y");
-    } else if (type === "projector") {
-      ["x", "y", "z"].forEach(axis => add(`lookAt.${axis}`, `object.configLookAt.${axis}`));
-    } else {
+    } else if (type !== "projector") {
       ["x", "y", "z"].forEach(axis => add(`transform.rotation.${axis}`, `object.rotation.${axis}`));
     }
     return definitions;
@@ -572,6 +704,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
           // turn the planner's initial name into a failed Live Update write.
           binding.desired = change.value;
           binding.dirty = false;
+          if (binding.field !== "name") liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath });
         }
       } else if (liveValuesEqual(binding.desired, change.value)) {
         binding.dirty = false;
@@ -588,7 +721,11 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     if (Array.isArray(message.valuesChanged)) liveFlushSets();
     if (message.error) {
       const detail = typeof message.error === "string" ? message.error : JSON.stringify(message.error);
-      if (/invalid\s+id|unknown\s+subscription|subscription.*id/i.test(detail)) {
+      const staleId = Number(detail.match(/id\s+(\d+).*subscribed value is unavailable/i)?.[1]);
+      const activeIds = new Set([...liveBindings.values(), ...liveSceneBindings.values()].map(binding => binding.id).filter(Number.isInteger));
+      if (Number.isInteger(staleId) && !activeIds.has(staleId)) {
+        liveLog("stale-subscription", { id: staleId, detail });
+      } else if (/invalid\s+id|unknown\s+subscription|subscription.*id/i.test(detail)) {
         liveResetSubscriptionIds();
         liveLog("recover", { reason: detail });
         liveOnStatus({ status: "recovering", detail: `${detail}; resubscribing` });
@@ -621,6 +758,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     grouped.forEach((properties, object) => liveSend({ subscribe: { object, properties } }));
   }
   function liveSync(entries = []) {
+    const socketOpen = Boolean(liveSocket && liveSocket.readyState === 1);
     const nextBindings = new Map();
     entries.forEach(entry => {
       const payload = entry?.payload || entry;
@@ -640,6 +778,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     liveBindings = nextBindings;
     liveSubscribeBindings();
     liveFlushSets();
+    return socketOpen && Boolean(liveSocket && liveSocket.readyState === 1);
   }
   function liveScheduleReconnect(reason = "connection closed") {
     if (!liveWanted || liveReconnectTimer) return;
@@ -710,7 +849,7 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     liveSync,
     getLiveState: () => ({
       wanted: liveWanted,
-      socket: liveSocket ? "open" : "closed",
+      socket: liveSocket?.readyState === 1 ? "open" : liveSocket ? "connecting" : "closed",
       reconnectAttempt: liveReconnectAttempt,
       bindings: [...liveBindings.values()].map(binding => ({
         pluginId: binding.pluginId,

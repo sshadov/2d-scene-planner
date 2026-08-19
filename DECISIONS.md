@@ -223,3 +223,44 @@ Subscription ids are session-scoped. The adapter therefore invalidates all ids o
 - Status: accepted
 
 The Planner's projector contract is `Projector.configPosition` plus `Projector.configLookAt`. Generic `rotation` and calculated `configRotation` are Designer implementation state and are never imported, displayed, or written by the Planner. Readback exposes a zero UI rotation and validates only the config vectors. The adapter provides a read-only `projectorReadbackProbe`; a protocol-level mock covers the request/response contract, while a live Designer probe remains a release prerequisite.
+
+## ADR-027: Projector target binding and Designer-owned optics
+
+- Date: 2026-08-19
+- Status: accepted
+
+Projectors expose either a rounded manual Look At point or a projection-surface binding under Direction. A bound surface supplies the effective target and the approximate throw ratio. Moving the projector changes only `configPosition`; moving the Look At point detaches the surface and changes only `configLookAt`. Designer remains authoritative for the resulting rotation, Look At distance, and field of view.
+
+The adapter writes `configThrowRatio` and reads `fieldOfView` plus `configLookDistance` through official Live Update subscriptions. The plan beam uses Designer's field of view and the distance to the effective target. Projector rotation handles and editable Yaw are removed; earlier gesture decisions describing them are superseded for projectors.
+
+## ADR-028: No Ctrl-drag duplication in Designer
+
+- Date: 2026-08-19
+- Status: accepted
+
+Ctrl-drag duplication is removed because modifier state is not reliable in the embedded Designer browser. Duplication remains available from the object context menu and through the planner-owned Ctrl+C/Ctrl+V clipboard. Shift/Ctrl-click multi-selection and ordinary group dragging remain supported. This supersedes the Ctrl-drag portion of ADR-016 and ADR-024.
+
+## ADR-029: Safe Designer collection deletion and state-preserving LIVE imports
+
+- Date: 2026-08-19
+- Status: accepted
+
+Designer Stage collections are API-backed `ArrayBox` values, not ordinary Python lists. Delete scripts iterate the typed collections directly, collect matching resources in a native list, detach each object with the documented `Object.remove()`, save the Stage, and only then call `saveOnDelete()` followed by `resourceManager.remove(path)`. They do not call `list(collection)` or mutate the collection after removal. If Stage save or resource deletion is rejected, the planner reports the error and does not claim a confirmed delete.
+
+LIVE reconnects preserve the user's enabled intent until explicitly switched off. A Designer collection update preserves the selected plugin object and the currently focused inspector field while rebuilding the object list, so an incoming object cannot steal focus from a dimension entry.
+
+## ADR-030: Resource-path collision handling
+
+- Date: 2026-08-19
+- Status: accepted
+
+Planner names are labels, not unique resource identities. Before `loadOrCreate`, creation checks the requested package path. An existing resource of the expected class is reused; an existing resource of another class is never passed to `loadOrCreate` with a conflicting expected type. The planner derives a deterministic managed suffix from `pluginId` and creates the requested class at that alternate path, persisting the returned path in the mapping.
+
+Deletion receives both the Designer UID and the mapped resource path. It detaches the exact Stage reference first, then removes the package resource, preventing a deleted `Projector 2` or other device from being silently reused with stale coordinates or duplicated under the same visible name.
+
+## ADR-031: Resource-list name uniqueness
+
+- Date: 2026-08-19
+- Status: accepted
+
+The relevant Designer collection is the Resource list managed by `ResourceManager` and its package, while Stage stores the scene references. Before creating equipment, the adapter checks the resource folder in the package; an occupied name receives the next numeric suffix and the resolved name/path are returned to the Planner. Before renaming, the adapter checks the same Resource list and rejects a conflicting name with an explicit `Resource name already exists in Designer Resource list` error. The local Planner name is rolled back when that rename fails.

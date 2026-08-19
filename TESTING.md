@@ -26,9 +26,9 @@ Verify:
 4. Left-drag on empty canvas pans. Right-click on an input restores its defined default.
 5. Right-click empty canvas and create all six supported types at the clicked X/Z coordinate.
 6. New objects focus Height. Initial heights are Camera `1.5`, DMX Light `5`, Projector `3`, and planar types `0`; a second object of the same type reuses that type's last edited height.
-7. Camera, projector, and light show top-view direction icons and rotation handles. Projector rotation changes its Look At vector, not `transform.rotation`.
+7. Camera and DMX light show top-view direction icons and numeric Yaw controls. Projectors show a draggable Look At marker and no rotation handle.
 8. A manual projector target is displayed as rounded coordinates in the Look At selector. Target dragging changes X/Z and only clears a surface binding after drag actually starts.
-9. Ctrl-drag duplicates once. Releasing Ctrl during drag does not change the captured gesture. Pointerup, pointercancel, lost capture, window blur, and tab hiding prevent a later plain drag from duplicating.
+9. Ctrl-drag does not duplicate in the embedded Designer host. Use the object context menu or planner Ctrl+C/Ctrl+V clipboard instead. Pointerup, pointercancel, lost capture, window blur, and tab hiding leave no stale drag state.
 10. Ctrl+C/Ctrl+V uses the internal object clipboard. Shift/Ctrl-click multi-selection keeps relative offsets during group drag.
 
 ## Designer Installation
@@ -39,7 +39,7 @@ Deploy the tracked source and verify hashes:
 .\scripts\deploy-plugin.ps1 -ProjectPath 'D:\Disguise\Projects\start'
 ```
 
-Close and reopen the plugin window. Confirm the title contains the current version and repeat the Ctrl-drag cleanup checks in the embedded host; browser preview alone is not sufficient.
+Close and reopen the plugin window. Confirm the title contains the current version and repeat the embedded-host interaction checks; browser preview alone is not sufficient.
 
 ## Designer API Smoke
 
@@ -79,10 +79,12 @@ Use disposable resources only.
 
 1. Repeat create/update with the same planner object and verify no duplicate Designer resource appears after retry/timeout.
 2. Rename through Planner and confirm the adapter calls `Resource.rename(Path(...))`, updates the stored path, and does not write `Resource.description`.
-3. Delete a selected managed/default resource and confirm `saveOnDelete()` plus `resourceManager.remove(path)` are used.
-4. A deleted mapped object must not be recreated automatically by the next inspection or LIVE event.
-5. Manual/unowned Designer objects remain protected.
-6. Startup inspection deduplicates typed collections and technical `stage.children` entries by UID and ignores internal helpers, MR Sets, and Skeletons.
+3. Delete a selected managed/default resource and confirm the Stage reference disappears first, then `saveOnDelete()` plus `resourceManager.remove(path)` remove the Resource list entry.
+4. Create an object whose requested name already exists in the Resource list; confirm the next numeric name is used and shown in the Planner.
+5. Rename an object to an existing Resource list name; confirm the rename is rejected, the Planner name is restored, and the error identifies the Designer Resource list.
+6. A deleted mapped object must not be recreated automatically by the next inspection or LIVE event.
+7. Manual/unowned Designer objects remain protected.
+8. Startup inspection deduplicates typed collections and technical `stage.children` entries by UID and ignores internal helpers, MR Sets, and Skeletons.
 
 ## Release Evidence
 
@@ -91,7 +93,7 @@ Before packaging or submitting to Disguise, retain:
 - the clean commit hash;
 - `npm run release-check` output;
 - deployed source/hash verification;
-- one embedded Designer Ctrl-drag smoke result;
+- one embedded Designer interaction smoke result;
 - one real LIVE handshake/reconnect result;
 - one real projector configPosition/configLookAt readback result;
 - supported Designer version and contact/install notes.

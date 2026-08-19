@@ -24,7 +24,7 @@ function valuesForSubscriptions(socket) {
       const subscriptionId = id++;
       subscriptions.push({ id: subscriptionId, objectPath: message.subscribe.object, propertyPath: property, writable: property !== "object.description" && !property.startsWith("object.ledScreens") });
       if (!property.startsWith("object.")) continue;
-      const value = property === "object.description" ? "old" : property.endsWith(".x") ? 0 : property.endsWith(".y") ? (property.includes("scale") ? 2 : 0) : property.endsWith(".z") ? 0 : 0;
+      const value = property === "object.description" ? "old" : ["object.configPosition", "object.configLookAt"].includes(property) ? { x: 0, y: 0, z: 0 } : property.endsWith(".x") ? 0 : property.endsWith(".y") ? (property.includes("scale") ? 2 : 0) : property.endsWith(".z") ? 0 : 0;
       values.push({ id: subscriptionId, value });
     }
   }
@@ -50,7 +50,8 @@ function valuesForSubscriptions(socket) {
   assert.equal(adapter.capabilities.liveUrl, "ws://director.example/api/session/liveupdate");
   adapter.configureLiveScene("32");
   const payload = { pluginId: "screen-1", type: "screen", name: "screen", transform: { position: { x: 1, y: 0, z: 2 }, rotation: { x: 0, y: 0, z: 0 } }, geometry: { width: 4, height: 2 } };
-  adapter.liveSync([{ payload, record: { designerId: "16", path: "objects/ledscreen/screen.apx" } }]);
+  const projectorPayload = { pluginId: "projector-1", type: "projector", name: "projector", transform: { position: { x: -3, y: 3, z: -5 }, rotation: { x: 0, y: 0, z: 0 } }, lookAt: { x: 2, y: 0, z: 4 } };
+  adapter.liveSync([{ payload, record: { designerId: "16", path: "objects/ledscreen/screen.apx" } }, { payload: projectorPayload, record: { designerId: "17", path: "objects/projector/projector.apx" } }]);
   const statuses = [];
   const startPromise = adapter.liveStart({ onStatus(status) { statuses.push(status); }, onValuesChanged() {}, onSceneChanged() {} });
   const first = MockWebSocket.instances[0];
@@ -60,6 +61,9 @@ function valuesForSubscriptions(socket) {
   const initialValues = valuesForSubscriptions(first);
   first.message({ valuesChanged: initialValues });
   const stateAfterInitial = adapter.getLiveState();
+  const projectorSubscriptions = first.sent.filter(item => item.subscribe?.object === "getByUID(0x11)").flatMap(item => item.subscribe.properties);
+  assert.deepEqual(projectorSubscriptions, ["object.description", "object.configPosition", "object.configLookAt", "object.configThrowRatio", "object.fieldOfView", "object.configLookDistance"]);
+  assert.ok(projectorSubscriptions.every(property => !/config(?:Position|LookAt)\.[xyz]$/.test(property)));
   assert.ok(stateAfterInitial.bindings.every(binding => binding.initialized));
   const nameBinding = stateAfterInitial.bindings.find(binding => binding.field === "name");
   assert.equal(nameBinding.writable, false);
@@ -95,6 +99,10 @@ function valuesForSubscriptions(socket) {
   assert.ok(statuses.some(status => status.status === "error"));
   adapter.liveSync([]);
   assert.ok(first.sent.some(item => item.unsubscribe?.ids?.length || item.unsubscribe?.id));
+  const statusCount = statuses.length;
+  first.message({ error: `Change detected for id ${writableBinding.id}, but subscribed value is unavailable.` });
+  assert.equal(statuses.length, statusCount);
+  assert.ok(adapter.getLiveLogs().some(entry => entry.event === "stale-subscription" && entry.id === writableBinding.id));
   first.close();
   await new Promise(resolve => setTimeout(resolve, 300));
   assert.ok(MockWebSocket.instances.length >= 2);

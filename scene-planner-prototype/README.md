@@ -8,7 +8,7 @@ Camera, projector, and light direction can be changed after placement. Projector
 
 LIVE uses the official WebSocket endpoint `ws://<director>/api/session/liveupdate` with `subscribe`, `valuesChanged`, `set`, and `unsubscribe`. The Director is discovered through `?director=` or `window.DISGUISE_DIRECTOR`. Transient disconnects retain LIVE intent and trigger backoff reconnect/resubscribe. Resource creation, rename, and deletion use the Python Execution API; `object.description` is read-only in LIVE and names are changed with `Resource.rename`.
 
-Projectors use only `Projector.configPosition` and `Projector.configLookAt`. Designer body `rotation` and `configRotation` are not imported into the Planner contract. The adapter exposes a read-only `projectorReadbackProbe` for release validation.
+Projectors use public `Projector.configPosition`, `Projector.configLookAt`, and `Projector.configThrowRatio`. Direction is either a rounded manual Look At point or a bound Projection Surface. Moving a projector sends only its position change; Look At, rotation, look distance, and field of view are accepted back from Designer. Dragging the Look At marker sends only the Look At change. The optical cone is an approximate planning aid based on Designer field of view and throw ratio. Designer body `rotation` and `configRotation` are not imported into the Planner contract. The adapter exposes a read-only `projectorReadbackProbe` for release validation.
 
 The internal model still stores Scene dimensions under the legacy `stage` key, and inspection uses Designer's technical `stage.children` collection. Neither represents an additional user-facing Stage object.
 

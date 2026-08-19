@@ -4,7 +4,7 @@
 
 - Stage checkbox and managed Designer cube are implemented through `d3.Object` mesh geometry copied from a supported Designer helper topology.
 - Startup import now treats the open Designer project as authoritative and filters internal/non-physical helpers.
-- Projector readback preserves Designer optical rotation; scene-relative height uses `floorY`.
+- Projector readback accepts Designer-derived Look At, rotation, look distance, and field of view; the Planner writes only the public config contract. Scene-relative height uses `floorY`.
 - Stage movement is numeric-only and projector target surfaces are highlighted on the plan.
 - Look At selection previews surface highlights before commit; missing Designer objects are not resurrected; resource names are synchronized without `dsg-` paths.
 
@@ -12,11 +12,11 @@
 
 - Presets: save the current plan with a name, load it later, duplicate it, import/export it, and delete it.
 - Partial synchronization: one failed camera/light/projector must not stop the other object operations. Each failed object needs `Повторить` and `Принять Designer` actions.
-- Designer cleanup mode: make the meaning of `Очистить сцену` explicit. The local planner clear button is implemented; a separate confirmed command is still needed for deleting selected recognized default objects in the open Designer scene.
+- Designer cleanup mode: make the meaning of explicit deletion of selected recognized default objects in the open Designer scene clear in the UI and documentation.
 - External edits: inspect changed or deleted Designer objects and offer `Принять Designer` or `Повторить`, without overwriting unrelated manual changes.
-- LIVE transport: add reconnect/backoff and richer media-property bindings to the implemented WebSocket `ws://<director>/api/session/liveupdate` adapter.
+- LIVE media coverage: add richer media-property bindings only where the installed Designer exposes a verified writable contract.
 - Fast alignment tools: equal distance from an edge, equal spacing between objects, center alignment, distribute, and dimension-aware snapping need a dedicated interaction pass.
-- Device detail: projector lens/throw-ratio/lens-shift binding, camera sensor/FOV/frustum, podium anchors, and screen cabinet/module presets are not part of the current model.
+- Device detail: projector lens-shift binding, camera sensor/FOV/frustum, podium anchors, and screen cabinet/module presets are not part of the current model. Throw ratio and Designer-derived field of view are already supported.
 
 ## Next product functions
 
@@ -41,7 +41,7 @@
 
 - Extract pure scene/diff functions into testable modules.
 - Add browser-level drag and modal tests alongside the coordinate/diff unit suite.
-- Add browser-level pointer tests for click-without-drag and Ctrl-drag duplication.
+- Add browser-level pointer tests for click-without-drag, target dragging, and the no-Ctrl-drag duplication contract.
 - Add integration test harness around mock Python API fixtures.
 - Add preset schema migrations and explicit import validation.
 - Add accessible inline errors instead of browser `confirm` when the cleanup flow is redesigned.

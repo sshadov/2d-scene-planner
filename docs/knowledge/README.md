@@ -9,6 +9,7 @@ Official sources:
 - [Stage guide](https://developer.disguise.one/python-api/guides/stage/)
 - [Live Update API](https://developer.disguise.one/api/session/liveupdate/)
 - [Python type stubs](https://developer.disguise.one/assets/d3.pyi)
+- [Disguise source and example research](./disguise-sources.md)
 
 Verified/used conclusions for this project:
 
@@ -18,13 +19,15 @@ Verified/used conclusions for this project:
 - Python exposes the current stage as `state.stage`.
 - Relevant stage collections are `ledScreens`, `surfaces`, `cameras`, `projectors`, and `lights`.
 - Used transform properties are `offset/rotation/scale`, projector `configPosition/configLookAt`, and concrete camera `offset/rotation`.
-- Projector config and body transforms are not interchangeable: writing inherited `offset/rotation` after `configPosition/configRotation` changes the optical config again. Projectors therefore write config fields only.
-- `Projector.configLookAt` is writable in the current `d3.pyi` and is the preferred target-point contract for this planner.
+- Projector config and body transforms are not interchangeable: writing inherited `offset/rotation` after `configPosition/configRotation` changes the optical config again. Projectors therefore write public config fields only.
+- `Projector.configLookAt`, `configPosition`, `configThrowRatio`, and `configLookDistance` are declared by the current local `d3.pyi`; `Projector.fieldOfView` is read-only. The Planner writes position, Look At, and throw ratio while accepting Designer-derived Look At, rotation, look distance, and field of view through LIVE.
+- Projector LIVE bindings use complete `configPosition` and `configLookAt` vectors to avoid transient invalid component combinations. Moving a projector leaves its local Look At untouched until Designer sends the authoritative derived values back.
 - `Camera` inherits `Object`; `VirtualCamera` is a distinct subclass and is not created by this planner.
 - `stage.floor_pos` is a `Vec`; this project uses `stage.floor_pos.y` as the floor vertical reference.
 - Python execution errors are offset by 10 wrapper lines; Designer line 24 refers to approximately line 14 of the submitted script.
 - Official Live Update is a WebSocket at `ws://<director>/api/session/liveupdate` using `subscribe`, `valuesChanged`, and `set`; repeated Python HTTP calls are not Live Update and are disabled in the planner until a dedicated adapter exists.
-- Resource deletion uses `resourceManager.remove(resource.path)` with the resource deletion-save lifecycle; detaching a stage collection alone is insufficient.
+- Resource deletion is two-step: detach the object with `Object.remove()` and save the Stage, then use `saveOnDelete()` plus `resourceManager.remove(resource.path)`. Detaching only a Stage collection or removing only the package resource leaves stale state.
+- Resource names live in the `ResourceManager` package list; Stage only holds scene references. Check both `resourceManager.exists(Path(...))` and package paths before creation and rename, and report conflicts instead of passing a wrong-class resource to `loadOrCreate`.
 - Resources are marked with `markDirty(resource)` before mutation and saved with `resource.save()` afterwards.
 - Resource folders follow lower-case Python class names: `ledscreen`, `screen2`, `camera`, `projector`, and `light`.
 - `Object.offset`, `Object.rotation`, and `Object.scale` have setters in the r34 type stubs. `Resource.description` does not expose a setter, so the adapter does not assign it.
