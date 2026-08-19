@@ -1,6 +1,8 @@
 (() => {
   const VERSION = 11;
   const STORAGE_KEY = "disguise-scene-generator-state-v11";
+  const ZOOM_MIN = .1;
+  const ZOOM_MAX = 3;
   const STANDALONE_PREVIEW = ["127.0.0.1", "localhost"].includes(location.hostname) && String(location.port) === "4173";
   const PLANAR_TYPES = new Set(["screen", "dmxScreen", "surface"]);
   const GROUP_ORDER = ["screen", "dmxScreen", "surface", "projector", "dmxLight", "camera", "designer"];
@@ -28,7 +30,7 @@
   const canvasContextMenu = document.querySelector("#canvas-context-menu");
   const state = {
     stage: { ...defaults.stage }, objects: [], selectedId: null, selectedIds: new Set(), highlightObjectId: null, showSurfaceLabels: false, zoom: 1, liveEnabled: false,
-    history: [], future: [], dragging: null, placingProjectorId: null, guides: [],
+    history: [], future: [], dragging: null, placingProjectorId: null, guides: [], pan: { x: 0, y: 0 },
     sync: { objects: {}, lastSyncAt: null, errors: {} },
     lastHeights: {}
   };
@@ -43,7 +45,6 @@
   let liveIntent = 0;
   let liveSceneImportTimer = null;
   let clipboardObjects = [];
-  const modifierState = { ctrl: false, shift: false };
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -176,8 +177,16 @@
     state.stage.width = clamp(finite(stageInputs.width.value, state.stage.width), 2, 100); state.stage.depth = clamp(finite(stageInputs.depth.value, state.stage.depth), 2, 100);
     syncStaticInputs();
   }
+  function defaultFieldValue(object, path) {
+    const config = typeConfig[object.type] || {};
+    if (path === "transform.position.x" || path === "transform.position.z" || path === "transform.rotation.x" || path === "transform.rotation.y" || path === "transform.rotation.z") return 0;
+    if (path === "transform.position.y") return config.defaultHeight ?? 0;
+    if (path.startsWith("geometry.") && config.geometry) return config.geometry[path.slice("geometry." )];
+    if (path.startsWith("media.") && config.media) return config.media[path.slice("media." )];
+    return undefined;
+  }
   function selectInputText(input) { const select = () => input.select?.(); input.addEventListener("focus", select); input.addEventListener("pointerup", event => { if (document.activeElement === input) { event.preventDefault(); select(); } }); }
-  function bindNumericInput(input, getter, setter, step = .1) {
+  function bindNumericInput(input, getter, setter, step = .1, defaultValue = undefined) {
     input.dataset.step = step; input.classList.add("wheel-input"); selectInputText(input);
     input.addEventListener("keydown", event => {
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
@@ -189,20 +198,25 @@
       setter(parsed); persist(); drawScene();
     });
     input.addEventListener("change", () => { saveHistory(); setter(finite(input.value, getter())); input.value = formatValue(getter(), step); persist(); render(); });
+    input.addEventListener("contextmenu", event => {
+      const fallback = typeof defaultValue === "function" ? defaultValue() : defaultValue;
+      if (!Number.isFinite(Number(fallback))) return;
+      event.preventDefault(); saveHistory(); setter(Number(fallback)); input.value = formatValue(getter(), step); persist(); render();
+    });
     input.addEventListener("wheel", event => {
       event.preventDefault(); saveHistory(); const direction = event.deltaY < 0 ? 1 : -1; const multiplier = event.shiftKey ? 10 : 1;
       setter(Number((getter() + direction * step * multiplier).toFixed(3))); input.value = formatValue(getter(), step); persist(); render();
     }, { passive: false });
   }
   function setupStaticInputs() {
-    ["width", "depth"].forEach(key => bindNumericInput(stageInputs[key], () => state.stage[key], value => { state.stage[key] = clamp(value, 2, 100); }, .1));
+    ["width", "depth"].forEach(key => bindNumericInput(stageInputs[key], () => state.stage[key], value => { state.stage[key] = clamp(value, 2, 100); }, .1, defaults.stage[key]));
   }
 
   function sizing(resizeCanvas = true) {
     const rect = canvas.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
     if (resizeCanvas) { const width = Math.max(1, Math.floor(rect.width * dpr)); const height = Math.max(1, Math.floor(rect.height * dpr)); if (canvas.width !== width) canvas.width = width; if (canvas.height !== height) canvas.height = height; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
     const padding = 62; const base = Math.min((rect.width - padding * 2) / state.stage.width, (rect.height - padding * 2) / state.stage.depth); const scale = Math.max(4, base * state.zoom); const stageWidth = state.stage.width * scale; const stageDepth = state.stage.depth * scale;
-    return { rect, scale, left: (rect.width - stageWidth) / 2, top: (rect.height - stageDepth) / 2, stageWidth, stageDepth };
+    return { rect, scale, left: (rect.width - stageWidth) / 2 + state.pan.x, top: (rect.height - stageDepth) / 2 + state.pan.y, stageWidth, stageDepth };
   }
   function toScreen(x, z, frame) { const bounds = stageBounds(); return { x: frame.left + (x - bounds.minX) * frame.scale, y: frame.top + (bounds.maxZ - z) * frame.scale }; }
   function toWorld(x, y, frame) { const bounds = stageBounds(); return { x: bounds.minX + (x - frame.left) / frame.scale, z: bounds.maxZ - (y - frame.top) / frame.scale }; }
@@ -250,9 +264,15 @@
   function drawRotateHandle(object, frame) {
     const geometry = rotateHandleGeometry(object, frame); if (!geometry) return; ctx.save(); ctx.strokeStyle = "#eef2f6"; ctx.fillStyle = "#17202a"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(geometry.corner.x, geometry.corner.y); ctx.lineTo(geometry.handle.x, geometry.handle.y); ctx.stroke(); ctx.beginPath(); ctx.arc(geometry.handle.x, geometry.handle.y, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#3dd9d4"; ctx.beginPath(); ctx.arc(geometry.handle.x, geometry.handle.y, 2.2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
   }
-  function drawScene() { const frame = sizing(); drawGrid(frame); state.objects.filter(object => object.type === "projector").forEach(object => drawProjectorTarget(object, frame)); state.objects.forEach(object => drawObject(object, frame)); const selected = selectedObject(); if (selected) drawRotateHandle(selected, frame); emptyHint.hidden = state.objects.length > 0; document.querySelector("#zoom-level").textContent = `${Math.round(state.zoom * 100)}%`; document.querySelector("#scene-summary").textContent = `Stage ${formatValue(state.stage.width)} × ${formatValue(state.stage.depth)} m`; }
+  function drawScene() { const frame = sizing(); drawGrid(frame); state.objects.filter(object => object.type === "projector").forEach(object => drawProjectorTarget(object, frame)); state.objects.forEach(object => drawObject(object, frame)); const selected = selectedObject(); if (selected) drawRotateHandle(selected, frame); emptyHint.hidden = state.objects.length > 0; document.querySelector("#zoom-reset").textContent = `${Math.round(state.zoom * 100)}%`; document.querySelector("#scene-summary").textContent = `Stage ${formatValue(state.stage.width)} × ${formatValue(state.stage.depth)} m`; }
   function selectedObject() { return state.objects.find(object => object.id === state.selectedId); }
   function selectObject(object, allOfType = false) { state.selectedId = object?.id ?? null; state.selectedIds = object ? new Set((allOfType ? state.objects.filter(item => item.type === object.type) : [object]).map(item => item.id)) : new Set(); state.highlightObjectId = object?.type === "projector" ? targetSurface(object)?.id || null : null; }
+  function toggleObjectSelection(object) {
+    if (!object) return;
+    const ids = new Set(state.selectedIds);
+    if (ids.has(object.id) && ids.size > 1) { ids.delete(object.id); state.selectedId = [...ids][0] ?? null; } else { ids.add(object.id); state.selectedId = object.id; }
+    state.selectedIds = ids; const selected = selectedObject(); state.highlightObjectId = selected?.type === "projector" ? targetSurface(selected)?.id || null : null;
+  }
   function objectRadius(object, frame) { return PLANAR_TYPES.has(object.type) ? object.geometry.width * frame.scale / 2 : Math.max(12, (typeConfig[object.type].radius || .3) * frame.scale * 1.8); }
   function hitTest(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(false); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { const centre = toScreen(object.transform.position.x, object.transform.position.z, frame); const dx = point.x - centre.x; const dy = point.y - centre.y; if (!PLANAR_TYPES.has(object.type)) return Math.hypot(dx, dy) < objectRadius(object, frame); const angle = -object.transform.rotation.y * Math.PI / 180; const localX = dx * Math.cos(angle) - dy * Math.sin(angle); const localY = dx * Math.sin(angle) + dy * Math.cos(angle); const halfWidth = object.geometry.width * frame.scale / 2; const halfThickness = Math.max(5, .1 * frame.scale) / 2; return Math.abs(localX) <= halfWidth && Math.abs(localY) <= halfThickness; }); }
   function hitTestProjectorTarget(clientX, clientY) { const rect = canvas.getBoundingClientRect(); const frame = sizing(false); const point = { x: clientX - rect.left, y: clientY - rect.top }; return [...state.objects].reverse().find(object => { if (object.type !== "projector") return false; const target = effectiveLookAt(object); const p = toScreen(target.x, target.z, frame); return Math.hypot(point.x - p.x, point.y - p.y) <= 12; }); }
@@ -292,13 +312,13 @@
   }
   function focusActiveField(path, attempt = 0) { const input = activeFieldRefs.get(path); if (!input) { if (attempt < 5) setTimeout(() => focusActiveField(path, attempt + 1), 0); return false; } input.focus?.({ preventScroll: true }); input.select?.(); if (document.activeElement !== input && attempt < 5) { const retry = () => focusActiveField(path, attempt + 1); if (globalThis.requestAnimationFrame) globalThis.requestAnimationFrame(retry); else setTimeout(retry, 0); } return true; }
   function nextDimensionField(object, path) { if (!PLANAR_TYPES.has(object.type)) return null; const order = ["geometry.width", "geometry.height", "transform.position.y"]; const index = order.indexOf(path); return index >= 0 ? order[index + 1] || null : null; }
-  function makeObjectField(object, definition) { const [labelText, path, value, step, unit] = definition; const label = element("label", "object-field"); label.append(element("span", "object-field-label", labelText)); const shell = element("span", "input-shell"); const input = document.createElement("input"); input.type = "text"; input.inputMode = "decimal"; input.value = formatValue(value, step); input.dataset.field = path; input.setAttribute("aria-label", `${object.name}: ${labelText}`); activeFieldRefs.set(path, input); shell.append(input, element("i", "", unit)); label.append(shell); bindNumericInput(input, () => getFieldValue(object, path), next => setPath(object, path, next), step); input.addEventListener("keydown", event => { if (event.key !== "Enter") return; event.preventDefault(); event.stopPropagation(); setPath(object, path, finite(input.value, getFieldValue(object, path))); persist(); input.value = formatValue(getFieldValue(object, path), step); const nextPath = nextDimensionField(object, path); if (nextPath) { refreshActiveValues(); globalThis.requestAnimationFrame?.(() => focusActiveField(nextPath)); setTimeout(() => focusActiveField(nextPath), 25); } else input.blur?.(); }); return label; }
+  function makeObjectField(object, definition) { const [labelText, path, value, step, unit] = definition; const label = element("label", "object-field"); label.append(element("span", "object-field-label", labelText)); const shell = element("span", "input-shell"); const input = document.createElement("input"); input.type = "text"; input.inputMode = "decimal"; input.value = formatValue(value, step); input.dataset.field = path; input.setAttribute("aria-label", `${object.name}: ${labelText}`); activeFieldRefs.set(path, input); shell.append(input, element("i", "", unit)); label.append(shell); bindNumericInput(input, () => getFieldValue(object, path), next => setPath(object, path, next), step, () => defaultFieldValue(object, path)); input.addEventListener("keydown", event => { if (event.key !== "Enter") return; event.preventDefault(); event.stopPropagation(); setPath(object, path, finite(input.value, getFieldValue(object, path))); persist(); input.value = formatValue(getFieldValue(object, path), step); const nextPath = nextDimensionField(object, path); if (nextPath) { refreshActiveValues(); globalThis.requestAnimationFrame?.(() => focusActiveField(nextPath)); setTimeout(() => focusActiveField(nextPath), 25); } else input.blur?.(); }); return label; }
   function previewTargetSurface(pluginId) { state.highlightObjectId = pluginId ? state.objects.find(item => item.type === "surface" && item.pluginId === pluginId)?.id || null : null; drawScene(); renderObjectGroups(); }
   function makeTargetSurfaceField(object) { const label = element("label", "object-field object-select-field wide"); label.append(element("span", "object-field-label", "Look At surface")); const select = document.createElement("select"); select.setAttribute("aria-label", `${object.name}: Look At surface`); const manual = document.createElement("option"); manual.value = ""; manual.textContent = "Manual point"; select.append(manual); state.objects.filter(item => item.type === "surface").forEach(surface => { const option = document.createElement("option"); option.value = surface.pluginId; option.textContent = surface.name; select.append(option); }); const committedTarget = () => targetSurface(object)?.pluginId || ""; select.value = committedTarget(); const showLabels = () => { state.showSurfaceLabels = true; drawScene(); }; select.addEventListener("focus", showLabels); select.addEventListener("pointerdown", showLabels); select.addEventListener("input", () => previewTargetSurface(select.value)); select.addEventListener("change", () => { saveHistory(); const currentTarget = effectiveLookAt(object); if (select.value) { object.targetSurfacePluginId = select.value; object.lookAt = effectiveLookAt(object); } else { delete object.targetSurfacePluginId; object.lookAt = currentTarget; } previewTargetSurface(select.value); persist(); render(); }); select.addEventListener("blur", () => { state.showSurfaceLabels = false; previewTargetSurface(committedTarget()); }); label.append(select); return label; }
   function makeMediaModeControl(object) { const control = element("div", "media-mode"); [["resolution", "Resolution"], ["ppi", "PPI"], ["pitch", "Pixel pitch"]].forEach(([mode, label]) => { const button = element("button", object.media.inputMode === mode ? "active" : "", label); button.type = "button"; button.addEventListener("click", () => { if (object.media.inputMode === mode) return; saveHistory(); setScreenInputMode(object, mode); persist(); render(); }); control.append(button); }); return control; }
   function makePropertySection(object, definition) { const section = element("section", "active-property-section"); section.append(element("h3", "active-property-title", definition.title)); const grid = element("div", "active-property-grid"); if (definition.mediaMode) grid.append(makeMediaModeControl(object)); if (definition.targetSurface) grid.append(makeTargetSurfaceField(object)); else definition.fields.forEach(field => grid.append(makeObjectField(object, field))); section.append(grid); return section; }
   function objectSyncStatus(object) { if (state.sync.errors?.[object.pluginId]) return "error"; const record = state.sync.objects?.[object.pluginId]; return record?.lastExported === canonical(objectPayload(object)) ? "synced" : "changed"; }
-  function renderObjectGroups() { objectGroups.replaceChildren(); document.querySelector("#object-count").textContent = String(state.objects.length); GROUP_ORDER.forEach(type => { const config = typeConfig[type]; const objects = state.objects.filter(object => object.type === type); if (!objects.length) return; const group = element("section", "object-group"); const heading = element("div", "object-group-heading"); const swatch = element("span", "group-swatch"); swatch.style.background = config.color; heading.append(swatch, document.createTextNode(config.group), element("b", "group-count", String(objects.length))); group.append(heading); const list = element("div", "object-list"); objects.forEach(object => { const entry = element("button", `object-entry${state.selectedIds.has(object.id) || object.id === state.selectedId ? " selected" : ""}`); entry.type = "button"; entry.setAttribute("aria-label", `Select ${object.name}`); entry.append(element("i", `object-status ${objectSyncStatus(object)}`), element("i", `object-icon icon-${object.type.toLowerCase()}`), element("span", "object-name", object.name)); entry.addEventListener("click", event => { selectObject(object, event.shiftKey); persist(); render(); }); entry.addEventListener("contextmenu", event => { event.preventDefault(); openCanvasContextMenu(event, object); }); list.append(entry); }); group.append(list); objectGroups.append(group); }); }
+  function renderObjectGroups() { objectGroups.replaceChildren(); document.querySelector("#object-count").textContent = String(state.objects.length); GROUP_ORDER.forEach(type => { const config = typeConfig[type]; const objects = state.objects.filter(object => object.type === type); if (!objects.length) return; const group = element("section", "object-group"); const heading = element("div", "object-group-heading"); const swatch = element("span", "group-swatch"); swatch.style.background = config.color; heading.append(swatch, document.createTextNode(config.group), element("b", "group-count", String(objects.length))); group.append(heading); const list = element("div", "object-list"); objects.forEach(object => { const entry = element("button", `object-entry${state.selectedIds.has(object.id) || object.id === state.selectedId ? " selected" : ""}`); entry.type = "button"; entry.setAttribute("aria-label", `Select ${object.name}`); entry.append(element("i", `object-status ${objectSyncStatus(object)}`), element("i", `object-icon icon-${object.type.toLowerCase()}`), element("span", "object-name", object.name)); entry.addEventListener("click", event => { if (event.shiftKey || event.ctrlKey || event.metaKey) toggleObjectSelection(object); else selectObject(object); persist(); render(); }); entry.addEventListener("contextmenu", event => { event.preventDefault(); openCanvasContextMenu(event, object); }); list.append(entry); }); group.append(list); objectGroups.append(group); }); }
   function commitObjectName(object, input) { const nextName = input.value.trim(); if (nextName) { saveHistory(); object.name = nextName; persist(); } render(); }
   function renderActiveInspector() { activeFieldRefs = new Map(); activeObjectStrip.replaceChildren(); const object = selectedObject(); if (!object) { activeObjectStrip.append(element("div", "active-empty", "No object selected")); return; } const identity = element("div", "active-identity"); identity.append(element("span", "", typeConfig[object.type]?.label || "Designer Object")); const name = element("strong", "editable-object-name", object.name); name.title = "Click to rename"; name.addEventListener("click", () => { const input = document.createElement("input"); input.className = "object-name-input"; input.value = object.name; input.select?.(); input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); commitObjectName(object, input); } if (event.key === "Escape") render(); }); input.addEventListener("blur", () => commitObjectName(object, input)); identity.replaceChildren(identity.children[0], input); input.focus?.(); input.select?.(); }); identity.append(name); activeObjectStrip.append(identity); fieldSections(object).forEach(definition => activeObjectStrip.append(makePropertySection(object, definition))); }
   function refreshActiveValues() { const object = selectedObject(); if (!object) return; document.querySelectorAll("#active-object-strip input[data-field]").forEach(input => { if (document.activeElement === input) return; const step = finite(input.dataset.step, .1); input.value = formatValue(getFieldValue(object, input.dataset.field), step); }); }
@@ -307,7 +327,7 @@
   function addObjectAt(type, x = 0, z = 0, focusDimensions = false) { syncModelsFromInputs(); saveHistory(); const bounds = stageBounds(); const object = newObject(type, clamp(x, bounds.minX, bounds.maxX), clamp(z, bounds.minZ, bounds.maxZ)); state.objects.push(object); selectObject(object); if (type === "projector") state.placingProjectorId = object.id; persist(); render(); if (focusDimensions) setTimeout(() => focusActiveField(PLANAR_TYPES.has(type) ? "geometry.width" : "transform.position.y"), 0); return object; }
   function addObject(type) { return addObjectAt(type); }
   function duplicateObject(id, mirrorAxis = null, options = {}) { const source = state.objects.find(object => object.id === id); if (!source) return null; if (options.history !== false) saveHistory(); const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(source.type); delete copy.designer; if (mirrorAxis === "x") { copy.transform.position.x = Number((-source.transform.position.x).toFixed(3)); copy.transform.rotation.y = normalizeYaw(-source.transform.rotation.y); } else if (mirrorAxis === "z") { copy.transform.position.z = Number((-source.transform.position.z).toFixed(3)); copy.transform.rotation.y = normalizeYaw(180 - source.transform.rotation.y); } else if (options.offset !== false) copy.transform.position.x = Number((source.transform.position.x + .5).toFixed(3)); if (source.type === "projector" && mirrorAxis) { const target = effectiveLookAt(source); copy.lookAt = { ...target, [mirrorAxis]: Number((-target[mirrorAxis]).toFixed(3)) }; delete copy.targetSurfacePluginId; } state.objects.push(copy); selectObject(copy); if (options.persist !== false) persist(); if (options.render !== false) render(); return copy; }
-  function copySelectedObjects() { const selected = state.objects.filter(object => state.selectedIds.has(object.id) || object.id === state.selectedId); if (!selected.length) return false; clipboardObjects = selected.map(object => clone(object)); try { globalThis.navigator?.clipboard?.writeText(JSON.stringify(clipboardObjects)); } catch {} return true; }
+  function copySelectedObjects() { const selected = state.objects.filter(object => state.selectedIds.has(object.id) || object.id === state.selectedId); if (!selected.length) return false; clipboardObjects = selected.map(object => clone(object)); return true; }
   function pasteCopiedObjects() { if (!clipboardObjects.length) return false; saveHistory(); const pasted = clipboardObjects.map(source => { const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(copy.type); delete copy.designer; copy.transform.position.x = Number((copy.transform.position.x + .5).toFixed(3)); return copy; }); state.objects.push(...pasted); selectObject(pasted[pasted.length - 1]); persist(); render(); return true; }
   function rotateObject90(id) { const object = state.objects.find(item => item.id === id); if (!object) return; saveHistory(); if (object.type === "projector") { const target = effectiveLookAt(object); const dx = target.x - object.transform.position.x; const dz = target.z - object.transform.position.z; object.lookAt = { x: Number((object.transform.position.x + dz).toFixed(3)), y: target.y, z: Number((object.transform.position.z - dx).toFixed(3)) }; delete object.targetSurfacePluginId; } else object.transform.rotation.y = normalizeYaw(object.transform.rotation.y + 90); persist(); render(); }
   function bindProjectorToSurface(projector, surface) { if (!projector || projector.type !== "projector" || !surface) return; saveHistory(); projector.targetSurfacePluginId = surface.pluginId; projector.lookAt = effectiveLookAt(projector); previewTargetSurface(surface.pluginId); persist(); render(); }
@@ -475,17 +495,18 @@
   function exportSceneJson() { const output = { version: VERSION, units: "metres", coordinateSystem: "Designer world XYZ; top view X/Z; Stage centred at world origin", stage: state.stage, objects: state.objects.map(({ id, ...object }) => object.type === "projector" ? { ...object, lookAt: effectiveLookAt(object) } : object) }; const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "disguise-stage-plan.json"; link.click(); URL.revokeObjectURL(url); }
 
   document.querySelector("#clear-scene-button").addEventListener("click", clearPlannerScene); document.querySelector("#json-button").addEventListener("click", exportSceneJson); document.querySelector("#live-log-button").addEventListener("click", () => { renderLiveLog(); document.querySelector("#live-log-panel").open = true; }); document.querySelector("#objects-toggle").addEventListener("click", () => { const rail = document.querySelector("#object-rail"); rail.hidden = !rail.hidden; document.querySelector("#objects-toggle").setAttribute("aria-expanded", String(!rail.hidden)); }); document.querySelector("#live-toggle").addEventListener("change", async event => { const toggle = event.target; if (STANDALONE_PREVIEW) { toggle.checked = false; toggle.disabled = true; document.querySelector("#adapter-status").textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; return; } if (!toggle.checked) { stopLive(); document.querySelector("#adapter-status").textContent = "LIVE off"; return; } toggle.disabled = true; try { await startLive(); } catch (error) { state.liveEnabled = false; toggle.checked = false; persist(false); document.querySelector("#adapter-status").textContent = `LIVE unavailable · ${error.message || error}`; } finally { toggle.disabled = false; renderStatus(); } });
-  document.querySelector("#undo-button").addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button").addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in").addEventListener("click", () => { state.zoom = clamp(state.zoom + .15, .5, 2); drawScene(); }); document.querySelector("#zoom-out").addEventListener("click", () => { state.zoom = clamp(state.zoom - .15, .5, 2); drawScene(); });
+  document.querySelector("#undo-button").addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button").addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in").addEventListener("click", () => { state.zoom = clamp(state.zoom + .1, ZOOM_MIN, ZOOM_MAX); drawScene(); }); document.querySelector("#zoom-out").addEventListener("click", () => { state.zoom = clamp(state.zoom - .1, ZOOM_MIN, ZOOM_MAX); drawScene(); });
+  const resetView = () => { state.zoom = 1; state.pan = { x: 0, y: 0 }; drawScene(); };
+  document.querySelector("#zoom-reset").addEventListener("click", resetView); document.querySelector("#zoom-reset").addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); resetView(); } });
   window.addEventListener("keydown", event => {
-    modifierState.ctrl = event.ctrlKey || event.metaKey || modifierState.ctrl;
-    modifierState.shift = event.shiftKey || modifierState.shift;
     const modifier = event.ctrlKey || event.metaKey; if (!modifier || event.altKey) return;
     const target = event.target; if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
     const key = event.code === "KeyC" ? "c" : event.code === "KeyV" ? "v" : event.key.toLowerCase();
     if (key === "c") { if (copySelectedObjects()) event.preventDefault(); }
     else if (key === "v") { if (pasteCopiedObjects()) event.preventDefault(); }
   });
-  window.addEventListener("keyup", event => { if (!event.ctrlKey && !event.metaKey) modifierState.ctrl = false; if (!event.shiftKey) modifierState.shift = false; });
+  window.addEventListener("copy", event => { if (copySelectedObjects()) event.preventDefault(); });
+  window.addEventListener("paste", event => { if (pasteCopiedObjects()) event.preventDefault(); });
   document.querySelector("#align-x").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.x = 0; persist(); render(); }); document.querySelector("#align-z").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.z = 0; persist(); render(); });
   canvas.addEventListener("pointerdown", event => {
     if (event.button !== 0) return;
@@ -504,9 +525,12 @@
     const rotateOwner = hitTestRotateHandle(event.clientX, event.clientY);
     const targetOwner = rotateOwner ? null : hitTestProjectorTarget(event.clientX, event.clientY);
     let object = rotateOwner || targetOwner || hitTest(event.clientX, event.clientY);
-    if (!object) { selectObject(null); render(); return; }
+    if (!object) {
+      selectObject(null); state.dragging = { kind: "pan", pending: true, startClientX: event.clientX, startClientY: event.clientY, startPanX: state.pan.x, startPanY: state.pan.y };
+      canvas.setPointerCapture?.(event.pointerId); render(); return;
+    }
     if (rotateOwner || targetOwner) selectObject(object);
-    else if (event.shiftKey) selectObject(object, true);
+    else if (event.shiftKey) toggleObjectSelection(object);
     else if (state.selectedIds.size > 1 && state.selectedIds.has(object.id)) state.selectedId = object.id;
     else selectObject(object);
     if (!object) return;
@@ -523,7 +547,7 @@
         kind: "group", id: object.id, pending: true, ctrlKey: false, startPoint: point, startClientX: event.clientX, startClientY: event.clientY,
         positions: state.objects.filter(item => state.selectedIds.has(item.id)).map(item => ({ id: item.id, x: item.transform.position.x, z: item.transform.position.z }))
       };
-    } else state.dragging = { kind: "object", id: object.id, pending: true, ctrlKey: event.ctrlKey || event.metaKey || modifierState.ctrl, startPoint: point, startClientX: event.clientX, startClientY: event.clientY, offsetX: object.transform.position.x - point.x, offsetZ: object.transform.position.z - point.z };
+    } else state.dragging = { kind: "object", id: object.id, pending: true, ctrlKey: event.ctrlKey || event.metaKey, startPoint: point, startClientX: event.clientX, startClientY: event.clientY, offsetX: object.transform.position.x - point.x, offsetZ: object.transform.position.z - point.z };
     canvas.setPointerCapture?.(event.pointerId);
     render();
   });
@@ -542,8 +566,8 @@
       const distance = Math.hypot(event.clientX - state.dragging.startClientX, event.clientY - state.dragging.startClientY);
       if (distance < 4) return;
       state.dragging.pending = false;
-      saveHistory();
-      if (state.dragging.kind === "object" && (state.dragging.ctrlKey || modifierState.ctrl || event.ctrlKey || event.metaKey)) {
+      if (state.dragging.kind !== "pan") saveHistory();
+      if (state.dragging.kind === "object" && (state.dragging.ctrlKey || event.ctrlKey || event.metaKey)) {
         const source = state.objects.find(item => item.id === state.dragging.id);
         const copy = source && duplicateObject(source.id, null, { offset: false, history: false, persist: false, render: false });
         if (!copy) return;
@@ -551,6 +575,11 @@
         state.dragging.offsetX = copy.transform.position.x - point.x;
         state.dragging.offsetZ = copy.transform.position.z - point.z;
       }
+    }
+    if (state.dragging.kind === "pan") {
+      state.pan.x = state.dragging.startPanX + event.clientX - state.dragging.startClientX;
+      state.pan.y = state.dragging.startPanY + event.clientY - state.dragging.startClientY;
+      drawScene(); return;
     }
     const object = state.objects.find(item => item.id === state.dragging.id);
     if (!object) return;
@@ -588,7 +617,7 @@
     refreshActiveValues();
   });
   canvas.addEventListener("pointerup", event => { state.dragging = null; state.guides = []; persist(); render(); if (canvas.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture(event.pointerId); }); canvas.addEventListener("pointercancel", () => { state.dragging = null; state.guides = []; persist(); render(); }); window.addEventListener("resize", drawScene);
-  canvas.addEventListener("wheel", event => { event.preventDefault(); state.zoom = clamp(state.zoom + (event.deltaY < 0 ? .1 : -.1), .5, 2); drawScene(); }, { passive: false });
+  canvas.addEventListener("wheel", event => { event.preventDefault(); state.zoom = clamp(state.zoom + (event.deltaY < 0 ? .1 : -.1), ZOOM_MIN, ZOOM_MAX); drawScene(); }, { passive: false });
   canvas.addEventListener("contextmenu", event => { event.preventDefault(); const object = hitTestProjectorTarget(event.clientX, event.clientY) || hitTest(event.clientX, event.clientY); if (object) openCanvasContextMenu(event, object); else { const rect = canvas.getBoundingClientRect(); openCanvasCreateMenu(event, toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false))); } });
   document.querySelectorAll("[data-create-type]").forEach(button => button.addEventListener("click", () => { const point = contextWorldPoint; const type = button.dataset.createType; closeCanvasContextMenu(); if (point) addObjectAt(type, point.x, point.z, true); }));
   document.querySelectorAll("#canvas-context-menu [data-action]").forEach(button => button.addEventListener("click", () => { const id = contextObjectId; const action = button.dataset.action; if (!id) return; if (action === "bind-surface") { const list = document.querySelector("#surface-context-list"); list.hidden = !list.hidden; return; } if (action === "delete") { document.querySelector("#context-delete-confirm").hidden = false; return; } closeCanvasContextMenu(); if (action === "rotate-90") rotateObject90(id); else duplicateObject(id, action === "mirror-x" ? "x" : action === "mirror-z" ? "z" : null); })); document.querySelector("#context-delete-yes").addEventListener("click", () => { const id = contextObjectId; closeCanvasContextMenu(); if (id) deleteObject(id); }); document.querySelector("#context-delete-no").addEventListener("click", () => { document.querySelector("#context-delete-confirm").hidden = true; });

@@ -7,14 +7,14 @@
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
     <title>Disguise Stage Planner</title>
-    <link rel="stylesheet" href="./styles.css?v=11.1" />
+    <link rel="stylesheet" href="./styles.css?v=11.2" />
   </head>
   <body>
     <main class="app-shell">
       <header class="app-header">
         <div class="brand-block">
           <p class="eyebrow">STAGE PLANNER</p>
-        <h1>Disguise <span class="app-version">v11.1</span></h1>
+        <h1>Disguise <span class="app-version">v11.2</span></h1>
         </div>
 
         <div class="header-actions">
@@ -70,7 +70,7 @@
             </div>
             <div class="zoom-controls">
               <button class="icon-button" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
-              <span id="zoom-level">100%</span>
+              <button class="zoom-level" id="zoom-reset" type="button" title="Reset zoom and view" aria-label="Reset zoom and view">100%</button>
               <button class="icon-button" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
             </div>
           </div>
@@ -122,7 +122,7 @@
          <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Delete object?</span><button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button></div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=11.1"></script>
-    <script src="./app.js?v=11.1"></script>
+    <script src="./designer-adapter.js?v=11.2"></script>
+    <script src="./app.js?v=11.2"></script>
   </body>
 </html>

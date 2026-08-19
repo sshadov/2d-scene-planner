@@ -132,7 +132,8 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .tool-button:hover { border-color: var(--cyan); color: var(--cyan); }
 .zoom-controls { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 9px; }
 .zoom-controls .icon-button { width: 25px; height: 25px; font-size: 16px; }
-.zoom-controls span { width: 34px; text-align: center; }
+.zoom-level { width: 48px; height: 25px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: transparent; color: var(--muted); font-size: 9px; text-align: center; }
+.zoom-level:hover, .zoom-level:focus-visible { border-color: var(--line); background: #17202a; color: var(--ink); }
 .canvas-wrap { position: relative; min-height: 260px; overflow: hidden; }
 #scene-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
 .empty-hint { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #657483; font-size: 11px; pointer-events: none; }
