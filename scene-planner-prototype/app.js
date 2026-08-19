@@ -381,6 +381,7 @@
     const status = document.querySelector("#adapter-status");
     if (!update) return;
     if (update.status === "open") status.textContent = "LIVE: WebSocket connected";
+    else if (update.status === "reconnecting") status.textContent = `LIVE: reconnecting · ${update.detail || "waiting for Designer"}`;
     else if (update.status === "recovering") status.textContent = `LIVE: restoring subscriptions · ${update.detail || "retrying"}`;
     else if (update.status === "closed") status.textContent = `LIVE: ${update.detail || "WebSocket closed"}`;
     else if (update.status === "error") status.textContent = `LIVE: WebSocket error · ${update.detail || "unknown error"}`;
