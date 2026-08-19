@@ -43,6 +43,7 @@
   let liveIntent = 0;
   let liveSceneImportTimer = null;
   let clipboardObjects = [];
+  const modifierState = { ctrl: false, shift: false };
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -218,27 +219,29 @@
     return finite(object.transform.rotation.y) * Math.PI / 180;
   }
   function drawDirection(config, frame, object, length, spread) {
-    ctx.save(); ctx.rotate(directionAngle(object)); ctx.globalAlpha = .25; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-spread * frame.scale, -length * frame.scale); ctx.lineTo(spread * frame.scale, -length * frame.scale); ctx.closePath(); ctx.fillStyle = config.color; ctx.fill(); ctx.restore(); ctx.globalAlpha = 1;
+    const start = Math.max(7, (config.radius || .3) * frame.scale);
+    ctx.save(); ctx.rotate(directionAngle(object)); ctx.globalAlpha = .25; ctx.beginPath(); ctx.moveTo(0, -start); ctx.lineTo(-spread * frame.scale, -length * frame.scale); ctx.lineTo(spread * frame.scale, -length * frame.scale); ctx.closePath(); ctx.fillStyle = config.color; ctx.fill(); ctx.restore(); ctx.globalAlpha = 1;
   }
   function drawObject(object, frame) {
     const position = toScreen(object.transform.position.x, object.transform.position.z, frame); const config = typeConfig[object.type]; const selected = state.selectedIds.has(object.id) || object.id === state.selectedId; const highlighted = object.id === state.highlightObjectId;
     ctx.save(); ctx.translate(position.x, position.y); if (PLANAR_TYPES.has(object.type)) ctx.rotate(object.transform.rotation.y * Math.PI / 180); ctx.fillStyle = config.color; ctx.strokeStyle = selected ? "#fff" : config.color; ctx.lineWidth = selected ? 2.5 : 1.2;
     if (PLANAR_TYPES.has(object.type)) { const w = object.geometry.width * frame.scale; const t = Math.max(5, .1 * frame.scale); if (["surface", "dmxScreen"].includes(object.type)) ctx.globalAlpha = .42; ctx.fillRect(-w / 2, -t / 2, w, t); ctx.globalAlpha = 1; ctx.strokeRect(-w / 2, -t / 2, w, t); }
     if (object.type === "projector") { drawDirection(config, frame, object, 4, 1.8); const r = config.radius * frame.scale; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#10161c"; ctx.beginPath(); ctx.arc(0, -r * .25, Math.max(2, r * .28), 0, Math.PI * 2); ctx.fill(); }
-    if (object.type === "dmxLight") { drawDirection(config, frame, object, 3, 1.1); const r = Math.max(5, config.radius * frame.scale); ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#10161c"; ctx.beginPath(); ctx.arc(0, -r * .32, Math.max(2, r * .32), 0, Math.PI * 2); ctx.fill(); }
+    if (object.type === "dmxLight") { drawDirection(config, frame, object, 3, 1.1); const r = Math.max(5, config.radius * frame.scale); ctx.fillRect(-r, -r, r * 2, r * 2); ctx.strokeRect(-r, -r, r * 2, r * 2); }
     if (object.type === "camera") { drawDirection(config, frame, object, 3, 1.4); const r = config.radius * frame.scale; ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(-r * .75, r * .8); ctx.lineTo(r * .75, r * .8); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     ctx.restore(); const showLabel = selected || highlighted || (state.showSurfaceLabels && object.type === "surface"); if (showLabel) { ctx.fillStyle = highlighted ? "#f8c84d" : selected ? "#fff" : "#8eb7ff"; ctx.font = `${highlighted ? "600 " : ""}12px Inter,sans-serif`; ctx.textAlign = "center"; ctx.fillText(object.name, position.x, position.y - 16); if (highlighted) { ctx.strokeStyle = "rgba(248,200,77,.85)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(position.x, position.y, Math.max(10, (object.geometry?.width || .3) * frame.scale / 2 + 6), 0, Math.PI * 2); ctx.stroke(); } }
   }
   function drawProjectorTarget(object, frame) {
     const source = toScreen(object.transform.position.x, object.transform.position.z, frame); const target = effectiveLookAt(object); const point = toScreen(target.x, target.z, frame); const selected = state.selectedIds.has(object.id) || object.id === state.selectedId;
-    ctx.save(); ctx.strokeStyle = selected ? "rgba(192,132,252,.95)" : "rgba(192,132,252,.38)"; ctx.lineWidth = selected ? 1.5 : 1; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(source.x, source.y); ctx.lineTo(point.x, point.y); ctx.stroke(); ctx.setLineDash([]);
+    const radius = Math.max(7, (typeConfig.projector.radius || .3) * frame.scale); const distance = Math.hypot(point.x - source.x, point.y - source.y); const start = distance > radius ? { x: source.x + (point.x - source.x) * radius / distance, y: source.y + (point.y - source.y) * radius / distance } : source;
+    ctx.save(); ctx.strokeStyle = selected ? "rgba(192,132,252,.95)" : "rgba(192,132,252,.38)"; ctx.lineWidth = selected ? 1.5 : 1; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(point.x, point.y); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = targetSurface(object) ? "#4e9cff" : "#10161c"; ctx.strokeStyle = "#c084fc"; ctx.lineWidth = selected ? 2.5 : 1.5; ctx.beginPath(); ctx.arc(point.x, point.y, selected ? 7 : 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(point.x - 10, point.y); ctx.lineTo(point.x + 10, point.y); ctx.moveTo(point.x, point.y - 10); ctx.lineTo(point.x, point.y + 10); ctx.stroke(); ctx.restore();
   }
   function rotateHandleGeometry(object, frame) {
-    const rotatable = PLANAR_TYPES.has(object.type) || ["projector", "camera", "dmxLight"].includes(object.type);
+    const rotatable = PLANAR_TYPES.has(object.type) || ["camera", "dmxLight"].includes(object.type);
     if (!rotatable) return null;
     const centre = toScreen(object.transform.position.x, object.transform.position.z, frame);
-    const angle = object.type === "projector" && object.lookAt ? Math.atan2(object.lookAt.x - object.transform.position.x, object.lookAt.z - object.transform.position.z) : finite(object.transform.rotation.y) * Math.PI / 180;
+    const angle = finite(object.transform.rotation.y) * Math.PI / 180;
     const radius = PLANAR_TYPES.has(object.type) ? object.geometry.width * frame.scale / 2 : Math.max(12, (typeConfig[object.type].radius || .3) * frame.scale * 1.8);
     const corner = { x: radius, y: 0 }; const handle = { x: radius + 17, y: -17 };
     const transform = point => ({ x: centre.x + Math.cos(angle) * point.x - Math.sin(angle) * point.y, y: centre.y + Math.sin(angle) * point.x + Math.cos(angle) * point.y });
@@ -473,7 +476,16 @@
 
   document.querySelector("#clear-scene-button").addEventListener("click", clearPlannerScene); document.querySelector("#json-button").addEventListener("click", exportSceneJson); document.querySelector("#live-log-button").addEventListener("click", () => { renderLiveLog(); document.querySelector("#live-log-panel").open = true; }); document.querySelector("#objects-toggle").addEventListener("click", () => { const rail = document.querySelector("#object-rail"); rail.hidden = !rail.hidden; document.querySelector("#objects-toggle").setAttribute("aria-expanded", String(!rail.hidden)); }); document.querySelector("#live-toggle").addEventListener("change", async event => { const toggle = event.target; if (STANDALONE_PREVIEW) { toggle.checked = false; toggle.disabled = true; document.querySelector("#adapter-status").textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; return; } if (!toggle.checked) { stopLive(); document.querySelector("#adapter-status").textContent = "LIVE off"; return; } toggle.disabled = true; try { await startLive(); } catch (error) { state.liveEnabled = false; toggle.checked = false; persist(false); document.querySelector("#adapter-status").textContent = `LIVE unavailable · ${error.message || error}`; } finally { toggle.disabled = false; renderStatus(); } });
   document.querySelector("#undo-button").addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button").addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in").addEventListener("click", () => { state.zoom = clamp(state.zoom + .15, .5, 2); drawScene(); }); document.querySelector("#zoom-out").addEventListener("click", () => { state.zoom = clamp(state.zoom - .15, .5, 2); drawScene(); });
-  window.addEventListener("keydown", event => { const modifier = event.ctrlKey || event.metaKey; if (!modifier || event.altKey) return; const target = event.target; if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return; if (event.key.toLowerCase() === "c") { if (copySelectedObjects()) event.preventDefault(); } else if (event.key.toLowerCase() === "v") { if (pasteCopiedObjects()) event.preventDefault(); } });
+  window.addEventListener("keydown", event => {
+    modifierState.ctrl = event.ctrlKey || event.metaKey || modifierState.ctrl;
+    modifierState.shift = event.shiftKey || modifierState.shift;
+    const modifier = event.ctrlKey || event.metaKey; if (!modifier || event.altKey) return;
+    const target = event.target; if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+    const key = event.code === "KeyC" ? "c" : event.code === "KeyV" ? "v" : event.key.toLowerCase();
+    if (key === "c") { if (copySelectedObjects()) event.preventDefault(); }
+    else if (key === "v") { if (pasteCopiedObjects()) event.preventDefault(); }
+  });
+  window.addEventListener("keyup", event => { if (!event.ctrlKey && !event.metaKey) modifierState.ctrl = false; if (!event.shiftKey) modifierState.shift = false; });
   document.querySelector("#align-x").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.x = 0; persist(); render(); }); document.querySelector("#align-z").addEventListener("click", () => { const object = selectedObject(); if (!object) return; saveHistory(); object.transform.position.z = 0; persist(); render(); });
   canvas.addEventListener("pointerdown", event => {
     if (event.button !== 0) return;
@@ -498,18 +510,20 @@
     else if (state.selectedIds.size > 1 && state.selectedIds.has(object.id)) state.selectedId = object.id;
     else selectObject(object);
     if (!object) return;
-    if (rotateOwner) state.dragging = { kind: "rotate", id: object.id };
+    if (rotateOwner) {
+      const geometry = rotateHandleGeometry(object, sizing(false));
+      const pointerAngle = geometry ? Math.atan2(event.clientX - rect.left - geometry.centre.x, geometry.centre.y - (event.clientY - rect.top)) * 180 / Math.PI : finite(object.transform.rotation.y);
+      state.dragging = { kind: "rotate", id: object.id, pending: true, startClientX: event.clientX, startClientY: event.clientY, startPointerAngle: pointerAngle, startYaw: finite(object.transform.rotation.y) };
+    }
     else if (targetOwner) {
       const target = effectiveLookAt(object);
-      delete object.targetSurfacePluginId;
-      object.lookAt = target;
-      state.dragging = { kind: "lookAt", id: object.id, offsetX: target.x - point.x, offsetZ: target.z - point.z };
+      state.dragging = { kind: "lookAt", id: object.id, pending: true, startClientX: event.clientX, startClientY: event.clientY, offsetX: target.x - point.x, offsetZ: target.z - point.z };
     } else if (state.selectedIds.size > 1 && state.selectedIds.has(object.id)) {
       state.dragging = {
         kind: "group", id: object.id, pending: true, ctrlKey: false, startPoint: point, startClientX: event.clientX, startClientY: event.clientY,
         positions: state.objects.filter(item => state.selectedIds.has(item.id)).map(item => ({ id: item.id, x: item.transform.position.x, z: item.transform.position.z }))
       };
-    } else state.dragging = { kind: "object", id: object.id, pending: true, ctrlKey: event.ctrlKey, startPoint: point, startClientX: event.clientX, startClientY: event.clientY, offsetX: object.transform.position.x - point.x, offsetZ: object.transform.position.z - point.z };
+    } else state.dragging = { kind: "object", id: object.id, pending: true, ctrlKey: event.ctrlKey || modifierState.ctrl, startPoint: point, startClientX: event.clientX, startClientY: event.clientY, offsetX: object.transform.position.x - point.x, offsetZ: object.transform.position.z - point.z };
     canvas.setPointerCapture?.(event.pointerId);
     render();
   });
@@ -529,7 +543,7 @@
       if (distance < 4) return;
       state.dragging.pending = false;
       saveHistory();
-      if (state.dragging.kind === "object" && state.dragging.ctrlKey) {
+      if (state.dragging.kind === "object" && (state.dragging.ctrlKey || modifierState.ctrl || event.ctrlKey || event.metaKey)) {
         const source = state.objects.find(item => item.id === state.dragging.id);
         const copy = source && duplicateObject(source.id, null, { offset: false, history: false, persist: false, render: false });
         if (!copy) return;
@@ -540,7 +554,13 @@
     }
     const object = state.objects.find(item => item.id === state.dragging.id);
     if (!object) return;
-    if (state.dragging.kind === "rotate") { const geometry = rotateHandleGeometry(object, sizing(false)); if (!geometry) return; const yaw = normalizeYaw(Math.atan2(event.clientX - rect.left - geometry.centre.x, geometry.centre.y - (event.clientY - rect.top)) * 180 / Math.PI); if (object.type === "projector") { const target = effectiveLookAt(object); const distance = Math.max(.5, Math.hypot(target.x - object.transform.position.x, target.z - object.transform.position.z)); object.lookAt.x = Number((object.transform.position.x + Math.sin(yaw * Math.PI / 180) * distance).toFixed(3)); object.lookAt.z = Number((object.transform.position.z + Math.cos(yaw * Math.PI / 180) * distance).toFixed(3)); delete object.targetSurfacePluginId; } else object.transform.rotation.y = yaw; drawScene(); refreshActiveValues(); return; }
+    if (state.dragging.kind === "rotate") {
+      const geometry = rotateHandleGeometry(object, sizing(false)); if (!geometry) return;
+      const pointerAngle = Math.atan2(event.clientX - rect.left - geometry.centre.x, geometry.centre.y - (event.clientY - rect.top)) * 180 / Math.PI;
+      object.transform.rotation.y = normalizeYaw(state.dragging.startYaw + normalizeYaw(pointerAngle - state.dragging.startPointerAngle));
+      drawScene(); refreshActiveValues(); return;
+    }
+    if (state.dragging.kind === "lookAt" && !state.dragging.started) { delete object.targetSurfacePluginId; object.lookAt = effectiveLookAt(object); state.dragging.started = true; }
     const bounds = stageBounds();
     state.guides = [];
     if (state.dragging.kind === "group") {
@@ -556,10 +576,13 @@
       const dx = clamp(targetX - primaryStart.x, minDx, maxDx);
       const dz = clamp(targetZ - primaryStart.z, minDz, maxDz);
       state.dragging.positions.forEach(position => { const item = state.objects.find(candidate => candidate.id === position.id); if (item) { item.transform.position.x = Number((position.x + dx).toFixed(3)); item.transform.position.z = Number((position.z + dz).toFixed(3)); } });
+    } else if (state.dragging.kind === "lookAt") {
+      object.lookAt.x = Number((point.x + state.dragging.offsetX).toFixed(3));
+      object.lookAt.z = Number((point.z + state.dragging.offsetZ).toFixed(3));
     } else {
       const x = Number(clamp(snapCoordinate("x", point.x + state.dragging.offsetX, object), bounds.minX, bounds.maxX).toFixed(3));
       const z = Number(clamp(snapCoordinate("z", point.z + state.dragging.offsetZ, object), bounds.minZ, bounds.maxZ).toFixed(3));
-      if (state.dragging.kind === "lookAt") { object.lookAt.x = x; object.lookAt.z = z; } else { object.transform.position.x = x; object.transform.position.z = z; }
+      object.transform.position.x = x; object.transform.position.z = z;
     }
     drawScene();
     refreshActiveValues();

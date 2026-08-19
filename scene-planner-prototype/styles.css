@@ -89,8 +89,8 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .object-icon.icon-camera::after { left: 6px; top: 1px; width: 4px; height: 4px; border: 1px solid currentColor; border-radius: 50%; }
 .object-icon.icon-projector::before { left: 3px; top: 3px; width: 10px; height: 10px; border: 1px solid currentColor; border-radius: 50%; }
 .object-icon.icon-projector::after { left: 7px; top: 0; width: 2px; height: 16px; background: currentColor; transform: rotate(45deg); transform-origin: center; opacity: .7; }
-.object-icon.icon-dmxlight::before { left: 2px; top: 2px; width: 12px; height: 12px; border: 1px solid currentColor; border-radius: 50%; }
-.object-icon.icon-dmxlight::after { left: 6px; top: 1px; width: 4px; height: 4px; border: 1px solid currentColor; border-radius: 50%; }
+.object-icon.icon-dmxlight::before { left: 2px; top: 2px; width: 12px; height: 12px; border: 1px solid currentColor; border-radius: 1px; }
+.object-icon.icon-dmxlight::after { left: 6px; top: 1px; width: 4px; height: 4px; border: 1px solid currentColor; border-radius: 1px; }
 .object-icon.icon-screen::before, .object-icon.icon-dmxscreen::before, .object-icon.icon-surface::before { left: 1px; top: 5px; width: 14px; height: 6px; border: 1px solid currentColor; border-radius: 1px; }
 .object-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .legend { padding: 11px 14px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr; gap: 7px 9px; color: #778491; font-size: 9px; }
