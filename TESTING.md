@@ -64,6 +64,19 @@ Both calls must succeed. Proxy software must bypass localhost, the Director host
 
 ## LIVE/WebSocket Smoke
 
+### Correlating Designer errors
+
+The `LIVE log` button opens a combined diagnostics stream. It includes local Planner actions (`create`, `duplicate`, `delete`), Python API request/response/error records with an `opId`, and Live Update WebSocket messages sorted by timestamp.
+
+For an intermittent Designer error:
+
+1. Open `LIVE log` and clear the existing entries by reloading the plugin window.
+2. Perform one action only: add a DMX device, duplicate a projector, or delete one object.
+3. Note the Designer error timestamp and find the nearest preceding `request`/`response` or `error` entry with the same UID/path.
+4. Repeat the same action once more if the first run is clean; do not combine duplicate, rename, and delete in one trial.
+
+This distinguishes a Planner/API operation from a later asynchronous Stage notification and avoids relying on the order in which Designer's Preferences UI happens to refresh.
+
 1. Open the plugin with a valid `?director=<host>` and enable LIVE. Confirm connection to `ws://<director>/api/session/liveupdate`.
 2. Confirm initial subscriptions complete before any `set` is sent.
 3. Move one mapped object in Planner; only changed writable scalar fields are sent. `object.description` may be subscribed for readback but must never appear in a `set` payload.

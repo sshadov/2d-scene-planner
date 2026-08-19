@@ -33,6 +33,8 @@
   let liveSocketGeneration = 0;
   const liveLogEntries = [];
   const LIVE_LOG_LIMIT = 300;
+  const operationLogEntries = [];
+  const OPERATION_LOG_LIMIT = 500;
   // Live Update returns Designer float32 values; this absorbs representation
   // noise without hiding a real measurement change.
   const LIVE_FLOAT_EPSILON = 1e-5;
@@ -42,6 +44,27 @@
     liveLogEntries.push(entry); if (liveLogEntries.length > LIVE_LOG_LIMIT) liveLogEntries.shift();
     if (event === "error" || event === "close") console.error("[ScenePlanner LIVE]", entry);
     else console.info("[ScenePlanner LIVE]", entry);
+  }
+
+  function operationLog(event, details = {}) {
+    const entry = { at: new Date().toISOString(), event, ...details };
+    operationLogEntries.push(entry);
+    if (operationLogEntries.length > OPERATION_LOG_LIMIT) operationLogEntries.shift();
+    if (event === "error") console.error("[ScenePlanner API]", entry);
+  }
+
+  function makeOperationId(action, payload = {}) {
+    const suffix = payload.pluginId || payload.designerId || payload.path || "session";
+    return `${Date.now()}-${String(action || "operation")}-${String(suffix).replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  }
+
+  function operationResultSummary(value) {
+    if (!value || typeof value !== "object") return { value: String(value ?? "").slice(0, 200) };
+    const summary = {};
+    ["designerId", "path", "name", "deleted", "skipped", "readback", "stageId"].forEach(key => {
+      if (value[key] !== undefined) summary[key] = value[key];
+    });
+    return summary;
   }
 
   function liveValuesEqual(left, right) {
@@ -70,16 +93,27 @@
     try { return await fetch(url, { ...options, signal: controller.signal }); }
     finally { clearTimeout(timer); }
   }
-  async function execute(script) {
-    let response;
-    try { response = await fetchWithTimeout(`${API_ORIGIN}${EXECUTE_PATH}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script }) }); }
-    catch (error) { throw new Error(`Нет соединения с Designer API по адресу ${API_ORIGIN}. Проверьте, что Designer запущен, а v2rayN обходит localhost. ${error.message || error}`); }
-    const responseText = await response.text();
-    if (!response.ok) throw new Error(`Designer API HTTP ${response.status}: ${responseText.slice(0, 800) || "пустой ответ"}`);
-    let body;
-    try { body = JSON.parse(responseText); } catch { throw new Error(`Designer API вернул не-JSON ответ: ${responseText.slice(0, 800)}`); }
-    if (body.status && body.status.code !== 0) throw new Error(body.status.message || "Designer отклонил Python-команду");
-    return parseReturnValue(body.returnValue);
+  async function execute(script, meta = {}) {
+    const startedAt = Date.now();
+    const opId = meta.opId || makeOperationId(meta.action || "execute", meta);
+    const identifiers = { opId, action: meta.action || "execute", type: meta.type || null, pluginId: meta.pluginId || null, designerId: meta.designerId || null, path: meta.path || null, scriptLength: String(script || "").length };
+    operationLog("request", identifiers);
+    try {
+      let response;
+      try { response = await fetchWithTimeout(`${API_ORIGIN}${EXECUTE_PATH}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ script }) }); }
+      catch (error) { throw new Error(`Нет соединения с Designer API по адресу ${API_ORIGIN}. Проверьте, что Designer запущен, а v2rayN обходит localhost. ${error.message || error}`); }
+      const responseText = await response.text();
+      if (!response.ok) throw new Error(`Designer API HTTP ${response.status}: ${responseText.slice(0, 800) || "пустой ответ"}`);
+      let body;
+      try { body = JSON.parse(responseText); } catch { throw new Error(`Designer API вернул не-JSON ответ: ${responseText.slice(0, 800)}`); }
+      if (body.status && body.status.code !== 0) throw new Error(body.status.message || "Designer отклонил Python-команду");
+      const result = parseReturnValue(body.returnValue);
+      operationLog("response", { ...identifiers, status: response.status, durationMs: Date.now() - startedAt, result: operationResultSummary(result) });
+      return result;
+    } catch (error) {
+      operationLog("error", { ...identifiers, durationMs: Date.now() - startedAt, message: error.message || String(error) });
+      throw error;
+    }
   }
   async function sessionStatus() { const response = await fetchWithTimeout(`${API_ORIGIN}${STATUS_PATH}`, {}, 2500); if (!response.ok) throw new Error(`Designer session status: HTTP ${response.status}`); return response.json(); }
   function environmentScript(environment) {
@@ -286,9 +320,7 @@ def rollback(created_paths, stage, attached, collection_name):
     rollback_paths = owned_resource_paths(attached, created_paths)
     if attached:
         try:
-            attached_id = str(getattr(attached, "uid", ""))
-            typed_collection = getattr(stage, collection_name)
-            setattr(stage, collection_name, [candidate for candidate in typed_collection if str(getattr(candidate, "uid", "")) != attached_id])
+            attached.remove()
         except Exception as error:
             errors.append("detach: " + str(error))`)
       .replace(`    try:
@@ -363,6 +395,7 @@ owned_paths = owned_resource_paths(obj, created_paths)`)
       .replace('        def assign(field, value):\n    try:\n        setattr(obj, field, value)\n    except Exception as error:\n        raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, object_path, error))', '        def assign(field, value):\n            try:\n                setattr(obj, field, value)\n            except Exception as error:\n                raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, object_path, error))')
       .replace('if getattr(obj, "config", None) is not config: raise RuntimeError("projector config reference was not retained")', 'retained_config = getattr(obj, "config", None)\n    if retained_config is None or str(getattr(retained_config, "path", "")) != config_path: raise RuntimeError("projector config reference was not retained")');
   }
+
   function updateScript(designerId, changed, designerPath, kind) {
     return `import json
 import re
@@ -557,17 +590,12 @@ for collection_name in ${quote(deleteCollectionNames)}:
             continue
         pending.append((candidate_id, resource_path, candidate, owned_resource_paths(candidate), collection_name))
 detached = []
-for collection_name in ${quote(deleteCollectionNames)}:
-    selected = [item for item in pending if item[4] == collection_name]
-    if not selected:
-        continue
-    selected_ids = set(item[0] for item in selected)
+for candidate_id, resource_path, candidate, owned_paths, collection_name in pending:
     try:
-        typed_collection = getattr(stage, collection_name)
-        setattr(stage, collection_name, [candidate for candidate in typed_collection if str(getattr(candidate, "uid", "")) not in selected_ids])
-        detached.extend(selected)
+        candidate.remove()
+        detached.append((candidate_id, resource_path, candidate, owned_paths, collection_name))
     except Exception as error:
-        skipped.append("detach " + collection_name + ": " + str(error))
+        skipped.append("detach " + candidate_id + ": " + str(error))
 stage_saved = True
 try:
     stage.save()
@@ -647,17 +675,12 @@ for collection_name in ${quote(deleteCollectionNames)}:
             continue
         pending.append((candidate_id, path, candidate, owned_resource_paths(candidate), collection_name))
 detached = []
-for collection_name in ${quote(deleteCollectionNames)}:
-    selected = [item for item in pending if item[4] == collection_name]
-    if not selected:
-        continue
-    selected_ids = set(item[0] for item in selected)
+for candidate_id, path, candidate, owned_paths, collection_name in pending:
     try:
-        typed_collection = getattr(stage, collection_name)
-        setattr(stage, collection_name, [candidate for candidate in typed_collection if str(getattr(candidate, "uid", "")) not in selected_ids])
-        detached.extend(selected)
+        candidate.remove()
+        detached.append((candidate_id, path, candidate, owned_paths, collection_name))
     except Exception as error:
-        skipped.append("detach " + collection_name + ": " + str(error))
+        skipped.append("detach " + candidate_id + ": " + str(error))
 stage_saved = True
 try:
     stage.save()
@@ -937,14 +960,14 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
   window.disguiseSceneAdapter = {
     capabilities: { liveUpdate: true, liveTransport: "websocket", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API + Live Update WebSocket", apiOrigin: API_ORIGIN, liveUrl: LIVE_URL, director: API_ORIGIN },
     sessionStatus,
-    syncEnvironment: environment => execute(environmentScript(environment)),
-    inspectScene: () => execute(inspectScript()),
-    createObject: payload => execute(createScript(payload)),
-    updateObject: (designerId, changed, designerPath, kind) => execute(updateScript(designerId, changed, designerPath, kind)),
-    projectorReadbackProbe: designerId => execute(projectorProbeScript(designerId)),
-    deleteObjects: designerIds => execute(deleteScript(designerIds)),
-    deleteDesignerObjects: designerIds => execute(deleteScript(designerIds)),
-    deleteManagedObjects: designerIds => execute(deleteManagedScript(designerIds)),
+    syncEnvironment: environment => execute(environmentScript(environment), { action: "sync-environment", type: "stage", path: "state.stage" }),
+    inspectScene: () => execute(inspectScript(), { action: "inspect-scene", type: "stage", path: "state.stage" }),
+    createObject: payload => execute(createScript(payload), { action: "create", type: payload.type, pluginId: payload.pluginId, path: resourcePath(payload) }),
+    updateObject: (designerId, changed, designerPath, kind) => execute(updateScript(designerId, changed, designerPath, kind), { action: "update", type: kind, designerId, path: designerPath }),
+    projectorReadbackProbe: designerId => execute(projectorProbeScript(designerId), { action: "projector-readback", type: "projector", designerId }),
+    deleteObjects: designerIds => execute(deleteScript(designerIds), { action: "delete", designerId: designerIds.map(item => item?.id || item).join(","), path: designerIds.map(item => item?.path).filter(Boolean).join(",") }),
+    deleteDesignerObjects: designerIds => execute(deleteScript(designerIds), { action: "delete-imported", designerId: designerIds.map(item => item?.id || item).join(","), path: designerIds.map(item => item?.path).filter(Boolean).join(",") }),
+    deleteManagedObjects: designerIds => execute(deleteManagedScript(designerIds), { action: "delete-managed", designerId: designerIds.map(item => item?.id || item).join(","), path: designerIds.map(item => item?.path).filter(Boolean).join(",") }),
     configureLiveScene,
     liveStart,
     liveStop,
@@ -967,6 +990,9 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
     }),
     getLiveLogs: () => liveLogEntries.slice(),
     clearLiveLogs: () => { liveLogEntries.length = 0; },
+    getOperationLogs: () => operationLogEntries.slice(),
+    clearOperationLogs: () => { operationLogEntries.length = 0; },
+    recordOperation: operationLog,
     debugScripts: { inspectScript, createScript, updateScript, projectorProbeScript, deleteScript, deleteManagedScript }
   };
 })();

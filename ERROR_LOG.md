@@ -493,3 +493,12 @@
 - Cause: `app.js` ownership validation referenced `typeResourceFolders`, a private constant defined only in `designer-adapter.js`. The resulting `ReferenceError` happened after resource creation but before the Planner stored the Designer UID and owned paths.
 - Fix: validate simple-device ownership with an app-local folder contract matching the adapter (`FixtureGroup` uses `objects/fixturegroup/`), then persist the creation record normally.
 - Regression test: `tests/scene-planner.test.cjs` executes DMX Light ownership validation with the real `FixtureGroup` and `DirectProjection` path shape and fails if cross-file globals are required.
+
+## ERR-053: Designer reported `Access to object of type 'ArrayBox' is not allowed`
+
+- Date: 2026-08-20
+- Symptom: `ProjectorEditor.handleStageDisplaysChanged` failed during `Stage::checkRemoveScreens` after a create, duplicate, or delete operation. The error could disappear after opening a device Preferences dialog because Designer rebuilt its editor state.
+- Cause: replacing a typed Stage collection such as `stage.projectors` with a normal Python list. Designer expects its `ArrayBox`-backed collection to remain intact; the next editor notification then received an unsupported container.
+- Fix: remove the exact object with `candidate.remove()`, save the Stage, and only then remove owned package resources. The adapter no longer assigns filtered Python lists to Stage collections.
+- Diagnostics: the `LIVE log` panel merges Planner actions, Python API requests/responses/errors, and WebSocket events by timestamp. Every API operation has an `opId` plus object UID/path/type, so a Designer console timestamp can be matched to the preceding operation.
+- Regression test: `tests/lifecycle-release.test.cjs` rejects collection replacement and requires `candidate.remove()` before `resourceManager.remove(path)`; `tests/scene-planner.test.cjs` requires Planner action logging.
