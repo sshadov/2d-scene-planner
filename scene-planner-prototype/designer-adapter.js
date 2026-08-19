@@ -410,8 +410,8 @@ for resource_path in target_paths:
     except Exception:
         pass
 for collection_name in ${quote(deleteCollectionNames)}:
-    typed_collection = collection_name
-    collection = getattr(stage, collection_name, [])
+    typed_collection = getattr(stage, collection_name, [])
+    collection = typed_collection
     for candidate in collection:
         try:
             candidate_id = str(getattr(candidate, "uid", ""))
@@ -493,8 +493,8 @@ for resource_path in target_paths:
     except Exception:
         pass
 for collection_name in ${quote(deleteCollectionNames)}:
-    typed_collection = collection_name
-    collection = getattr(stage, collection_name, [])
+    typed_collection = getattr(stage, collection_name, [])
+    collection = typed_collection
     for candidate in collection:
         try:
             candidate_id = str(getattr(candidate, "uid", ""))
