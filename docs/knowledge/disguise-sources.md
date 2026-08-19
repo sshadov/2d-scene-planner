@@ -105,6 +105,14 @@ Do not write body `offset`, body `rotation`, `configRotation`, or private `Proje
 
 ## Implications For This Plugin
 
+### Composite Stage Devices (verified in Designer 2026-08-19)
+
+`resourceManager.loadOrCreate(Path("objects/camera/name.apx"), Camera)` creates only a bare `Camera`. It is not equivalent to Designer's Add Camera operation. A healthy built-in camera has a child `PerspectiveProjectionObject` (`objects/perspectiveprojectionobject/name (perspective).apx`) whose `projection` points to a named `PerspectiveProjection` (`objects/camera/name (perspective).apx`); the camera also receives the normal mesh/render-settings and calibration resources. The public construction sequence tested against the installed Designer is `Camera()` + `PerspectiveProjection()` + `PerspectiveProjectionObject()` + `projectionObject.projection = projection` + `camera.add(projectionObject)`, followed by assigning paths, saving, and appending the camera to `stage.cameras`.
+
+`Projector` likewise owns a separate `ProjectorConfig` resource (`objects/projectorconfig/...`) and must not be treated as a standalone resource just because `loadOrCreate(..., Projector)` returns an object. Creating incomplete camera/projector graphs can leave objects absent from Designer's device list or crash native rendering. Until a complete public construction/duplication path is validated, automatic creation of these composite devices must be considered unsupported rather than falling back to a bare resource.
+
+When deleting any stage device, detach the exact object from its typed Stage collection/hierarchy first, save the parent Stage, and only then remove the named package resources. Removing the package file alone can leave a stale Stage reference.
+
 - Keep one official Live Update WebSocket and explicit binding state; do not add a second socket for optics.
 - Projector movement should change only the position binding. Designer remains the authority for the resulting Look At, rotation, and look distance.
 - Look At dragging should change only the Look At binding. The next Designer `valuesChanged` message supplies derived optical values.
