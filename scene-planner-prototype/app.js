@@ -49,6 +49,8 @@
   let projectorTargetPlacement = null;
   let pendingDesignerDeletes = new Set();
   let pendingDesignerCreates = new Map();
+  const configurationCommitQueues = new Map();
+  const configurationCommitVersions = new Map();
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -597,35 +599,58 @@
     pendingDesignerCreates.set(object.pluginId, operation);
     return operation;
   }
-  async function commitProjectorConfiguration(object) {
-    if (object?.type !== "projector") return null;
-    const surface = targetSurface(object);
-    if (surface && !state.sync.objects?.[surface.pluginId]?.designerId) {
-      const surfaceRecord = await createDesignerObject(surface);
-      if (!surfaceRecord?.designerId) return null;
-    }
-    const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
-    if (!record?.designerId || !adapter?.updateObject) return null;
+  function queueConfigurationCommit(object, execute) {
+    const key = object.pluginId; const version = (configurationCommitVersions.get(key) || 0) + 1;
+    configurationCommitVersions.set(key, version);
+    const isLatest = () => configurationCommitVersions.get(key) === version;
+    const previous = configurationCommitQueues.get(key);
+    let operation;
+    try { operation = previous ? previous.catch(() => null).then(() => execute(isLatest)) : execute(isLatest); }
+    catch (error) { operation = Promise.reject(error); }
+    let tracked;
+    tracked = Promise.resolve(operation).finally(() => { if (configurationCommitQueues.get(key) === tracked) configurationCommitQueues.delete(key); });
+    configurationCommitQueues.set(key, tracked);
+    return tracked;
+  }
+  function commitProjectorConfiguration(object) {
+    if (object?.type !== "projector") return Promise.resolve(null);
     const payload = objectPayload(object);
-    const changed = { transform: payload.transform, lookAt: payload.lookAt, optics: payload.optics, projectorRoll: payload.projectorRoll };
-    if (canonical(record.payload?.targetSurface) !== canonical(payload.targetSurface)) changed.targetSurface = payload.targetSurface;
-    try {
-      const result = await adapter.updateObject(record.designerId, changed, record.path, "projector");
-      validateReadback(payload, result);
-      const readback = result?.readback;
-      if (readback?.transform?.position) object.transform.position = vector(readback.transform.position);
-      if (readback?.lookAt) object.lookAt = vector(readback.lookAt);
-      if (readback?.optics) {
-        object.optics ||= {};
-        ["throwRatio", "fieldOfView", "lookDistance"].forEach(key => { if (Number.isFinite(Number(readback.optics[key]))) object.optics[key] = Number(readback.optics[key]); });
+    return queueConfigurationCommit(object, async isLatest => {
+      if (payload.targetSurface) {
+        const surface = state.objects.find(candidate => candidate.type === "surface" && candidate.pluginId === payload.targetSurface.pluginId);
+        if (surface && !state.sync.objects?.[surface.pluginId]?.designerId) {
+          const surfaceRecord = await createDesignerObject(surface);
+          if (!surfaceRecord?.designerId) return null;
+        }
+        const surfaceRecord = surface ? state.sync.objects?.[surface.pluginId] : null;
+        payload.targetSurface = surfaceRecord?.designerId ? { ...payload.targetSurface, designerId: surfaceRecord.designerId, path: surfaceRecord.path } : null;
       }
-      record.payload = objectPayload(object); record.lastExported = canonical(record.payload); record.readbackValid = true;
-      if (result?.path) record.path = result.path;
-      delete state.sync.errors[object.pluginId]; persist(false); renderStatus(); return result;
-    } catch (error) {
-      state.sync.errors[object.pluginId] = `Projector update failed: ${error.message || error}`; persist(false); renderStatus();
-      document.querySelector("#adapter-status").textContent = `Projector update failed · ${error.message || error}`; return null;
-    }
+      const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
+      if (!record?.designerId || !adapter?.updateObject) return null;
+      const changed = { transform: payload.transform, lookAt: payload.lookAt, optics: payload.optics, projectorRoll: payload.projectorRoll };
+      if (canonical(record.payload?.targetSurface) !== canonical(payload.targetSurface)) changed.targetSurface = payload.targetSurface;
+      try {
+        const result = await adapter.updateObject(record.designerId, changed, record.path, "projector");
+        validateReadback(payload, result);
+        if (!isLatest()) return null;
+        const readback = result?.readback;
+        if (readback?.transform?.position) object.transform.position = vector(readback.transform.position);
+        if (readback?.lookAt) object.lookAt = vector(readback.lookAt);
+        if (readback?.optics) {
+          object.optics ||= {};
+          ["throwRatio", "fieldOfView", "lookDistance"].forEach(key => { if (Number.isFinite(Number(readback.optics[key]))) object.optics[key] = Number(readback.optics[key]); });
+        }
+        record.payload = objectPayload(object); record.lastExported = canonical(record.payload); record.readbackValid = true;
+        if (result?.path) record.path = result.path;
+        delete state.sync.errors[object.pluginId]; persist(false); renderStatus(); return result;
+      } catch (error) {
+        if (isLatest()) {
+          state.sync.errors[object.pluginId] = `Projector update failed: ${error.message || error}`; persist(false); renderStatus();
+          document.querySelector("#adapter-status").textContent = `Projector update failed · ${error.message || error}`;
+        }
+        return null;
+      }
+    });
   }
   function projectorsAffectedBy(objects) {
     const affected = new Set();
@@ -636,29 +661,36 @@
     return [...affected];
   }
   function commitAffectedProjectors(objects) { return Promise.all(projectorsAffectedBy(objects).map(commitProjectorConfiguration)); }
-  async function commitSurfaceConfiguration(object) {
-    if (object?.type !== "surface") return null;
-    const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
-    if (!record?.designerId || !adapter?.updateObject) return null;
-    const payload = objectPayload(object); const changed = { transform: payload.transform, geometry: payload.geometry };
-    try {
-      const result = await adapter.updateObject(record.designerId, changed, record.path, "surface");
-      validateReadback(payload, result);
-      const readback = result?.readback;
-      if (readback?.transform?.position) object.transform.position = vector(readback.transform.position);
-      if (Number.isFinite(Number(readback?.transform?.rotation?.y))) object.transform.rotation.y = Number(readback.transform.rotation.y);
-      if (readback?.geometry) {
-        if (Number.isFinite(Number(readback.geometry.width))) object.geometry.width = Number(readback.geometry.width);
-        if (Number.isFinite(Number(readback.geometry.height))) object.geometry.height = Number(readback.geometry.height);
+  function commitSurfaceConfiguration(object) {
+    if (object?.type !== "surface") return Promise.resolve(null);
+    const payload = objectPayload(object);
+    return queueConfigurationCommit(object, async isLatest => {
+      const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
+      if (!record?.designerId || !adapter?.updateObject) return null;
+      const changed = { transform: payload.transform, geometry: payload.geometry };
+      try {
+        const result = await adapter.updateObject(record.designerId, changed, record.path, "surface");
+        validateReadback(payload, result);
+        if (!isLatest()) return null;
+        const readback = result?.readback;
+        if (readback?.transform?.position) object.transform.position = vector(readback.transform.position);
+        if (Number.isFinite(Number(readback?.transform?.rotation?.y))) object.transform.rotation.y = Number(readback.transform.rotation.y);
+        if (readback?.geometry) {
+          if (Number.isFinite(Number(readback.geometry.width))) object.geometry.width = Number(readback.geometry.width);
+          if (Number.isFinite(Number(readback.geometry.height))) object.geometry.height = Number(readback.geometry.height);
+        }
+        recalculateSurfaceProjectors(object);
+        record.payload = objectPayload(object); record.lastExported = canonical(record.payload); record.readbackValid = true;
+        if (result?.path) record.path = result.path;
+        delete state.sync.errors[object.pluginId]; persist(false); renderStatus(); return result;
+      } catch (error) {
+        if (isLatest()) {
+          state.sync.errors[object.pluginId] = `Surface update failed: ${error.message || error}`; persist(false); renderStatus();
+          document.querySelector("#adapter-status").textContent = `Surface update failed · ${error.message || error}`;
+        }
+        return null;
       }
-      recalculateSurfaceProjectors(object);
-      record.payload = objectPayload(object); record.lastExported = canonical(record.payload); record.readbackValid = true;
-      if (result?.path) record.path = result.path;
-      delete state.sync.errors[object.pluginId]; persist(false); renderStatus(); return result;
-    } catch (error) {
-      state.sync.errors[object.pluginId] = `Surface update failed: ${error.message || error}`; persist(false); renderStatus();
-      document.querySelector("#adapter-status").textContent = `Surface update failed · ${error.message || error}`; return null;
-    }
+    });
   }
   async function commitFieldChange(object, path) {
     if (!object || !path) return Promise.resolve([]);

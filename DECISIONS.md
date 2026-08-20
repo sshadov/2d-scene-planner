@@ -9,6 +9,8 @@ The Planner calculates provisional projector geometry locally so it remains usef
 
 LIVE carries only confirmed simple properties: `configPosition`, `configLookAt`, `configLookDistance`, `configThrowRatio`, and read-only `fieldOfView`. It never writes `configRotation` or the complex `screens` collection. A drag updates only its direct LIVE property while locally derived optics remain preview state. After a completed drag, numeric commit, Surface geometry change, or binding change, one Python operation writes Position, Look At, Look Distance, Throw Ratio, Surface binding, then final `configRotation.z`; it preserves `configRotation.x/y`, forces `.z` to `0°` or `90°`, saves Projector and Stage, and returns authoritative readback. This narrow final roll is the only permitted `configRotation` write and supersedes ADR-010's blanket prohibition.
 
+Final Python commits are serialized per Planner `pluginId`. Each edit captures its own payload, and only the latest queued version may apply readback or status to Planner state. This prevents delayed responses from overwriting newer user input; stale Surface commits also do not trigger dependent Projector finalization.
+
 ## ADR-016: Guided dimension entry and confirmed LIVE baseline
 
 - Date: 2026-08-18
