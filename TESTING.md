@@ -93,13 +93,13 @@ Use disposable resources only.
 
 1. Repeat create/update with the same planner object and verify no duplicate Designer resource appears after retry/timeout.
 2. Rename through Planner and confirm the adapter calls `Resource.rename(Path(...))`, updates the stored path, and does not write `Resource.description`.
-3. Delete a selected managed/default resource and confirm the Stage reference disappears first while the Device/Resource list entry remains by default. Repeat with `Also delete from Device list` checked and confirm `saveOnDelete()` plus `resourceManager.remove(path)` remove only the owned package resources.
+3. Delete a selected managed/default resource and confirm the Stage reference disappears first while the Device/Resource list entry remains by default. Repeat with `Delete from Device list` checked and confirm `saveOnDelete()` plus `resourceManager.remove(path)` remove only the owned package resources.
 4. Create an object whose requested name already exists in the Resource list; confirm the next numeric name is used and shown in the Planner.
 5. Rename an object to an existing Resource list name; confirm the rename is rejected, the Planner name is restored, and the error identifies the Designer Resource list.
 6. A deleted mapped object must not be recreated automatically by the next inspection or LIVE event.
 7. Imported/manual Designer objects are physically removed only through the explicit `Delete from Designer?` confirmation. Confirm the request uses the exact selected UID/path and removes the typed Stage reference before discovered dependencies.
 8. Startup inspection deduplicates typed collections and technical `stage.children` entries by UID and ignores internal helpers, MR Sets, and Skeletons.
-9. Delete an imported object once, wait for LIVE reconciliation, and confirm its UID is absent from every typed Stage collection and does not reappear in Planner. The imported warning is shown in the same Delete dialog; selecting `Don't show this imported-object warning again` suppresses only that note.
+9. Delete an imported object once, wait for LIVE reconciliation, and confirm its UID is absent from every typed Stage collection and does not reappear in Planner. The Delete dialog shows a separate `Imported from Designer` line above the unchanged `Delete object?` prompt.
 
 ### Composite Device Smoke
 

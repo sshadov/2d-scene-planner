@@ -509,6 +509,13 @@
 - Symptom: an object disappeared from the 3D view, then returned after the next Planner action; Designer marked the Stage entry as bad and later creates produced duplicate names.
 - Cause: `Object.remove()` alone does not persistently remove top-level equipment from Designer's typed Stage list in the installed build. The old generic collection assignment also triggered the `ArrayBox` editor error.
 - Fix: collect the exact UID, assign the filtered list through the explicit typed property (`stage.projectors`, `stage.cameras`, `stage.dmxLights`, etc.), call `candidate.remove()`, save Stage, and read back all typed collections plus `stage.children`. Planner confirms deletion only when the UID is absent.
-- Resource policy: normal Delete leaves the Device/Resource list entry. The confirmation dialog has one optional `Also delete from Device list` checkbox; only when checked are `saveOnDelete()` and `resourceManager.remove()` executed for owned resources.
+- Resource policy: normal Delete leaves the Device/Resource list entry. The confirmation dialog has one optional `Delete from Device list` checkbox; only when checked are `saveOnDelete()` and `resourceManager.remove()` executed for owned resources.
 - Name policy: creation checks names in the matching typed Stage list. `Projector 1` and `Screen 1` are independent; a duplicate projector becomes `Projector 2` before resource creation.
 - Reconciliation: successful deletes store a UID/path tombstone so startup and LIVE scene imports do not recreate the removed object.
+
+## ERR-055: Designer rejected diagnostics download
+
+- Date: 2026-08-20
+- Symptom: `Export diagnostics` failed with `Attempt to download unknown file type .json`.
+- Cause: the embedded Designer plugin window does not accept `.json` as a downloadable file type.
+- Fix: diagnostics retain JSON-formatted content but download as a `text/plain` `.txt` file.
