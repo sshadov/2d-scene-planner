@@ -71,7 +71,7 @@
     const yaw = finite(rotation?.y); return { x: position.x + Math.sin(yaw * Math.PI / 180), y: position.y, z: position.z + Math.cos(yaw * Math.PI / 180) };
   }
   function formatValue(value, step = .1) { let numeric = finite(value); if (Math.abs(numeric) < .0000005) numeric = 0; if (Number.isInteger(numeric)) return String(numeric); const digits = step >= 1 ? 0 : step >= .1 ? 1 : 2; return numeric.toFixed(digits).replace(".", ","); }
-  function modelSnapshot() { return { version: VERSION, stage: state.stage, objects: state.objects, sync: state.sync, preferences: state.preferences, liveEnabled: state.liveEnabled, lastHeights: state.lastHeights }; }
+  function modelSnapshot() { return { version: VERSION, stage: state.stage, objects: state.objects, sync: state.sync, liveEnabled: state.liveEnabled, lastHeights: state.lastHeights }; }
   function snapshot() { return JSON.stringify(modelSnapshot()); }
   function persist(schedule = true) { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...modelSnapshot(), nextId })); if (schedule) scheduleLiveSync(); }
   function saveHistory() { state.history.push(snapshot()); if (state.history.length > 40) state.history.shift(); state.future = []; }
@@ -547,7 +547,8 @@
   }
   function diagnosticsLogs() { const adapter = getAdapter(); return [...(adapter?.getOperationLogs?.() || []), ...(adapter?.getLiveLogs?.() || [])].sort((left, right) => String(left.at || "").localeCompare(String(right.at || ""))); }
   function renderLiveLog() { const output = document.querySelector("#live-log-output"); const logs = diagnosticsLogs(); if (output) output.textContent = logs.length ? logs.map(entry => JSON.stringify(entry)).join("\n") : "No diagnostics events yet."; }
-  function exportDiagnostics() { const blob = new Blob([JSON.stringify(diagnosticsLogs(), null, 2)], { type: "text/plain" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = `disguise-scene-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`; link.click(); URL.revokeObjectURL(url); }
+  function downloadBlob(blob, filename) { const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = filename; link.style.display = "none"; document.body.appendChild(link); link.click(); link.parentNode?.removeChild(link); setTimeout(() => URL.revokeObjectURL(url), 0); }
+  function exportDiagnostics() { downloadBlob(new Blob([JSON.stringify(diagnosticsLogs(), null, 2)], { type: "text/plain" }), `disguise-scene-diagnostics-${new Date().toISOString().replace(/[:.]/g, "-")}.txt`); }
   function liveStatus(update) {
     const status = document.querySelector("#adapter-status");
     if (!update) return;
@@ -598,9 +599,22 @@
   async function ensureLiveObjects(adapter) {
     const records = state.sync.objects || {};
     const supported = new Set(["screen", "dmxScreen", "surface", "dmxLight", "projector", "camera"]);
+    const hasInspection = typeof adapter.inspectScene === "function";
+    const inspection = hasInspection ? await adapter.inspectScene() : null;
+    const inspected = inspection?.objects || [];
+    const present = record => inspected.some(item => String(item.id || item.uid || "") === String(record.designerId || "") || String(item.path || "") === String(record.path || ""));
     for (const object of state.objects) {
       if (!supported.has(object.type)) continue;
-      const existing = records[object.pluginId];
+      let existing = records[object.pluginId];
+      // Undo can restore a local snapshot after Designer has already removed
+      // the old resource. Recreate owned objects instead of updating a dead UID.
+      if (hasInspection && existing?.designerId && existing.owned && !present(existing)) {
+        delete existing.designerId;
+        delete existing.path;
+        existing.ownedPaths = [];
+        existing.lastExported = null;
+        existing.readbackValid = false;
+      }
       const payload = objectPayload(object);
       if (existing?.designerId) {
         if (existing.readbackValid === false) {
@@ -694,7 +708,7 @@
     state.sync.objects = { ...(options.preserveLocal ? state.sync.objects : {}), ...importedRecords };
     state.sync.environment = environmentKey(); state.sync.lastSyncAt = new Date().toISOString(); persist(false); render();
   }
-  function exportSceneJson() { const output = { version: VERSION, units: "metres", coordinateSystem: "Designer world XYZ; top view X/Z; Stage centred at world origin", stage: state.stage, objects: state.objects.map(({ id, ...object }) => object.type === "projector" ? { ...object, lookAt: effectiveLookAt(object) } : object) }; const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = url; link.download = "disguise-stage-plan.json"; link.click(); URL.revokeObjectURL(url); }
+  function exportSceneJson() { const output = { version: VERSION, units: "metres", coordinateSystem: "Designer world XYZ; top view X/Z; Stage centred at world origin", stage: state.stage, objects: state.objects.map(({ id, ...object }) => object.type === "projector" ? { ...object, lookAt: effectiveLookAt(object) } : object) }; downloadBlob(new Blob([JSON.stringify(output, null, 2)], { type: "application/json" }), "disguise-stage-plan.json"); }
 
   document.querySelector("#json-button")?.addEventListener("click", exportSceneJson); document.querySelector("#live-log-button")?.addEventListener("click", () => { renderLiveLog(); document.querySelector("#live-log-panel").open = true; }); document.querySelector("#diagnostics-export-button")?.addEventListener("click", exportDiagnostics); document.querySelector("#live-toggle")?.addEventListener("change", async event => { const toggle = event.target; if (STANDALONE_PREVIEW) { toggle.checked = false; toggle.disabled = true; document.querySelector("#adapter-status").textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; return; } if (!toggle.checked) { stopLive(); document.querySelector("#adapter-status").textContent = "LIVE off"; return; } toggle.disabled = true; try { await startLive(); } catch (error) { state.liveEnabled = false; toggle.checked = false; persist(false); document.querySelector("#adapter-status").textContent = `LIVE unavailable · ${error.message || error}`; } finally { toggle.disabled = false; renderStatus(); } });
   document.querySelector("#undo-button")?.addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button")?.addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in")?.addEventListener("click", () => { state.zoom = clamp(state.zoom + .1, ZOOM_MIN, ZOOM_MAX); drawScene(); }); document.querySelector("#zoom-out")?.addEventListener("click", () => { state.zoom = clamp(state.zoom - .1, ZOOM_MIN, ZOOM_MAX); drawScene(); });

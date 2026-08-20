@@ -100,6 +100,7 @@ Use disposable resources only.
 7. Imported/manual Designer objects are physically removed only through the explicit `Delete from Designer?` confirmation. Confirm the request uses the exact selected UID/path and removes the typed Stage reference before discovered dependencies.
 8. Startup inspection deduplicates typed collections and technical `stage.children` entries by UID and ignores internal helpers, MR Sets, and Skeletons.
 9. Delete an imported object once, wait for LIVE reconciliation, and confirm its UID is absent from every typed Stage collection and does not reappear in Planner. The Delete dialog shows a separate `Imported from Designer` line above the unchanged `Delete object?` prompt.
+10. Delete a Planner-owned object, press Planner Undo, and confirm LIVE recreates it in Designer when its old UID/path is absent.
 
 ### Composite Device Smoke
 

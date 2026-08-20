@@ -519,3 +519,10 @@
 - Symptom: `Export diagnostics` failed with `Attempt to download unknown file type .json`.
 - Cause: the embedded Designer plugin window does not accept `.json` as a downloadable file type.
 - Fix: diagnostics retain JSON-formatted content but download as a `text/plain` `.txt` file.
+
+## ERR-056: Planner Undo restored only the local object
+
+- Date: 2026-08-20
+- Symptom: after deleting an object in Planner, Undo restored it in Planner but it did not return to Designer. The reverse operation, Designer `Ctrl+Z`, was visible to Planner.
+- Cause: Planner history restored the old `designerId` even though the corresponding Designer resource had already been deleted. LIVE then attempted an update against a dead UID.
+- Fix: before LIVE synchronization, inspect the current Designer scene. If an owned record points to a missing UID/path, clear the stale mapping and create a new Designer resource from the restored Planner object.
