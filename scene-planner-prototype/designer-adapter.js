@@ -274,11 +274,39 @@ floor_y = float(floor.y) if floor is not None else 0.0
 floor_size = getattr(stage, "floor_size", None)
 return json.dumps({"objects": objects, "stageId": str(getattr(stage, "uid", "")), "floorY": floor_y, "floorPosition": vec_data(floor) if floor is not None else {"x": 0.0, "y": 0.0, "z": 0.0}, "stageFootprint": {"width": float(floor_size.x), "depth": float(floor_size.y)} if floor_size is not None else None, "warnings": warnings, "sceneCube": scene_cube})`;
   }
+  function strictPathAvailabilityHelper(helper) {
+    return helper.replace(`def resource_path_taken(path):
+    try:
+        if resourceManager.exists(Path(path)):
+            return True
+    except Exception:
+        pass
+    try:
+        for candidate_path in resourceManager.package.findAllBeginsWith(path.rsplit("/", 1)[0] + "/"):
+            if str(candidate_path).lower() == path.lower():
+                return True
+    except Exception:
+        pass
+    return False`, `def resource_path_taken(path):
+    verified = False
+    failures = []
+    try:
+        exists = resourceManager.exists(Path(path)); verified = True
+        if exists: return True
+    except Exception as error: failures.append("resourceManager.exists: " + str(error))
+    try:
+        for candidate_path in resourceManager.package.findAllBeginsWith(path.rsplit("/", 1)[0] + "/"):
+            if str(candidate_path).lower() == path.lower(): return True
+        verified = True
+    except Exception as error: failures.append("package enumeration: " + str(error))
+    if not verified: raise RuntimeError("cannot verify resource path availability: " + "; ".join(failures))
+    return False`);
+  }
   function createScript(payload) {
     const simple = ["screen", "dmxScreen", "surface", "dmxLight"].includes(payload.type);
     const helper = `import re\nfrom d3 import Path, Resource\n\ndef resource_class(path):\n    try:\n        return type(resourceManager.load(Path(path), Resource)).__name__\n    except Exception:\n        return None\n\ndef resource_path_taken(path):\n    try:\n        if resourceManager.exists(Path(path)):\n            return True\n    except Exception:\n        pass\n    try:\n        for candidate_path in resourceManager.package.findAllBeginsWith(path.rsplit(\"/\", 1)[0] + \"/\"):\n            if str(candidate_path).lower() == path.lower():\n                return True\n    except Exception:\n        pass\n    return False\n\ndef allocate_path(folder, base_name, expected_class):\n    safe = re.sub(r\"[\\\\/:*?\\\"<>|]\", \"-\", str(base_name)).strip() or \"object\"\n    resolved = safe\n    candidate = folder + \"/\" + resolved.lower() + \".apx\"\n    suffix = 2\n    while resource_path_taken(candidate):\n        actual = resource_class(candidate)\n        if actual is not None and actual != expected_class:\n            raise RuntimeError(\"existing resource class conflict: {} is {}, expected {}\".format(candidate, actual, expected_class))\n        resolved = safe + \" \" + str(suffix)\n        candidate = folder + \"/\" + resolved.lower() + \".apx\"\n        suffix += 1\n    return resolved, candidate\n\ndef assert_healthy(resource, label):\n    for flag in [\"isBad\", \"isIncomplete\", \"isInError\"]:\n        try:\n            if bool(getattr(resource, flag)):\n                raise RuntimeError(\"{} is unhealthy ({}): {}\".format(label, flag, getattr(resource, flag)))\n        except AttributeError:\n            pass\n\ndef rollback(created_paths, stage, attached, collection):\n    if attached:\n        try:\n            attached.remove()\n        except Exception:\n            pass\n    try:\n        stage.save()\n    except Exception:\n        pass\n    for path in reversed(created_paths):\n        try:\n            resourceManager.remove(path)\n        except Exception:\n            pass\n\ndef append_typed(obj, collection):\n    for candidate in collection:\n        try:\n            if str(getattr(candidate, \"uid\", \"\")) == str(obj.uid):\n                return\n        except Exception:\n            pass\n    collection.append(obj)\n\ndef createSimpleDisplay(payload):\n    kind = payload[\"type\"]\n    expected_type = ${typeClasses[payload.type]}\n    folder = \"objects/${typeResourceFolders[payload.type]}\"\n    resolved_name, object_path = allocate_path(folder, payload.get(\"name\") or payload.get(\"pluginId\"), expected_type)\n    created_paths = []\n    obj = None\n    collection = getattr(stage, ${quote(typeCollections[payload.type])})\n    try:\n        obj = resourceManager.loadOrCreate(Path(object_path), expected_type)\n        created_paths.append(object_path)\n        markDirty(obj)\n        transform = payload[\"transform\"]\n        pos = transform[\"position\"]\n        rot = transform[\"rotation\"]\n        ${assignHelpers()}\n        if kind in [\"screen\", \"dmxScreen\", \"surface\"]:\n            geometry = payload[\"geometry\"]\n            assign(\"offset\", Vec(pos[\"x\"], pos[\"y\"] + geometry[\"height\"] / 2.0, pos[\"z\"]))\n            assign(\"scale\", Vec(geometry[\"width\"], geometry[\"height\"], 0.1))\n            assign(\"rotation\", Vec(0.0, rot[\"y\"], 0.0))\n        else:\n            assign(\"offset\", Vec(pos[\"x\"], pos[\"y\"], pos[\"z\"]))\n            assign(\"rotation\", Vec(rot[\"x\"], rot[\"y\"], rot[\"z\"]))\n        append_typed(obj, collection)\n        obj.save()\n        stage.save()\n        assert_healthy(obj, kind)\n        return obj, resolved_name, object_path\n    except Exception:\n        rollback(created_paths, stage, obj if obj is not None else None, collection)\n        raise\n\n`;
     const body = simple ? `payload = json.loads(${payloadText(payload)})\nstage = state.stage\nobj, resolved_name, object_path = createSimpleDisplay(payload)\nkind = payload[\"type\"]\n${readbackHelpers()}\nreturn json.dumps({\"designerId\": str(obj.uid), \"path\": object_path, \"name\": resolved_name, \"readback\": readback(obj, kind)})` : payload.type === "camera" ? `from d3 import Camera, PerspectiveProjection, PerspectiveProjectionObject\npayload = json.loads(${payloadText(payload)})\nstage = state.stage\ncreated_paths = []\nobj = projection = projection_object = None\ncollection = stage.cameras\ntry:\n    resolved_name, object_path = allocate_path(\"objects/camera\", payload.get(\"name\") or payload.get(\"pluginId\"), \"Camera\")\n    projection_name, projection_path = allocate_path(\"objects/camera\", resolved_name + \" (perspective)\", \"PerspectiveProjection\")\n    projection_object_name, projection_object_path = allocate_path(\"objects/perspectiveprojectionobject\", resolved_name + \" (perspective)\", \"PerspectiveProjectionObject\")\n    obj = Camera(); projection = PerspectiveProjection(); projection_object = PerspectiveProjectionObject()\n    obj.path = Path(object_path); projection.path = Path(projection_path); projection_object.path = Path(projection_object_path)\n    projection_object.projection = projection\n    obj.add(projection_object)\n    created_paths.extend([object_path, projection_path, projection_object_path])\n    transform = payload[\"transform\"]; pos = transform[\"position\"]; rot = transform[\"rotation\"]\n    obj.offset = Vec(pos[\"x\"], pos[\"y\"], pos[\"z\"]); obj.rotation = Vec(rot[\"x\"], rot[\"y\"], rot[\"z\"])\n    append_typed(obj, collection)\n    projection.save(); projection_object.save(); obj.save(); stage.save()\n    assert_healthy(projection, \"camera projection\"); assert_healthy(projection_object, \"camera projection object\"); assert_healthy(obj, \"camera\")\n    child_count = 0\n    for child in obj.children:\n        if type(child).__name__ == \"PerspectiveProjectionObject\": child_count += 1\n    if child_count != 1: raise RuntimeError(\"camera must have exactly one PerspectiveProjectionObject\")\nexcept Exception:\n    rollback(created_paths, stage, obj, collection)\n    raise\nkind = \"camera\"\n${readbackHelpers()}\nreturn json.dumps({\"designerId\": str(obj.uid), \"path\": object_path, \"name\": resolved_name, \"readback\": readback(obj, kind)})` : `from d3 import Projector, ProjectorConfig\npayload = json.loads(${payloadText(payload)})\nstage = state.stage\ncreated_paths = []\nobj = config = None\ncollection = stage.projectors\ntry:\n    resolved_name, object_path = allocate_path(\"objects/projector\", payload.get(\"name\") or payload.get(\"pluginId\"), \"Projector\")\n    config_name, config_path = allocate_path(\"objects/projectorconfig\", resolved_name + \"_config0\", \"ProjectorConfig\")\n    obj = Projector(); config = ProjectorConfig()\n    obj.path = Path(object_path); config.path = Path(config_path); obj.config = config\n    created_paths.extend([object_path, config_path])\n    transform = payload[\"transform\"]; pos = transform[\"position\"]\n    obj.configPosition = Vec(pos[\"x\"], pos[\"y\"], pos[\"z\"])\n    look_at = payload.get(\"lookAt\", pos); obj.configLookAt = Vec(look_at[\"x\"], look_at[\"y\"], look_at[\"z\"])\n    optics = payload.get(\"optics\", {})\n    if \"throwRatio\" in optics: obj.configThrowRatio = float(optics[\"throwRatio\"])\n    append_typed(obj, collection)\n    config.save(); obj.save(); stage.save()\n    assert_healthy(config, \"projector config\"); assert_healthy(obj, \"projector\")\n    if getattr(obj, \"config\", None) is not config: raise RuntimeError(\"projector config reference was not retained\")\nexcept Exception:\n    rollback(created_paths, stage, obj, collection)\n    raise\nkind = \"projector\"\n${readbackHelpers()}\nreturn json.dumps({\"designerId\": str(obj.uid), \"path\": object_path, \"name\": resolved_name, \"readback\": readback(obj, kind)})`;
-    return `${helper}${body}`
+    return `${strictPathAvailabilityHelper(helper)}${body}`
       .replace('from d3 import Path, Resource', 'from d3 import Path, Resource, DirectProjection, LedScreen, DmxScreen, Screen2, FixtureGroup, Camera, Projector, ProjectorConfig, PerspectiveProjection, PerspectiveProjectionObject')
       .replace('import re\nfrom d3', 'import json\nimport re\nfrom d3')
       .replace('def allocate_path(folder, base_name, expected_class):', `def normalized_name(value):
@@ -515,10 +543,13 @@ if name_change:
     desired_path = folder + "/" + safe_name + ".apx"
     if desired_path != object_path:
         conflict = False
+        availability_verified = False
+        availability_failures = []
         try:
             conflict = bool(resourceManager.exists(Path(desired_path)))
-        except Exception:
-            conflict = False
+            availability_verified = True
+        except Exception as error:
+            availability_failures.append("resourceManager.exists: " + str(error))
         if not conflict:
             try:
                 for candidate_path in resourceManager.package.findAllBeginsWith(folder + "/"):
@@ -526,8 +557,11 @@ if name_change:
                     if candidate_path.lower() == desired_path.lower() and candidate_path.lower() != object_path.lower():
                         conflict = True
                         break
-            except Exception:
-                pass
+                availability_verified = True
+            except Exception as error:
+                availability_failures.append("package enumeration: " + str(error))
+        if not availability_verified:
+            raise RuntimeError("cannot verify resource path availability: " + "; ".join(availability_failures))
         if desired_path.lower() == object_path.lower():
             conflict = False
         if conflict:
@@ -913,8 +947,8 @@ def owned_resource_paths(candidate, allowed_paths):
                     paths.append(reference_path)
             elif reference_type != "Stage":
                 blockers.append("unexpected inbound reference " + reference_type + " " + reference_path)
-    except Exception:
-        pass
+    except Exception as error:
+        blockers.append("inbound reference inspection: " + str(error))
     return list(dict.fromkeys(paths)), blockers
 def matches(candidate):
     candidate_id = uid_of(candidate)
@@ -969,6 +1003,19 @@ except Exception as error:
     skipped.append("stage save: " + message)
     for candidate_id, resource_path, candidate, owned_paths, blockers, collection_name, remove_resource, allowed_paths in pending:
         cleanup_phases.append({"id": candidate_id, "phase": "stage-save", "status": "failed", "path": "state.stage", "error": message})
+    for candidate_id, resource_path, candidate, owned_paths, blockers, collection_name, remove_resource, allowed_paths in pending:
+        if candidate_id not in detached_ids: continue
+        try:
+            collection = getattr(stage, collection_name)
+            if not any(uid_of(item) == candidate_id for item in collection): collection.append(candidate)
+            cleanup_phases.append({"id": candidate_id, "phase": "stage-rollback", "status": "ok", "path": resource_path})
+        except Exception as rollback_error:
+            cleanup_phases.append({"id": candidate_id, "phase": "stage-rollback", "status": "failed", "path": resource_path, "error": str(rollback_error)})
+    try:
+        stage.save()
+        cleanup_phases.append({"id": "state.stage", "phase": "stage-rollback-save", "status": "ok", "path": "state.stage"})
+    except Exception as rollback_error:
+        cleanup_phases.append({"id": "state.stage", "phase": "stage-rollback-save", "status": "failed", "path": "state.stage", "error": str(rollback_error)})
 def stage_contains(target_id, collection_name):
     for candidate in getattr(stage, collection_name, []):
         if uid_of(candidate) == target_id: return True
@@ -1096,12 +1143,13 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
   }
   function liveFlushSets() {
     const changes = [];
+    const pending = [];
     for (const binding of liveBindings.values()) {
       if (binding.id === null || binding.desired === undefined || !binding.initialized || binding.writable === false || !binding.dirty || binding.inFlight !== undefined) continue;
       changes.push({ id: binding.id, value: binding.desired });
-      binding.inFlight = binding.desired;
+      pending.push(binding);
     }
-    if (changes.length) liveSend({ set: changes });
+    if (changes.length && liveSend({ set: changes })) pending.forEach(binding => { binding.inFlight = binding.desired; });
   }
   function liveUnsubscribe(ids) {
     const validIds = ids.filter(id => Number.isInteger(id));
@@ -1168,8 +1216,8 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       binding.initialized = true;
       if (binding.desired === undefined) binding.desired = change.value;
       if (!wasInitialized && binding.subscribeOnly) {
-        binding.desired = change.value;
-        binding.dirty = false;
+        if (!binding.dirty) binding.desired = change.value;
+        binding.dirty = binding.dirty || !liveValuesEqual(binding.desired, change.value);
         binding.inFlight = undefined;
         if (binding.field !== "name") liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath, initial: true });
       } else if (!wasInitialized) {
@@ -1185,6 +1233,7 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       } else if (liveValuesEqual(binding.desired, change.value)) {
         binding.dirty = false;
         binding.inFlight = undefined;
+        if (binding.field !== "name") liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath, initial: false, echoed: true });
       } else if (binding.inFlight !== undefined && !liveValuesEqual(binding.inFlight, change.value)) {
         binding.inFlight = undefined;
         binding.dirty = true;
@@ -1258,17 +1307,16 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
     return socketOpen && Boolean(liveSocket && liveSocket.readyState === 1);
   }
   function liveSetProjectorFields(pluginId, values) {
-    const changes = [];
+    const pending = [];
     for (const [field, value] of Object.entries(values || {})) {
       const binding = liveBindings.get(liveDescriptorKey(pluginId, field));
-      if (!binding || !Number.isInteger(binding.id) || !binding.initialized) return false;
-      const encoded = binding.encode(value);
-      binding.desired = encoded;
-      binding.dirty = true;
-      binding.inFlight = encoded;
-      changes.push({ id: binding.id, value: encoded });
+      if (!binding || !Number.isInteger(binding.id) || !binding.initialized || binding.writable === false) return false;
+      pending.push({ binding, encoded: binding.encode(value) });
     }
-    if (!changes.length || !liveSend({ set: changes })) return false;
+    if (!pending.length) return false;
+    pending.forEach(({ binding, encoded }) => { binding.desired = encoded; binding.dirty = true; });
+    if (!liveSend({ set: pending.map(({ binding, encoded }) => ({ id: binding.id, value: encoded })) })) return false;
+    pending.forEach(({ binding, encoded }) => { binding.inFlight = encoded; });
     return true;
   }
   function liveSetProjectorGeometry(pluginId, position, lookAt) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.1 - 2026-08-21
+
+- Hardened projector LIVE revision, retry, binding, and operation-error handling.
+- Made generated resource availability and dependency inspection fail closed, with Stage-save rollback before any package cleanup.
+
 ## 0.21.0 - 2026-08-20
 
 - Added revisioned projector LIVE geometry and Auto-optics updates, with Designer-owned Look Distance and field-of-view readback.

@@ -307,7 +307,7 @@
 - Date: 2026-08-18
 - Symptom: deleting a standard object removed it from a Stage collection but could leave its `.apx` resource in the project.
 - Cause: the adapter called `collection.remove(candidate)` without using the ResourceManager lifecycle.
-- Historical fix: call `candidate.saveOnDelete()` followed by `resourceManager.remove(candidate.path)`, then detach any remaining collection reference. This ordering is superseded by ERR-054/ERR-058.
+- Historical fix: call `candidate.saveOnDelete()` followed by `resourceManager.remove(candidate.path)`, then detach any remaining collection reference. This ordering is superseded by ERR-054/ERR-058: named resources are removed only after Stage detach/save/readback and are not preceded by `saveOnDelete()`.
 - Regression test: delete script contains both lifecycle calls.
 
 ## ERR-030: Camera readback used a legacy alternative contract
@@ -533,7 +533,7 @@
 - Date: 2026-08-20
 - Symptom: after deleting an object in Planner, Undo restored it in Planner but it did not return to Designer. The reverse operation, Designer `Ctrl+Z`, was visible to Planner.
 - Cause: Planner history restored the old `designerId` even though the corresponding Designer resource had already been deleted. LIVE then attempted an update against a dead UID.
-- Fix: before LIVE synchronization, inspect the current Designer scene. If an owned record points to a missing UID/path, clear the stale mapping and create a new Designer resource from the restored Planner object.
+- Current policy: Planner Undo restores local history only. It does not recreate a deleted Designer resource unless a separate explicit create operation is requested and implemented.
 
 ## ERR-057: Explicit typed Stage setters still corrupted ArrayBox callbacks
 

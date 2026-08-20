@@ -9,7 +9,7 @@ const adapterSource = fs.readFileSync(path.join(root, "scene-planner-prototype",
 class MockWebSocket {
   static instances = [];
   constructor(url) { this.url = url; this.readyState = 0; this.sent = []; MockWebSocket.instances.push(this); }
-  send(raw) { this.sent.push(JSON.parse(raw)); }
+  send(raw) { if (this.throwOnSend) { this.throwOnSend = false; throw new Error("mock send failure"); } this.sent.push(JSON.parse(raw)); }
   open() { this.readyState = 1; this.onopen?.(); }
   message(value) { this.onmessage?.({ data: JSON.stringify(value) }); }
   close() { this.readyState = 3; this.onclose?.({ code: 1000, reason: "mock close" }); }
@@ -99,6 +99,12 @@ function valuesForSubscriptions(socket) {
   assert.equal(geometrySet.length, 2);
   assert.ok(geometrySet.every(change => geometryBindingIds.has(change.id)));
   assert.deepEqual(JSON.parse(JSON.stringify(geometrySet.map(change => change.value))), [{ x: 5, y: 3, z: -7 }, { x: 1, y: 2, z: 4 }]);
+  first.message({ valuesChanged: geometrySet.map(change => ({ id: change.id, value: change.value })) });
+  first.throwOnSend = true;
+  assert.equal(adapter.liveSetProjectorGeometry("projector-1", { x: 6, y: 3, z: -7 }, { x: 1, y: 2, z: 5 }), false);
+  const failedGeometry = adapter.getLiveState().bindings.filter(binding => ["transform.position", "lookAt"].includes(binding.field));
+  assert.ok(failedGeometry.every(binding => binding.dirty && binding.inFlight === undefined));
+  assert.equal(adapter.liveSetProjectorGeometry("projector-1", { x: 6, y: 3, z: -7 }, { x: 1, y: 2, z: 5 }), true);
   const writableBinding = adapter.getLiveState().bindings.find(binding => binding.writable && binding.id !== null);
   assert.ok(writableBinding);
   adapter.liveSync([{ payload: { ...payload, transform: { ...payload.transform, position: { ...payload.transform.position, x: 9 } } }, record: { designerId: "16", path: "objects/ledscreen/screen.apx" } }]);
