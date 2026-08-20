@@ -62,11 +62,12 @@ function valuesForSubscriptions(socket) {
   first.message({ valuesChanged: initialValues });
   const stateAfterInitial = adapter.getLiveState();
   const projectorSubscriptions = first.sent.filter(item => item.subscribe?.object === "getByUID(0x11)").flatMap(item => item.subscribe.properties);
-  assert.deepEqual(projectorSubscriptions, ["object.description", "object.configPosition", "object.configLookAt", "object.configThrowRatio", "object.fieldOfView", "object.configLookDistance"]);
+  assert.deepEqual(projectorSubscriptions, ["object.description", "object.configPosition", "object.configLookAt", "object.configThrowRatio", "object.fieldOfView", "object.configLookDistance", "object.configRotation.z"]);
   assert.equal(stateAfterInitial.bindings.find(binding => binding.field === "optics.lookDistance").writable, false);
   assert.equal(stateAfterInitial.bindings.find(binding => binding.field === "optics.fieldOfView").writable, false);
   assert.ok(projectorSubscriptions.every(property => property !== "object.screens"));
   assert.ok(projectorSubscriptions.every(property => property !== "object.configRotation"));
+  assert.ok(projectorSubscriptions.includes("object.configRotation.z"));
   assert.ok(projectorSubscriptions.every(property => !/config(?:Position|LookAt)\.[xyz]$/.test(property)));
   assert.ok(stateAfterInitial.bindings.every(binding => binding.initialized));
   const nameBinding = stateAfterInitial.bindings.find(binding => binding.field === "name");

@@ -53,6 +53,8 @@
   const configurationCommitVersions = new Map();
   const projectorGeometryTimers = new Map();
   const projectorCycleRevisions = new Map();
+  const projectorCycles = new Map();
+  const projectorThrowRatioCorrectionTimers = new Map();
   const plannerLogEntries = [];
   const PLANNER_LOG_LIMIT = 200;
 
@@ -131,8 +133,11 @@
       normalized.optics = {
         throwRatio: Math.max(.1, finite(object.optics?.throwRatio, 1.5)),
         fieldOfView: Math.max(.1, finite(object.optics?.fieldOfView, 40)),
-        lookDistance: Math.max(.1, finite(object.optics?.lookDistance, Math.hypot(normalized.lookAt.x - position.x, normalized.lookAt.y - position.y, normalized.lookAt.z - position.z)))
+        lookDistance: Math.max(.1, finite(object.optics?.lookDistance, Math.hypot(normalized.lookAt.x - position.x, normalized.lookAt.y - position.y, normalized.lookAt.z - position.z))),
+        throwRatioAuto: object.optics?.throwRatioAuto !== false
       };
+      normalized.rotationZMode = ["designer", "rounded", "0", "90", "180", "270"].includes(String(object.rotationZMode)) ? String(object.rotationZMode) : "rounded";
+      normalized.projectorRoll = finite(object.projectorRoll, 0);
       if (object.targetSurfacePluginId) normalized.targetSurfacePluginId = String(object.targetSurfacePluginId);
     }
     if (object.designer) normalized.designer = object.designer;
@@ -174,7 +179,9 @@
     if (config.geometry) object.geometry = clone(config.geometry); if (config.media) object.media = clone(config.media);
     if (type === "projector") {
       object.lookAt = { x: 0, y: stageFloorY(), z: 0 };
-      object.optics = { throwRatio: 1.5, fieldOfView: 40, lookDistance: Math.hypot(x, stageFloorY() - object.transform.position.y, z) || 1.5 };
+      object.optics = { throwRatio: 1.5, fieldOfView: 40, lookDistance: Math.hypot(x, stageFloorY() - object.transform.position.y, z) || 1.5, throwRatioAuto: true };
+      object.rotationZMode = "rounded";
+      object.projectorRoll = 0;
     }
     return object;
   }
@@ -265,7 +272,20 @@
     return Math.max(screenWidth, screenHeight * projectorAspect);
   }
   function projectorThrowRatio(object) {
-    return projectorGeometry(object).throwRatio;
+    return projectorAutoThrowRatio(object) ?? Math.max(.1, finite(object?.optics?.throwRatio, 1.5));
+  }
+  function projectorAutoThrowRatio(object) {
+    if (object?.type !== "projector" || !targetSurface(object)) return null;
+    const distance = Number(object.optics?.lookDistance);
+    if (!Number.isFinite(distance) || distance <= 0) return null;
+    return Number((distance / projectorProjectedWidth(object)).toFixed(3));
+  }
+  function projectorRotationZValue(object) {
+    if (object?.type !== "projector") return null;
+    const mode = String(object.rotationZMode || "rounded");
+    if (mode === "designer") return null;
+    if (mode === "rounded") return ((Math.round(finite(object.projectorRoll) / 90) * 90) % 360 + 360) % 360;
+    return ["0", "90", "180", "270"].includes(mode) ? Number(mode) : 0;
   }
   function projectorGeometry(object) {
     const position = vector(object?.transform?.position); const target = effectiveLookAt(object);
@@ -274,29 +294,18 @@
     const direction = { x: Number((delta.x / distance).toFixed(6)), y: Number((delta.y / distance).toFixed(6)), z: Number((delta.z / distance).toFixed(6)) };
     const screen = projectorScreen(object); const storedRatio = Math.max(.1, finite(object?.optics?.throwRatio, 1.5));
     const projectedWidth = screen ? projectorProjectedWidth(object) : distance / storedRatio;
-    const throwRatio = screen ? distance / projectedWidth : storedRatio;
-    const fieldOfView = 2 * Math.atan(projectedWidth / (2 * distance)) * 180 / Math.PI;
-    return { direction, distance: Number(distance.toFixed(3)), projectedWidth: Number(projectedWidth.toFixed(3)), throwRatio: Number(throwRatio.toFixed(3)), fieldOfView: Number(fieldOfView.toFixed(3)), roll: screen && screen.geometry.height > screen.geometry.width ? 90 : 0 };
+    return { direction, distance: Math.max(.1, finite(object?.optics?.lookDistance, distance)), projectedWidth: Number(projectedWidth.toFixed(3)), throwRatio: storedRatio, fieldOfView: Math.max(.1, finite(object?.optics?.fieldOfView, 40)), roll: finite(object.projectorRoll, 0) };
   }
   function recalculateProjectorGeometry(object) {
     if (object?.type !== "projector") return null;
-    const geometry = projectorGeometry(object); object.optics ||= {};
-    object.optics.lookDistance = geometry.distance;
-    object.optics.throwRatio = geometry.throwRatio;
-    object.optics.fieldOfView = geometry.fieldOfView;
-    return geometry;
+    return projectorGeometry(object);
   }
   function recalculateSurfaceProjectors(surface) {
     if (surface?.type !== "surface") return;
     state.objects.filter(object => object.type === "projector" && object.targetSurfacePluginId === surface.pluginId).forEach(recalculateProjectorGeometry);
   }
   function setProjectorLookDistance(object, value) {
-    if (object?.type !== "projector") return false;
-    const distance = Math.max(.1, finite(value, object.optics?.lookDistance || 1)); const direction = projectorGeometry(object).direction; const position = object.transform.position;
-    object.lookAt = { x: Number((position.x + direction.x * distance).toFixed(3)), y: Number((position.y + direction.y * distance).toFixed(3)), z: Number((position.z + direction.z * distance).toFixed(3)) };
-    delete object.targetSurfacePluginId;
-    recalculateProjectorGeometry(object);
-    return true;
+    return false;
   }
   function projectorBeam(object) {
     const geometry = projectorGeometry(object);
@@ -395,14 +404,14 @@
     const position = [["X", "transform.position.x", object.transform.position.x, .1, "m"], ["Z", "transform.position.z", object.transform.position.z, .1, "m"], ["Position Y", "transform.position.y", objectHeightValue(object), .1, "m"]];
     if (object.type === "screen") { const mode = object.media.inputMode || "resolution"; const mediaFields = mode === "resolution" ? [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] : mode === "ppi" ? [["PPI", "media.pixelsPerInch", object.media.pixelsPerInch, .1, "ppi"]] : [["Pixel pitch", "media.pixelPitchMm", object.media.pixelPitchMm, .1, "mm"]]; return [{ title: "Size", fields: [["Width", "geometry.width", object.geometry.width, .1, "m"], ["Height", "geometry.height", object.geometry.height, .1, "m"]] }, { title: "Position", fields: [...position, ["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }, { title: "LED data", mediaMode: true, fields: mediaFields }]; }
     if (["dmxScreen", "surface"].includes(object.type)) return [{ title: "Size", fields: [["Width", "geometry.width", object.geometry.width, .1, "m"], ["Height", "geometry.height", object.geometry.height, .1, "m"]] }, { title: "Position", fields: [...position, ["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }, { title: "Resolution", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] }];
-    if (object.type === "projector") return [{ title: "Lens position", fields: position }, { title: "Direction", targetSurface: true, fields: [] }, { title: "Optics", fields: [["Throw ratio", "optics.throwRatio", object.optics.throwRatio, .01, "x"], ["Field of view", "optics.fieldOfView", object.optics.fieldOfView, .1, "°", { readOnly: true }], ["Look distance", "optics.lookDistance", object.optics.lookDistance, .1, "m"]] }, { title: "Resolution", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] }];
+    if (object.type === "projector") return [{ title: "Lens position", fields: position }, { title: "Direction", targetSurface: true, fields: [] }, { title: "Optics", projectorOptics: true, fields: [["Throw ratio", "optics.throwRatio", object.optics.throwRatio, .01, "x", { readOnly: object.optics.throwRatioAuto !== false }], ["Field of view", "optics.fieldOfView", object.optics.fieldOfView, .1, "°", { readOnly: true }], ["Look distance", "optics.lookDistance", object.optics.lookDistance, .1, "m", { readOnly: true }]] }, { title: "Resolution", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] }];
     return [{ title: "Position", fields: position }, { title: object.type === "camera" ? "Camera direction" : object.type === "dmxLight" ? "DMX light direction" : "Rotation", fields: [["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }];
   }
   function getPath(object, path) { return path.split(".").reduce((value, key) => value[key], object); }
   function getFieldValue(object, path) { return path === "transform.position.y" ? objectHeightValue(object) : path === "projector.yaw" ? projectorYaw(object) : getPath(object, path); }
   function setPath(object, path, value) {
     if (path === "projector.yaw") { setProjectorYaw(object, value); return; }
-    if (object.type === "projector" && path === "optics.lookDistance") { setProjectorLookDistance(object, value); return; }
+    if (object.type === "projector" && path === "optics.lookDistance") return;
     if (path === "transform.position.y") { setObjectHeight(object, value); return; }
     if (object.type === "projector" && (path === "transform.position.x" || path === "transform.position.z")) {
       const x = path.endsWith(".x") ? Number(value.toFixed(3)) : object.transform.position.x;
@@ -418,9 +427,14 @@
   function initialObjectFocusPath(object) { return PLANAR_TYPES.has(object.type) ? "geometry.width" : "transform.position.y"; }
   function makeObjectField(object, definition) { const [labelText, path, value, step, unit, options = {}] = definition; const label = element("label", "object-field"); label.append(element("span", "object-field-label", labelText)); const shell = element("span", "input-shell"); const input = document.createElement("input"); input.type = "text"; input.inputMode = "decimal"; input.value = formatValue(value, step); input.dataset.field = path; input.dataset.pluginId = object.pluginId; input.setAttribute("aria-label", `${object.name}: ${labelText}`); if (options.readOnly) { input.readOnly = true; input.classList.add("readonly"); } activeFieldRefs.set(path, input); shell.append(input, element("i", "", unit)); label.append(shell); if (options.readOnly) return label; bindNumericInput(input, () => getFieldValue(object, path), next => setPath(object, path, next), step, () => defaultFieldValue(object, path), () => { void commitFieldChange(object, path); }); input.addEventListener("keydown", event => { if (event.key !== "Enter") return; event.preventDefault(); event.stopPropagation(); setPath(object, path, finite(input.value, getFieldValue(object, path))); persist(); const nextPath = nextDimensionField(object, path); if (nextPath) { queueFieldFocus(object, nextPath); refreshActiveValues(); requestAnimationFrame(() => focusActiveField(nextPath)); setTimeout(() => focusActiveField(nextPath), 20); } else { input.value = formatValue(getFieldValue(object, path), step); input.blur?.(); } }); return label; }
   function previewTargetSurface(pluginId) { state.highlightObjectId = pluginId ? state.objects.find(item => item.type === "surface" && item.pluginId === pluginId)?.id || null : null; drawScene(); renderObjectGroups(); }
-  function makeTargetSurfaceField(object) { const label = element("label", "object-field object-select-field wide"); label.append(element("span", "object-field-label", "Direction")); const select = document.createElement("select"); select.setAttribute("aria-label", `${object.name}: Direction`); const target = effectiveLookAt(object); const manual = document.createElement("option"); manual.value = ""; manual.textContent = `Point (${formatValue(target.x)}, ${formatValue(target.y)}, ${formatValue(target.z)})`; select.append(manual); state.objects.filter(item => item.type === "surface").forEach(surface => { const option = document.createElement("option"); option.value = surface.pluginId; option.textContent = surface.name; select.append(option); }); const committedTarget = () => targetSurface(object)?.pluginId || ""; select.value = committedTarget(); const showLabels = () => { state.showSurfaceLabels = true; drawScene(); }; select.addEventListener("focus", showLabels); select.addEventListener("pointerdown", showLabels); select.addEventListener("input", () => previewTargetSurface(select.value)); select.addEventListener("change", () => { saveHistory(); const currentTarget = effectiveLookAt(object); if (select.value) { object.targetSurfacePluginId = select.value; object.lookAt = effectiveLookAt(object); } else { delete object.targetSurfacePluginId; object.lookAt = currentTarget; } recalculateProjectorGeometry(object); previewTargetSurface(select.value); persist(); render(); void commitProjectorConfiguration(object); }); select.addEventListener("blur", () => { state.showSurfaceLabels = false; previewTargetSurface(committedTarget()); }); label.append(select); return label; }
+  function makeTargetSurfaceField(object) { const label = element("label", "object-field object-select-field wide"); label.append(element("span", "object-field-label", "Direction")); const select = document.createElement("select"); select.setAttribute("aria-label", `${object.name}: Direction`); const target = effectiveLookAt(object); const manual = document.createElement("option"); manual.value = ""; manual.textContent = `Point (${formatValue(target.x)}, ${formatValue(target.y)}, ${formatValue(target.z)})`; select.append(manual); state.objects.filter(item => item.type === "surface").forEach(surface => { const option = document.createElement("option"); option.value = surface.pluginId; option.textContent = surface.name; select.append(option); }); const committedTarget = () => targetSurface(object)?.pluginId || ""; select.value = committedTarget(); const showLabels = () => { state.showSurfaceLabels = true; drawScene(); }; select.addEventListener("focus", showLabels); select.addEventListener("pointerdown", showLabels); select.addEventListener("input", () => previewTargetSurface(select.value)); select.addEventListener("change", () => { saveHistory(); const currentTarget = effectiveLookAt(object); if (select.value) { object.targetSurfacePluginId = select.value; object.lookAt = effectiveLookAt(object); } else { delete object.targetSurfacePluginId; object.lookAt = currentTarget; } previewTargetSurface(select.value); persist(); render(); void commitProjectorBinding(object); }); select.addEventListener("blur", () => { state.showSurfaceLabels = false; previewTargetSurface(committedTarget()); }); label.append(select); return label; }
   function makeMediaModeControl(object) { const control = element("div", "media-mode"); [["resolution", "Resolution"], ["ppi", "PPI"], ["pitch", "Pixel pitch"]].forEach(([mode, label]) => { const button = element("button", object.media.inputMode === mode ? "active" : "", label); button.type = "button"; button.addEventListener("click", () => { if (object.media.inputMode === mode) return; saveHistory(); setScreenInputMode(object, mode); persist(); render(); }); control.append(button); }); return control; }
-  function makePropertySection(object, definition) { const section = element("section", "active-property-section"); section.append(element("h3", "active-property-title", definition.title)); const grid = element("div", "active-property-grid"); if (definition.mediaMode) grid.append(makeMediaModeControl(object)); if (definition.targetSurface) grid.append(makeTargetSurfaceField(object)); else definition.fields.forEach(field => grid.append(makeObjectField(object, field))); section.append(grid); return section; }
+  function makeProjectorOpticsControls(object) {
+    const autoLabel = element("label", "projector-auto-control"); const auto = document.createElement("input"); auto.type = "checkbox"; auto.checked = object.optics.throwRatioAuto !== false; auto.addEventListener("change", () => { saveHistory(); object.optics.throwRatioAuto = auto.checked; persist(false); render(); if (auto.checked) handleProjectorLookDistance(object, object.optics.lookDistance, { source: "auto-enabled" }); }); autoLabel.append(auto, document.createTextNode(" Auto throw ratio"));
+    const rotationLabel = element("label", "object-field projector-rotation-control"); rotationLabel.append(element("span", "object-field-label", "Rotation Z")); const rotation = document.createElement("select"); [["designer", "Designer"], ["rounded", "Rounded"], ["0", "0°"], ["90", "90°"], ["180", "180°"], ["270", "270°"]].forEach(([value, text]) => { const option = document.createElement("option"); option.value = value; option.textContent = text; rotation.append(option); }); rotation.value = object.rotationZMode || "rounded"; rotation.addEventListener("change", () => { saveHistory(); object.rotationZMode = rotation.value; persist(false); void finalizeProjectorRotation(object, "mode-change"); }); rotationLabel.append(rotation);
+    return [autoLabel, rotationLabel];
+  }
+  function makePropertySection(object, definition) { const section = element("section", "active-property-section"); section.append(element("h3", "active-property-title", definition.title)); const grid = element("div", "active-property-grid"); if (definition.mediaMode) grid.append(makeMediaModeControl(object)); if (definition.projectorOptics) grid.append(...makeProjectorOpticsControls(object)); if (definition.targetSurface) grid.append(makeTargetSurfaceField(object)); else definition.fields.forEach(field => grid.append(makeObjectField(object, field))); section.append(grid); return section; }
   function objectSyncStatus(object) { if (state.sync.errors?.[object.pluginId]) return "error"; const record = state.sync.objects?.[object.pluginId]; return record?.lastExported === canonical(objectPayload(object)) ? "synced" : "changed"; }
   function renderObjectGroups() { objectGroups.replaceChildren(); document.querySelector("#object-count").textContent = String(state.objects.length); GROUP_ORDER.forEach(type => { const config = typeConfig[type]; const objects = state.objects.filter(object => object.type === type); if (!objects.length) return; const group = element("section", "object-group"); const heading = element("div", "object-group-heading"); const swatch = element("span", "group-swatch"); swatch.style.background = config.color; heading.append(swatch, document.createTextNode(config.group), element("b", "group-count", String(objects.length))); group.append(heading); const list = element("div", "object-list"); objects.forEach(object => { const entry = element("button", `object-entry${state.selectedIds.has(object.id) || object.id === state.selectedId ? " selected" : ""}`); entry.type = "button"; entry.setAttribute("aria-label", `Select ${object.name}`); entry.append(element("i", `object-status ${objectSyncStatus(object)}`), element("i", `object-icon icon-${object.type.toLowerCase()}`), element("span", "object-name", object.name)); entry.addEventListener("click", event => { if (event.shiftKey || event.ctrlKey || event.metaKey) toggleObjectSelection(object); else selectObject(object); persist(); render(); }); entry.addEventListener("contextmenu", event => { event.preventDefault(); openCanvasContextMenu(event, object); }); list.append(entry); }); group.append(list); objectGroups.append(group); }); }
   async function commitObjectName(object, input) {
@@ -504,7 +518,7 @@
   function positionContextMenu(event, height = 300) { const width = 220; canvasContextMenu.style.left = `${Math.max(6, Math.min(event.clientX, (window.innerWidth || 1280) - width - 6))}px`; canvasContextMenu.style.top = `${Math.max(6, Math.min(event.clientY, (window.innerHeight || 720) - height - 6))}px`; canvasContextMenu.hidden = false; }
   function closeCanvasContextMenu() { if (!canvasContextMenu) return; canvasContextMenu.hidden = true; document.querySelector("#surface-context-list").hidden = true; document.querySelector("#context-delete-confirm").hidden = true; state.showSurfaceLabels = false; contextObjectId = null; contextWorldPoint = null; }
   function openCanvasCreateMenu(event, point) { contextObjectId = null; contextWorldPoint = point; document.querySelector("#empty-context-actions").hidden = false; document.querySelector("#object-context-actions").hidden = true; positionContextMenu(event, 190); }
-  function openCanvasContextMenu(event, object) { if (!canvasContextMenu || !object) return; contextObjectId = object.id; contextWorldPoint = null; selectObject(object); render(); document.querySelector("#empty-context-actions").hidden = true; document.querySelector("#object-context-actions").hidden = false; const bindButton = document.querySelector("#context-bind-surface"); const rotateButton = document.querySelector('#object-context-actions [data-action="rotate-90"]'); const surfaceList = document.querySelector("#surface-context-list"); const surfaces = state.objects.filter(item => item.type === "surface"); bindButton.hidden = object.type !== "projector" || !surfaces.length; if (rotateButton) rotateButton.hidden = object.type === "projector"; surfaceList.hidden = true; surfaceList.replaceChildren(); if (object.type === "projector") { state.showSurfaceLabels = true; drawScene(); } surfaces.forEach(surface => { const button = element("button", "", surface.name); button.type = "button"; button.addEventListener("pointerenter", () => previewTargetSurface(surface.pluginId)); button.addEventListener("pointerleave", () => previewTargetSurface(targetSurface(object)?.pluginId || null)); button.addEventListener("click", () => { saveHistory(); object.targetSurfacePluginId = surface.pluginId; object.lookAt = effectiveLookAt(object); recalculateProjectorGeometry(object); persist(); render(); closeCanvasContextMenu(); void commitProjectorConfiguration(object); }); surfaceList.append(button); }); document.querySelector("#context-delete-confirm").hidden = true; positionContextMenu(event); }
+  function openCanvasContextMenu(event, object) { if (!canvasContextMenu || !object) return; contextObjectId = object.id; contextWorldPoint = null; selectObject(object); render(); document.querySelector("#empty-context-actions").hidden = true; document.querySelector("#object-context-actions").hidden = false; const bindButton = document.querySelector("#context-bind-surface"); const rotateButton = document.querySelector('#object-context-actions [data-action="rotate-90"]'); const surfaceList = document.querySelector("#surface-context-list"); const surfaces = state.objects.filter(item => item.type === "surface"); bindButton.hidden = object.type !== "projector" || !surfaces.length; if (rotateButton) rotateButton.hidden = object.type === "projector"; surfaceList.hidden = true; surfaceList.replaceChildren(); if (object.type === "projector") { state.showSurfaceLabels = true; drawScene(); } surfaces.forEach(surface => { const button = element("button", "", surface.name); button.type = "button"; button.addEventListener("pointerenter", () => previewTargetSurface(surface.pluginId)); button.addEventListener("pointerleave", () => previewTargetSurface(targetSurface(object)?.pluginId || null)); button.addEventListener("click", () => { saveHistory(); object.targetSurfacePluginId = surface.pluginId; object.lookAt = effectiveLookAt(object); persist(); render(); closeCanvasContextMenu(); void commitProjectorBinding(object); }); surfaceList.append(button); }); document.querySelector("#context-delete-confirm").hidden = true; positionContextMenu(event); }
   async function deleteObject(id, options = {}) {
     const index = state.objects.findIndex(object => object.id === id); if (index < 0) return;
     saveHistory(); const removed = state.objects[index]; const record = state.sync.objects?.[removed.pluginId];
@@ -548,7 +562,7 @@
 
   function canonical(value) { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }
   function changedValue(previous, current) { if (previous && current && typeof previous === "object" && typeof current === "object" && !Array.isArray(previous) && !Array.isArray(current)) { const result = {}; Object.keys(current).forEach(key => { const change = changedValue(previous[key], current[key]); if (change !== undefined) result[key] = change; }); return Object.keys(result).length ? result : undefined; } return canonical(previous) === canonical(current) ? undefined : current; }
-  function objectPayload(object) { const payload = { pluginId: object.pluginId, type: object.type, name: object.name, transform: clone(object.transform) }; if (object.lookAt) payload.lookAt = clone(effectiveLookAt(object)); if (object.geometry) payload.geometry = clone(object.geometry); if (object.media) payload.media = clone(object.media); if (object.optics) payload.optics = clone(object.optics); if (object.type === "projector") { const surface = targetSurface(object); const record = surface ? state.sync.objects?.[surface.pluginId] : null; payload.targetSurface = surface ? { pluginId: surface.pluginId, designerId: record?.designerId || null, path: record?.path || null, name: surface.name } : null; payload.projectorRoll = projectorGeometry(object).roll; } return payload; }
+  function objectPayload(object) { const payload = { pluginId: object.pluginId, type: object.type, name: object.name, transform: clone(object.transform) }; if (object.lookAt) payload.lookAt = clone(effectiveLookAt(object)); if (object.geometry) payload.geometry = clone(object.geometry); if (object.media) payload.media = clone(object.media); if (object.optics) payload.optics = { throwRatio: object.optics.throwRatio, fieldOfView: object.optics.fieldOfView, lookDistance: object.optics.lookDistance }; if (object.type === "projector") { const surface = targetSurface(object); const record = surface ? state.sync.objects?.[surface.pluginId] : null; payload.targetSurface = surface ? { pluginId: surface.pluginId, designerId: record?.designerId || null, path: record?.path || null, name: surface.name } : null; payload.projectorRoll = finite(object.projectorRoll, 0); } return payload; }
   // Designer stores numeric fields as float32 and derives projector values.
   // One millimetre accepts harmless readback drift without hiding layout errors.
   function validateReadback(expected, result, tolerance = 0.001) {
@@ -654,6 +668,8 @@
     if (object?.type !== "projector") return 0;
     const revision = (projectorCycleRevisions.get(object.pluginId) || 0) + 1;
     projectorCycleRevisions.set(object.pluginId, revision);
+    const previousCycle = projectorCycles.get(object.pluginId); if (previousCycle?.lookDistanceTimer) clearTimeout(previousCycle.lookDistanceTimer);
+    projectorCycles.set(object.pluginId, { revision, source, phase: "waiting-look-distance" });
     clearTimeout(projectorGeometryTimers.get(object.pluginId));
     const send = () => {
       projectorGeometryTimers.delete(object.pluginId);
@@ -666,45 +682,84 @@
     if (delay > 0) projectorGeometryTimers.set(object.pluginId, setTimeout(send, delay)); else send();
     return revision;
   }
-  function commitProjectorConfiguration(object) {
+  function commitProjectorBinding(object) {
     if (object?.type !== "projector") return Promise.resolve(null);
-    const payload = objectPayload(object);
     return queueConfigurationCommit(object, async isLatest => {
-      if (payload.targetSurface) {
-        const surface = state.objects.find(candidate => candidate.type === "surface" && candidate.pluginId === payload.targetSurface.pluginId);
-        if (surface && !state.sync.objects?.[surface.pluginId]?.designerId) {
-          const surfaceRecord = await createDesignerObject(surface);
-          if (!surfaceRecord?.designerId) return null;
-        }
-        const surfaceRecord = surface ? state.sync.objects?.[surface.pluginId] : null;
-        payload.targetSurface = surfaceRecord?.designerId ? { ...payload.targetSurface, designerId: surfaceRecord.designerId, path: surfaceRecord.path } : null;
+      const surface = targetSurface(object);
+      if (surface && !state.sync.objects?.[surface.pluginId]?.designerId) {
+        const created = await createDesignerObject(surface);
+        if (!created?.designerId) throw new Error("Bound Surface could not be created in Designer");
       }
       const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
       if (!record?.designerId || !adapter?.updateObject) return null;
-      const changed = { transform: payload.transform, lookAt: payload.lookAt, optics: payload.optics, projectorRoll: payload.projectorRoll };
-      if (canonical(record.payload?.targetSurface) !== canonical(payload.targetSurface)) changed.targetSurface = payload.targetSurface;
+      const surfaceRecord = surface ? state.sync.objects?.[surface.pluginId] : null;
+      const targetSurfaceValue = surface ? { pluginId: surface.pluginId, designerId: surfaceRecord?.designerId || null, path: surfaceRecord?.path || null, name: surface.name } : null;
       try {
-        const result = await adapter.updateObject(record.designerId, changed, record.path, "projector");
-        validateReadback(payload, result);
+        plannerLog("info", "Projector", surface ? `Binding to ${surface.name}` : "Removing Surface binding", { objectName: object.name, phase: "surface-binding" });
+        const result = await adapter.updateObject(record.designerId, { targetSurface: targetSurfaceValue }, record.path, "projector");
         if (!isLatest()) return null;
-        const readback = result?.readback;
-        if (readback?.transform?.position) object.transform.position = vector(readback.transform.position);
-        if (readback?.lookAt) object.lookAt = vector(readback.lookAt);
-        if (readback?.optics) {
-          object.optics ||= {};
-          ["throwRatio", "fieldOfView", "lookDistance"].forEach(key => { if (Number.isFinite(Number(readback.optics[key]))) object.optics[key] = Number(readback.optics[key]); });
-        }
-        record.payload = objectPayload(object); record.lastExported = canonical(record.payload); record.readbackValid = true;
-        if (result?.path) record.path = result.path;
-        delete state.sync.errors[object.pluginId]; persist(false); renderStatus(); return result;
+        record.payload = objectPayload(object); record.lastExported = canonical(record.payload);
+        resolveActiveError(`projector:${object.pluginId}`); persist(false);
+        scheduleProjectorGeometry(object, "surface-binding", 0);
+        return result;
       } catch (error) {
-        if (isLatest()) {
-          state.sync.errors[object.pluginId] = `Projector update failed: ${error.message || error}`; persist(false); renderStatus();
-          document.querySelector("#adapter-status").textContent = `Projector update failed · ${error.message || error}`;
-        }
+        if (isLatest()) setActiveError(`projector:${object.pluginId}`, `Surface binding failed: ${error.message || error}`, { subsystem: "Projector", objectName: object.name, phase: "surface-binding" });
         return null;
       }
     });
+  }
+  function startIncomingProjectorCycle(object, source = "designer") {
+    const revision = (projectorCycleRevisions.get(object.pluginId) || 0) + 1;
+    projectorCycleRevisions.set(object.pluginId, revision);
+    const previousCycle = projectorCycles.get(object.pluginId); if (previousCycle?.lookDistanceTimer) clearTimeout(previousCycle.lookDistanceTimer);
+    projectorCycles.set(object.pluginId, { revision, source, phase: "waiting-look-distance" });
+    plannerLog("info", "Projector", "Position + Look At received", { objectName: object.name, phase: "geometry-readback", source, revision });
+    return revision;
+  }
+  async function finalizeProjectorRotation(object, source = "fov") {
+    const value = projectorRotationZValue(object);
+    if (value === null) { plannerLog("info", "Projector", "Rotation Z left to Designer", { objectName: object.name, phase: "rotation", source }); resolveActiveError(`projector:${object.pluginId}`); return null; }
+    const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
+    if (!record?.designerId || !adapter) return null;
+    try {
+      plannerLog("info", "Projector", `Rotation Z sent: ${value}°`, { objectName: object.name, phase: "rotation", source });
+      const result = adapter.updateProjectorRotationZ ? await adapter.updateProjectorRotationZ(record.designerId, value, record.path) : await adapter.updateObject(record.designerId, { projectorRoll: value }, record.path, "projector");
+      object.projectorRoll = Number.isFinite(Number(result?.readback?.projectorRoll)) ? Number(result.readback.projectorRoll) : value;
+      resolveActiveError(`projector:${object.pluginId}`); persist(false); refreshActiveValues(); drawScene(); return result;
+    } catch (error) { setActiveError(`projector:${object.pluginId}`, `Rotation Z failed: ${error.message || error}`, { subsystem: "Projector", objectName: object.name, phase: "rotation" }); return null; }
+  }
+  function sendAutoThrowRatio(object, source, revision = projectorCycleRevisions.get(object.pluginId)) {
+    if (projectorCycleRevisions.get(object.pluginId) !== revision) return false;
+    const ratio = projectorAutoThrowRatio(object); if (object.optics.throwRatioAuto === false || ratio === null) { void finalizeProjectorRotation(object, source); return false; }
+    object.optics.throwRatio = ratio;
+    const sent = getAdapter()?.liveSetProjectorThrowRatio?.(object.pluginId, ratio);
+    const cycle = projectorCycles.get(object.pluginId); if (cycle?.revision === revision) cycle.phase = sent ? "waiting-fov" : "throw-ratio-failed";
+    plannerLog(sent ? "info" : "error", "Projector", sent ? `Auto Throw Ratio sent: ${ratio}` : "Auto Throw Ratio could not be sent", { objectName: object.name, phase: "throw-ratio", source, revision });
+    if (!sent) setActiveError(`projector:${object.pluginId}`, "Auto Throw Ratio could not be sent", { subsystem: "Projector", objectName: object.name, phase: "throw-ratio" });
+    persist(false); refreshActiveValues(); drawScene(); return Boolean(sent);
+  }
+  function handleProjectorLookDistance(object, value, options = {}) {
+    object.optics.lookDistance = Math.max(.1, finite(value, object.optics.lookDistance));
+    plannerLog("info", "Projector", `Look Distance received: ${object.optics.lookDistance} m`, { objectName: object.name, phase: "look-distance", source: options.source || "designer" });
+    if (options.initial) return;
+    let cycle = projectorCycles.get(object.pluginId); if (!cycle) { const revision = startIncomingProjectorCycle(object, options.source || "designer"); cycle = projectorCycles.get(object.pluginId); cycle.revision = revision; }
+    if (cycle.lookDistanceTimer) clearTimeout(cycle.lookDistanceTimer);
+    const revision = cycle.revision;
+    cycle.lookDistanceTimer = setTimeout(() => { const current = projectorCycles.get(object.pluginId); if (!current || current.revision !== revision) return; current.lookDistanceTimer = null; sendAutoThrowRatio(object, options.source || "designer", revision); }, 80);
+  }
+  function handleProjectorFieldOfView(object, value, options = {}) {
+    object.optics.fieldOfView = Math.max(.1, finite(value, object.optics.fieldOfView));
+    plannerLog("info", "Projector", `Field of View received: ${object.optics.fieldOfView}°`, { objectName: object.name, phase: "fov", source: options.source || "designer" });
+    if (!options.initial) void finalizeProjectorRotation(object, "fov");
+  }
+  function handleProjectorThrowRatio(object, value, options = {}) {
+    object.optics.throwRatio = Math.max(.1, finite(value, object.optics.throwRatio));
+    if (options.initial || object.optics.throwRatioAuto === false) { refreshActiveValues(); drawScene(); return; }
+    const field = activeFieldRefs.get("optics.throwRatio"); field?.classList?.add("external-override");
+    clearTimeout(projectorThrowRatioCorrectionTimers.get(object.pluginId));
+    const revision = projectorCycleRevisions.get(object.pluginId) || startIncomingProjectorCycle(object, "designer-throw-ratio");
+    projectorThrowRatioCorrectionTimers.set(object.pluginId, setTimeout(() => { projectorThrowRatioCorrectionTimers.delete(object.pluginId); sendAutoThrowRatio(object, "designer-override", revision); }, 300));
+    refreshActiveValues(); drawScene();
   }
   function projectorsAffectedBy(objects) {
     const affected = new Set();
@@ -714,7 +769,6 @@
     }
     return [...affected];
   }
-  function commitAffectedProjectors(objects) { return Promise.all(projectorsAffectedBy(objects).map(commitProjectorConfiguration)); }
   function commitSurfaceConfiguration(object) {
     if (object?.type !== "surface") return Promise.resolve(null);
     const payload = objectPayload(object);
@@ -749,10 +803,13 @@
   async function commitFieldChange(object, path) {
     if (!object || !path) return Promise.resolve([]);
     if (object.type === "projector" && (path.startsWith("transform.") || path.startsWith("lookAt."))) { scheduleProjectorGeometry(object, "numeric", 0); return Promise.resolve([]); }
-    if (object.type === "projector" && (path.startsWith("optics.") || path.startsWith("media."))) return Promise.resolve([]);
+    if (object.type === "projector" && path === "optics.throwRatio" && object.optics.throwRatioAuto === false) { const sent = getAdapter()?.liveSetProjectorThrowRatio?.(object.pluginId, object.optics.throwRatio); plannerLog(sent ? "info" : "error", "Projector", sent ? `Manual Throw Ratio sent: ${object.optics.throwRatio}` : "Manual Throw Ratio could not be sent", { objectName: object.name, phase: "throw-ratio", source: "manual" }); return Promise.resolve([]); }
+    if (object.type === "projector" && path.startsWith("media.")) { scheduleProjectorGeometry(object, "resolution", 0); return Promise.resolve([]); }
+    if (object.type === "projector" && path.startsWith("optics.")) return Promise.resolve([]);
     if (object.type === "surface" && (path.startsWith("transform.") || path.startsWith("geometry."))) {
       const result = await commitSurfaceConfiguration(object);
-      return result ? commitAffectedProjectors([object]) : [];
+      if (result) projectorsAffectedBy([object]).forEach(projector => scheduleProjectorGeometry(projector, "surface", 0));
+      return [];
     }
     return Promise.resolve([]);
   }
@@ -813,8 +870,12 @@
   function applyLiveValue(change) {
     const object = state.objects.find(item => item.pluginId === change.pluginId); if (!object) return;
     if (change.field === "name") object.name = String(change.value || object.name);
-    else if (change.field === "transform.position" && change.value && typeof change.value === "object") object.transform.position = vector(change.value);
-    else if (change.field === "lookAt" && change.value && typeof change.value === "object") { object.lookAt = vector(change.value); if (targetSurface(object)) delete object.targetSurfacePluginId; recalculateProjectorGeometry(object); }
+    else if (change.field === "transform.position" && change.value && typeof change.value === "object") { object.transform.position = vector(change.value); if (!change.initial) startIncomingProjectorCycle(object, "designer-position"); }
+    else if (change.field === "lookAt" && change.value && typeof change.value === "object") { object.lookAt = vector(change.value); if (!change.initial && targetSurface(object)) delete object.targetSurfacePluginId; if (!change.initial) startIncomingProjectorCycle(object, "designer-look-at"); }
+    else if (change.field === "optics.lookDistance") handleProjectorLookDistance(object, change.value, change);
+    else if (change.field === "optics.fieldOfView") handleProjectorFieldOfView(object, change.value, change);
+    else if (change.field === "optics.throwRatio") handleProjectorThrowRatio(object, change.value, change);
+    else if (change.field === "projectorRoll") { object.projectorRoll = finite(change.value, object.projectorRoll); }
     else if (change.field.startsWith("optics.")) { const key = change.field.slice("optics.".length); object.optics[key] = finite(change.value, object.optics[key]); }
     else if (change.field.includes("resolution") || change.field.includes("geometry") || change.field.startsWith("lookAt.") || change.field.startsWith("transform.")) setPath(object, change.field, finite(change.value, getFieldValue(object, change.field)));
     const record = state.sync.objects?.[object.pluginId];
@@ -894,7 +955,8 @@
     if (knownType === "projector") {
       object.lookAt = item.lookAt || lookAtFromRotation(object.transform.position, object.transform.rotation);
       object.transform.rotation = { x: 0, y: 0, z: 0 };
-      object.optics = { throwRatio: Math.max(.1, finite(item.optics?.throwRatio, existing?.optics?.throwRatio || 1.5)), fieldOfView: Math.max(.1, finite(item.optics?.fieldOfView, existing?.optics?.fieldOfView || 40)), lookDistance: Math.max(.1, finite(item.optics?.lookDistance, existing?.optics?.lookDistance || Math.hypot(object.lookAt.x - object.transform.position.x, object.lookAt.y - object.transform.position.y, object.lookAt.z - object.transform.position.z))) };
+      object.optics = { throwRatio: Math.max(.1, finite(item.optics?.throwRatio, existing?.optics?.throwRatio || 1.5)), fieldOfView: Math.max(.1, finite(item.optics?.fieldOfView, existing?.optics?.fieldOfView || 40)), lookDistance: Math.max(.1, finite(item.optics?.lookDistance, existing?.optics?.lookDistance || Math.hypot(object.lookAt.x - object.transform.position.x, object.lookAt.y - object.transform.position.y, object.lookAt.z - object.transform.position.z))), throwRatioAuto: existing?.optics?.throwRatioAuto !== false };
+      object.rotationZMode = existing?.rotationZMode || "rounded"; object.projectorRoll = finite(item.projectorRoll, existing?.projectorRoll || 0);
       if (existing?.targetSurfacePluginId) object.targetSurfacePluginId = existing.targetSurfacePluginId;
     }
     object.designer = { designerId: String(item.id || item.uid || ""), path: item.path, className: item.className, collection: item.collection, screens: item.screens || [] };
@@ -1046,5 +1108,5 @@
     if (type === "camera" && paths.filter(path => path.startsWith("objects/camera/")).length < 2) throw new Error("Designer ownership metadata is incomplete for camera");
     return paths;
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, commitProjectorConfiguration, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, scheduleProjectorGeometry, projectorCycleRevisions, plannerLog, setActiveError, resolveActiveError, diagnosticsLogs, plannerLogEntries, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, commitProjectorBinding, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, projectorAutoThrowRatio, projectorRotationZValue, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, scheduleProjectorGeometry, handleProjectorLookDistance, handleProjectorFieldOfView, handleProjectorThrowRatio, startIncomingProjectorCycle, finalizeProjectorRotation, applyLiveValue, projectorCycleRevisions, plannerLog, setActiveError, resolveActiveError, diagnosticsLogs, plannerLogEntries, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
 })();

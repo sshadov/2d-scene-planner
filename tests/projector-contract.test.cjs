@@ -17,6 +17,18 @@ function startMockApi() {
       let body = "";
       for await (const chunk of request) body += chunk;
       const script = JSON.parse(body).script;
+      if (!script.includes('Projector configuration readback')) {
+        assert.match(script, /obj\.removeScreen\(screen\)/);
+        assert.match(script, /obj\.addScreen\(target_screen\)/);
+        assert.match(script, /Projector\.screens did not retain the bound Surface/);
+        assert.match(script, /Surface\.projectors did not retain the bound Projector/);
+        assert.match(script, /Surface\.projectors retained an unbound Projector/);
+        assert.doesNotMatch(script, /obj\.screens\s*=/);
+        assert.doesNotMatch(script, /target_screen\.projectors\s*=/);
+        const payload = JSON.stringify({ status: { code: 0, message: "" }, returnValue: JSON.stringify(JSON.stringify({ readback: { transform: { position: { x: 0, y: 0, z: 0 } }, lookAt: { x: 0, y: 0, z: 1 } } })) });
+        response.writeHead(200, { "Content-Type": "application/json" }).end(payload);
+        return;
+      }
       assert.match(script, /state\.stage\.projectors/);
       assert.match(script, /configPosition/);
       assert.match(script, /configLookAt/);
@@ -81,6 +93,8 @@ function startMockApi() {
         screens: [{ designerId: "screen-uid", path: "objects/screen2/surface.apx" }]
       }]
     });
+    await context.disguiseSceneAdapter.updateObject("6110464582749956973", { targetSurface: { designerId: "screen-uid", path: "objects/screen2/surface.apx" } }, "objects/projector/projector 1.apx", "projector");
+    await context.disguiseSceneAdapter.updateObject("6110464582749956973", { targetSurface: null }, "objects/projector/projector 1.apx", "projector");
     console.log("projector contract protocol test: ok");
   } finally {
     await new Promise(resolve => server.close(resolve));

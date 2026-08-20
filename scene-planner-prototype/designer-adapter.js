@@ -471,7 +471,10 @@ owned_paths = owned_resource_paths(obj, created_paths)`)
             break
         if screen is None: break
         obj.removeScreen(screen)
-    if target_screen is not None: obj.addScreen(target_screen)
+    if target_screen is not None:
+        obj.addScreen(target_screen)
+        if str(target_screen.uid) not in [str(screen.uid) for screen in obj.screens]: raise RuntimeError("Projector.screens did not retain the bound Surface")
+        if str(obj.uid) not in [str(projector.uid) for projector in target_screen.projectors]: raise RuntimeError("Surface.projectors did not retain the bound Projector")
     current_rotation = obj.configRotation
     obj.configRotation = Vec(current_rotation.x, current_rotation.y, float(payload.get("projectorRoll", 0.0)))
     config.save(); obj.save(); stage.save()`)
@@ -571,6 +574,7 @@ elif kind == "projector":
     if "throwRatio" in optics_change:
         assign("configThrowRatio", float(optics_change["throwRatio"]))
     if "targetSurface" in changed:
+        previous_screens = [screen for screen in obj.screens]
         target = changed.get("targetSurface")
         target_screen = None
         if target:
@@ -589,6 +593,16 @@ elif kind == "projector":
             if screen is None: break
             obj.removeScreen(screen)
         if target_screen is not None: obj.addScreen(target_screen)
+        projector_id = str(obj.uid)
+        current_screen_ids = [str(screen.uid) for screen in obj.screens]
+        if target_screen is not None:
+            if str(target_screen.uid) not in current_screen_ids: raise RuntimeError("Projector.screens did not retain the bound Surface")
+            inverse_ids = [str(projector.uid) for projector in target_screen.projectors]
+            if projector_id not in inverse_ids: raise RuntimeError("Surface.projectors did not retain the bound Projector")
+        for previous_screen in previous_screens:
+            if target_screen is not None and str(previous_screen.uid) == str(target_screen.uid): continue
+            inverse_ids = [str(projector.uid) for projector in previous_screen.projectors]
+            if projector_id in inverse_ids: raise RuntimeError("Surface.projectors retained an unbound Projector")
     if "projectorRoll" in changed:
         current_rotation = obj.configRotation
         assign("configRotation", Vec(current_rotation.x, current_rotation.y, float(changed["projectorRoll"])))
@@ -1010,6 +1024,7 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       add("optics.throwRatio", "object.configThrowRatio", value => { const numeric = Number(value); return Number.isFinite(numeric) ? Math.max(.1, numeric) : 1.5; }, value => Number(value), false);
       add("optics.fieldOfView", "object.fieldOfView", value => Number(value), value => Number(value), false);
       add("optics.lookDistance", "object.configLookDistance", value => { const numeric = Number(value); if (Number.isFinite(numeric)) return Math.max(.1, numeric); const position = payload.transform?.position || {}; const lookAt = payload.lookAt || position; return Math.max(.1, Math.hypot(Number(lookAt.x || 0) - Number(position.x || 0), Number(lookAt.y || 0) - Number(position.y || 0), Number(lookAt.z || 0) - Number(position.z || 0))); }, value => Number(value), false);
+      add("projectorRoll", "object.configRotation.z", value => Number(value), value => Number(value), false);
     } else {
       ["x", "y", "z"].forEach(axis => add(`transform.position.${axis}`, `object.offset.${axis}`));
     }
@@ -1269,6 +1284,7 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
     inspectScene: () => execute(inspectScript(), { action: "inspect-scene", type: "stage", path: "state.stage" }),
     createObject: payload => execute(createScript(payload), { action: "create", type: payload.type, pluginId: payload.pluginId, path: resourcePath(payload) }),
     updateObject: (designerId, changed, designerPath, kind) => execute(updateScript(designerId, changed, designerPath, kind), { action: "update", type: kind, designerId, path: designerPath }),
+    updateProjectorRotationZ: (designerId, value, designerPath) => execute(updateScript(designerId, { projectorRoll: Number(value) }, designerPath, "projector"), { action: "projector-rotation-z", type: "projector", designerId, path: designerPath }),
     projectorReadbackProbe: designerId => execute(projectorProbeScript(designerId), { action: "projector-readback", type: "projector", designerId }),
     deleteObjects: designerIds => execute(deleteScript(designerIds), { action: "delete", designerId: designerIds.map(item => item?.id || item).join(","), path: designerIds.map(item => item?.path).filter(Boolean).join(",") }),
     deleteDesignerObjects: designerIds => execute(deleteScript(designerIds), { action: "delete-imported", designerId: designerIds.map(item => item?.id || item).join(","), path: designerIds.map(item => item?.path).filter(Boolean).join(",") }),
