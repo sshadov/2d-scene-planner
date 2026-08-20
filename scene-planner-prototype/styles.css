@@ -128,7 +128,7 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .projector-auto-control { display: flex; align-items: center; gap: 5px; min-height: 25px; }
 .projector-auto-control input { width: 13px; height: 13px; accent-color: #3fb8a7; }
 .projector-rotation-control select { width: 100%; height: 25px; border: 1px solid #344250; border-radius: 3px; background: #0e141a; color: var(--ink); padding: 0 5px; font-size: 10px; }
-.input-shell input.external-override { border-color: #e0a348; box-shadow: 0 0 0 1px rgba(224, 163, 72, .35); }
+.input-shell input.external-override { border-color: #e05252; box-shadow: 0 0 0 1px rgba(224, 82, 82, .4); }
 .media-mode { display: inline-flex; height: 27px; border: 1px solid #344250; border-radius: 3px; overflow: hidden; }
 .media-mode button { min-width: 62px; padding: 0 7px; border: 0; border-right: 1px solid #344250; background: #0e141a; color: #82909d; font-size: 9px; }
 .media-mode button:last-child { border-right: 0; }

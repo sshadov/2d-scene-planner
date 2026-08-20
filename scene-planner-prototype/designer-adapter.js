@@ -451,8 +451,7 @@ kind = "projector"
 owned_paths = owned_resource_paths(obj, created_paths)`)
       .replaceAll('"name": resolved_name, "readback": readback(obj, kind)', '"name": resolved_name, "ownedPaths": owned_paths, "readback": readback(obj, kind)')
       .replace('allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type)', 'allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type.__name__)')
-      .replace('    if "throwRatio" in optics: obj.configThrowRatio = float(optics["throwRatio"])\n    append_typed(obj, collection)\n    config.save(); obj.save(); stage.save()', `    if "lookDistance" in optics: obj.configLookDistance = float(optics["lookDistance"])
-    if "throwRatio" in optics: obj.configThrowRatio = float(optics["throwRatio"])
+      .replace('    if "throwRatio" in optics: obj.configThrowRatio = float(optics["throwRatio"])\n    append_typed(obj, collection)\n    config.save(); obj.save(); stage.save()', `    if "throwRatio" in optics: obj.configThrowRatio = float(optics["throwRatio"])
     append_typed(obj, collection)
     target = payload.get("targetSurface")
     target_screen = None
@@ -569,8 +568,6 @@ elif kind == "projector":
         value = Vec(look_change.get("x", current_look.x), look_change.get("y", current_look.y), look_change.get("z", current_look.z))
         assign("configLookAt", value)
     optics_change = changed.get("optics", {})
-    if "lookDistance" in optics_change:
-        assign("configLookDistance", float(optics_change["lookDistance"]))
     if "throwRatio" in optics_change:
         assign("configThrowRatio", float(optics_change["throwRatio"]))
     if "targetSurface" in changed:

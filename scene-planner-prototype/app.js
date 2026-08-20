@@ -758,7 +758,7 @@
     const field = activeFieldRefs.get("optics.throwRatio"); field?.classList?.add("external-override");
     clearTimeout(projectorThrowRatioCorrectionTimers.get(object.pluginId));
     const revision = projectorCycleRevisions.get(object.pluginId) || startIncomingProjectorCycle(object, "designer-throw-ratio");
-    projectorThrowRatioCorrectionTimers.set(object.pluginId, setTimeout(() => { projectorThrowRatioCorrectionTimers.delete(object.pluginId); sendAutoThrowRatio(object, "designer-override", revision); }, 300));
+    projectorThrowRatioCorrectionTimers.set(object.pluginId, setTimeout(() => { projectorThrowRatioCorrectionTimers.delete(object.pluginId); field?.classList?.remove("external-override"); sendAutoThrowRatio(object, "designer-override", revision); }, 300));
     refreshActiveValues(); drawScene();
   }
   function projectorsAffectedBy(objects) {
