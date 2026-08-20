@@ -78,6 +78,12 @@ assert.match(simpleCreate, /findResourcesPointingToThis\(DirectProjection\)/);
 assert.match(simpleCreate, /assert_typed_membership\(stage, "ledScreens", obj\)/);
 assert.match(simpleCreate, /return obj, resolved_name, object_path, owned_resource_paths\(obj, created_paths\)/);
 assert.match(simpleCreate, /"ownedPaths": owned_paths/);
+assert.ok(simpleCreate.indexOf("append_typed(obj, collection)") < simpleCreate.lastIndexOf('assign("rotation", Vec(0.0, yaw, 0.0))'));
+assert.ok(simpleCreate.lastIndexOf('assign("rotation", Vec(0.0, yaw, 0.0))') < simpleCreate.lastIndexOf("obj.save()"));
+
+const screenYawUpdate = scripts.updateScript("screen-yaw-uid", { transform: { rotation: { y: 45 } } }, "objects/ledscreen/yaw.apx", "screen");
+assert.ok(screenYawUpdate.indexOf('assign("rotation", Vec(0.0, yaw, 0.0))') < screenYawUpdate.lastIndexOf("obj.save()"));
+assert.ok(screenYawUpdate.lastIndexOf("obj.save()") < screenYawUpdate.lastIndexOf("stage.save()"));
 
 const rename = scripts.updateScript("uid-1", { name: "DMX Light 2" }, "objects/dmxlight/dmx light 1.apx", "dmxLight");
 assert.match(rename, /resourceManager\.exists\(Path\(desired_path\)\)/);

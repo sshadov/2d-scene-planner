@@ -407,6 +407,7 @@ def rollback(created_paths, stage, attached, collection_name):
     return errors`)
       .replaceAll('rollback(created_paths, stage, obj if obj is not None else None, collection)', `rollback(created_paths, stage, obj if obj is not None else None, ${quote(typeCollections[payload.type])})`)
       .replaceAll('rollback(created_paths, stage, obj, collection)', `rollback(created_paths, stage, obj, ${quote(typeCollections[payload.type])})`)
+      .replace('        append_typed(obj, collection)\n        obj.save()', '        append_typed(obj, collection)\n        if kind in ["screen", "dmxScreen", "surface"]:\n            yaw = float(rot["y"])\n            assign("rotation", Vec(0.0, yaw, 0.0))\n        obj.save()')
       .replace('        assert_healthy(obj, kind)\n        return obj, resolved_name, object_path', `        assert_healthy(obj, kind)\n        assert_typed_membership(stage, ${quote(typeCollections[payload.type])}, obj)\n        return obj, resolved_name, object_path, owned_resource_paths(obj, created_paths)`)
       .replace(`    except Exception:
         rollback(created_paths, stage, obj if obj is not None else None, ${quote(typeCollections[payload.type])})
@@ -557,6 +558,7 @@ else:
     if rotation_change:
         assign("rotation", Vec(rotation_change.get("x", current_rot.x), rotation_change.get("y", current_rot.y), rotation_change.get("z", current_rot.z)))
 obj.save()
+stage.save()
 ${readbackHelpers()}
 return json.dumps({"designerId": str(obj.uid), "path": object_path, "name": str(getattr(obj, "description", "")), "readback": readback(obj, kind)})`;
   }
