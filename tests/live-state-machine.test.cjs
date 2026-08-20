@@ -51,7 +51,7 @@ function valuesForSubscriptions(socket) {
   adapter.configureLiveScene("32");
   const payload = { pluginId: "screen-1", type: "screen", name: "screen", transform: { position: { x: 1, y: 0, z: 2 }, rotation: { x: 0, y: 0, z: 0 } }, geometry: { width: 4, height: 2 } };
   const projectorPayload = { pluginId: "projector-1", type: "projector", name: "projector", transform: { position: { x: -3, y: 3, z: -5 }, rotation: { x: 0, y: 0, z: 0 } }, lookAt: { x: 2, y: 0, z: 4 } };
-  adapter.liveSync([{ payload, record: { designerId: "16", path: "objects/ledscreen/screen.apx" } }, { payload: projectorPayload, record: { designerId: "17", path: "objects/projector/projector.apx" } }]);
+  adapter.liveSync([{ payload, record: { designerId: "16", path: "objects/ledscreen/screen.apx" } }, { payload: projectorPayload, record: { designerId: "17", path: "objects/projector/projector.apx" }, subscribeOnly: true }]);
   const statuses = [];
   const startPromise = adapter.liveStart({ onStatus(status) { statuses.push(status); }, onValuesChanged() {}, onSceneChanged() {} });
   const first = MockWebSocket.instances[0];
@@ -63,7 +63,7 @@ function valuesForSubscriptions(socket) {
   const stateAfterInitial = adapter.getLiveState();
   const projectorSubscriptions = first.sent.filter(item => item.subscribe?.object === "getByUID(0x11)").flatMap(item => item.subscribe.properties);
   assert.deepEqual(projectorSubscriptions, ["object.description", "object.configPosition", "object.configLookAt", "object.configThrowRatio", "object.fieldOfView", "object.configLookDistance"]);
-  assert.equal(stateAfterInitial.bindings.find(binding => binding.field === "optics.lookDistance").writable, true);
+  assert.equal(stateAfterInitial.bindings.find(binding => binding.field === "optics.lookDistance").writable, false);
   assert.equal(stateAfterInitial.bindings.find(binding => binding.field === "optics.fieldOfView").writable, false);
   assert.ok(projectorSubscriptions.every(property => property !== "object.screens"));
   assert.ok(projectorSubscriptions.every(property => property !== "object.configRotation"));
@@ -91,6 +91,13 @@ function valuesForSubscriptions(socket) {
   assert.equal(first.sent.filter(item => item.set).length, setCount);
   const converged = adapter.getLiveState().bindings.filter(binding => binding.id !== null);
   assert.ok(converged.every(binding => !binding.dirty && binding.inFlight === undefined));
+  const setsBeforeGeometry = first.sent.filter(item => item.set).length;
+  assert.equal(adapter.liveSetProjectorGeometry("projector-1", { x: 5, y: 3, z: -7 }, { x: 1, y: 2, z: 4 }), true);
+  const geometrySet = first.sent.filter(item => item.set).slice(setsBeforeGeometry).flatMap(item => item.set);
+  const geometryBindingIds = new Set(adapter.getLiveState().bindings.filter(binding => ["transform.position", "lookAt"].includes(binding.field)).map(binding => binding.id));
+  assert.equal(geometrySet.length, 2);
+  assert.ok(geometrySet.every(change => geometryBindingIds.has(change.id)));
+  assert.deepEqual(JSON.parse(JSON.stringify(geometrySet.map(change => change.value))), [{ x: 5, y: 3, z: -7 }, { x: 1, y: 2, z: 4 }]);
   const writableBinding = adapter.getLiveState().bindings.find(binding => binding.writable && binding.id !== null);
   assert.ok(writableBinding);
   adapter.liveSync([{ payload: { ...payload, transform: { ...payload.transform, position: { ...payload.transform.position, x: 9 } } }, record: { designerId: "16", path: "objects/ledscreen/screen.apx" } }]);

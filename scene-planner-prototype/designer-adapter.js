@@ -1007,9 +1007,9 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       // These coupled vectors must not pass through transient mixed states.
       add("transform.position", "object.configPosition");
       add("lookAt", "object.configLookAt");
-      add("optics.throwRatio", "object.configThrowRatio", value => { const numeric = Number(value); return Number.isFinite(numeric) ? Math.max(.1, numeric) : 1.5; }, value => Number(value));
+      add("optics.throwRatio", "object.configThrowRatio", value => { const numeric = Number(value); return Number.isFinite(numeric) ? Math.max(.1, numeric) : 1.5; }, value => Number(value), false);
       add("optics.fieldOfView", "object.fieldOfView", value => Number(value), value => Number(value), false);
-      add("optics.lookDistance", "object.configLookDistance", value => { const numeric = Number(value); if (Number.isFinite(numeric)) return Math.max(.1, numeric); const position = payload.transform?.position || {}; const lookAt = payload.lookAt || position; return Math.max(.1, Math.hypot(Number(lookAt.x || 0) - Number(position.x || 0), Number(lookAt.y || 0) - Number(position.y || 0), Number(lookAt.z || 0) - Number(position.z || 0))); }, value => Number(value));
+      add("optics.lookDistance", "object.configLookDistance", value => { const numeric = Number(value); if (Number.isFinite(numeric)) return Math.max(.1, numeric); const position = payload.transform?.position || {}; const lookAt = payload.lookAt || position; return Math.max(.1, Math.hypot(Number(lookAt.x || 0) - Number(position.x || 0), Number(lookAt.y || 0) - Number(position.y || 0), Number(lookAt.z || 0) - Number(position.z || 0))); }, value => Number(value), false);
     } else {
       ["x", "y", "z"].forEach(axis => add(`transform.position.${axis}`, `object.offset.${axis}`));
     }
@@ -1099,7 +1099,12 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       binding.remote = change.value;
       binding.initialized = true;
       if (binding.desired === undefined) binding.desired = change.value;
-      if (!wasInitialized) {
+      if (!wasInitialized && binding.subscribeOnly) {
+        binding.desired = change.value;
+        binding.dirty = false;
+        binding.inFlight = undefined;
+        if (binding.field !== "name") liveOnValuesChanged({ pluginId: binding.pluginId, field: binding.field, value: binding.decode(change.value), property: binding.propertyPath, initial: true });
+      } else if (!wasInitialized) {
         binding.dirty = !liveValuesEqual(binding.desired, change.value);
         binding.inFlight = undefined;
         if (binding.writable === false) {
@@ -1171,9 +1176,10 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       liveDefinitions(payload).forEach(definition => {
         const key = liveDescriptorKey(payload.pluginId, definition.field);
         const previous = liveBindings.get(key);
-        const desired = definition.encode(liveFieldValue(payload, definition.field));
+        const subscribeOnly = Boolean(entry?.subscribeOnly);
+        const desired = subscribeOnly ? previous?.desired : definition.encode(liveFieldValue(payload, definition.field));
         const unchangedDesired = previous?.desired !== undefined && liveValuesEqual(previous.desired, desired);
-        nextBindings.set(key, { ...(previous || {}), ...definition, key, pluginId: payload.pluginId, objectPath, propertyPath: definition.property, id: previous?.id ?? null, desired, dirty: previous?.initialized ? !liveValuesEqual(previous.remote, desired) : false, inFlight: unchangedDesired ? previous?.inFlight : undefined, writable: definition.writable !== false && previous?.writable !== false });
+        nextBindings.set(key, { ...(previous || {}), ...definition, key, pluginId: payload.pluginId, objectPath, propertyPath: definition.property, id: previous?.id ?? null, desired, dirty: subscribeOnly ? Boolean(previous?.dirty) : previous?.initialized ? !liveValuesEqual(previous.remote, desired) : false, inFlight: subscribeOnly || unchangedDesired ? previous?.inFlight : undefined, writable: definition.writable !== false && previous?.writable !== false, subscribeOnly });
       });
     });
     const removedIds = [...liveBindings.values()].filter(binding => binding.id !== null && !nextBindings.has(binding.key)).map(binding => binding.id);
@@ -1182,6 +1188,26 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
     liveSubscribeBindings();
     liveFlushSets();
     return socketOpen && Boolean(liveSocket && liveSocket.readyState === 1);
+  }
+  function liveSetProjectorFields(pluginId, values) {
+    const changes = [];
+    for (const [field, value] of Object.entries(values || {})) {
+      const binding = liveBindings.get(liveDescriptorKey(pluginId, field));
+      if (!binding || !Number.isInteger(binding.id) || !binding.initialized) return false;
+      const encoded = binding.encode(value);
+      binding.desired = encoded;
+      binding.dirty = true;
+      binding.inFlight = encoded;
+      changes.push({ id: binding.id, value: encoded });
+    }
+    if (!changes.length || !liveSend({ set: changes })) return false;
+    return true;
+  }
+  function liveSetProjectorGeometry(pluginId, position, lookAt) {
+    return liveSetProjectorFields(pluginId, { "transform.position": position, lookAt });
+  }
+  function liveSetProjectorThrowRatio(pluginId, throwRatio) {
+    return liveSetProjectorFields(pluginId, { "optics.throwRatio": throwRatio });
   }
   function liveScheduleReconnect(reason = "connection closed") {
     if (!liveWanted || liveReconnectTimer) return;
@@ -1251,6 +1277,8 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
     liveStart,
     liveStop,
     liveSync,
+    liveSetProjectorGeometry,
+    liveSetProjectorThrowRatio,
     getLiveState: () => ({
       wanted: liveWanted,
       socket: liveSocket?.readyState === 1 ? "open" : liveSocket ? "connecting" : "closed",

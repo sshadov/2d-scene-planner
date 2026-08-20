@@ -51,6 +51,8 @@
   let pendingDesignerCreates = new Map();
   const configurationCommitQueues = new Map();
   const configurationCommitVersions = new Map();
+  const projectorGeometryTimers = new Map();
+  const projectorCycleRevisions = new Map();
   const plannerLogEntries = [];
   const PLANNER_LOG_LIMIT = 200;
 
@@ -249,7 +251,6 @@
   }
   function setObjectPlanPosition(object, x, z) {
     object.transform.position.x = x; object.transform.position.z = z;
-    if (object.type === "projector") recalculateProjectorGeometry(object);
     if (object.type === "surface") recalculateSurfaceProjectors(object);
   }
   function projectorScreen(object) { return targetSurface(object); }
@@ -409,7 +410,7 @@
       setObjectPlanPosition(object, x, z); return;
     }
     const keys = path.split("."); const last = keys.pop(); const target = keys.reduce((current, key) => current[key] ||= {}, object); let next = Number(value.toFixed(3)); if (path.startsWith("media.resolution")) next = Math.max(1, Math.round(value)); if (path.startsWith("geometry.") || path === "optics.throwRatio") next = Math.max(.1, next); if (path === "media.pixelsPerInch") next = Math.max(.1, next); if (path === "media.pixelPitchMm") next = Math.max(.01, next); target[last] = next;
-    if (PLANAR_TYPES.has(object.type)) { object.transform.rotation.x = 0; object.transform.rotation.z = 0; } if (object.type === "screen" && (path.startsWith("media.") || path.startsWith("geometry."))) syncScreenMedia(object, path); if (object.type === "surface" && (path.startsWith("geometry.") || path.startsWith("transform."))) recalculateSurfaceProjectors(object); if (object.type === "projector" && (path.startsWith("media.") || path.startsWith("lookAt.") || path.startsWith("transform."))) recalculateProjectorGeometry(object);
+    if (PLANAR_TYPES.has(object.type)) { object.transform.rotation.x = 0; object.transform.rotation.z = 0; } if (object.type === "screen" && (path.startsWith("media.") || path.startsWith("geometry."))) syncScreenMedia(object, path); if (object.type === "surface" && (path.startsWith("geometry.") || path.startsWith("transform."))) recalculateSurfaceProjectors(object);
   }
   function queueFieldFocus(object, path) { pendingFocusPath = path || null; pendingFocusPluginId = path ? object?.pluginId || null : null; }
   function focusActiveField(path, attempt = 0) { const object = selectedObject(); if (!object || pendingFocusPluginId && object.pluginId !== pendingFocusPluginId) return false; const input = activeFieldRefs.get(path) || [...document.querySelectorAll("#active-object-strip input[data-field]")].find(candidate => candidate.dataset.field === path && (!pendingFocusPluginId || candidate.dataset.pluginId === pendingFocusPluginId)); if (!input) { if (attempt < 30 && pendingFocusPath === path) setTimeout(() => focusActiveField(path, attempt + 1), 25); return false; } input.focus?.({ preventScroll: true }); input.select?.(); input.scrollIntoView?.({ block: "nearest", inline: "nearest" }); if (document.activeElement === input) { pendingFocusPath = null; pendingFocusPluginId = null; return true; } if (attempt < 30 && pendingFocusPath === path) setTimeout(() => focusActiveField(path, attempt + 1), 25); return false; }
@@ -649,6 +650,22 @@
     configurationCommitQueues.set(key, tracked);
     return tracked;
   }
+  function scheduleProjectorGeometry(object, source = "planner", delay = 40) {
+    if (object?.type !== "projector") return 0;
+    const revision = (projectorCycleRevisions.get(object.pluginId) || 0) + 1;
+    projectorCycleRevisions.set(object.pluginId, revision);
+    clearTimeout(projectorGeometryTimers.get(object.pluginId));
+    const send = () => {
+      projectorGeometryTimers.delete(object.pluginId);
+      if (projectorCycleRevisions.get(object.pluginId) !== revision) return;
+      const adapter = getAdapter();
+      const sent = adapter?.liveSetProjectorGeometry?.(object.pluginId, clone(object.transform.position), clone(effectiveLookAt(object)));
+      plannerLog(sent ? "info" : "warn", "Projector", sent ? "Position + Look At sent" : "Position + Look At waiting for LIVE", { objectName: object.name, phase: "geometry", source, revision });
+      if (!sent) scheduleLiveSync(0);
+    };
+    if (delay > 0) projectorGeometryTimers.set(object.pluginId, setTimeout(send, delay)); else send();
+    return revision;
+  }
   function commitProjectorConfiguration(object) {
     if (object?.type !== "projector") return Promise.resolve(null);
     const payload = objectPayload(object);
@@ -731,7 +748,8 @@
   }
   async function commitFieldChange(object, path) {
     if (!object || !path) return Promise.resolve([]);
-    if (object.type === "projector" && (path.startsWith("transform.") || path.startsWith("lookAt.") || path.startsWith("optics.") || path.startsWith("media."))) return commitAffectedProjectors([object]);
+    if (object.type === "projector" && (path.startsWith("transform.") || path.startsWith("lookAt."))) { scheduleProjectorGeometry(object, "numeric", 0); return Promise.resolve([]); }
+    if (object.type === "projector" && (path.startsWith("optics.") || path.startsWith("media."))) return Promise.resolve([]);
     if (object.type === "surface" && (path.startsWith("transform.") || path.startsWith("geometry."))) {
       const result = await commitSurfaceConfiguration(object);
       return result ? commitAffectedProjectors([object]) : [];
@@ -837,7 +855,7 @@
     liveSyncInFlight = true; liveSyncQueued = false;
     try {
       const boundObjects = state.objects.filter(object => state.sync.objects?.[object.pluginId]?.designerId);
-      const sent = adapter.liveSync(boundObjects.map(object => ({ payload: livePayload(object), record: state.sync.objects[object.pluginId] })));
+      const sent = adapter.liveSync(boundObjects.map(object => ({ payload: livePayload(object), record: state.sync.objects[object.pluginId], subscribeOnly: object.type === "projector" })));
       if (sent === false) throw new Error("Live Update WebSocket is not open");
       document.querySelector("#adapter-status").textContent = "LIVE: changes sent over WebSocket";
     } catch (error) {
@@ -990,7 +1008,6 @@
     } else if (state.dragging.kind === "lookAt") {
       object.lookAt.x = Number((point.x + state.dragging.offsetX).toFixed(3));
       object.lookAt.z = Number((point.z + state.dragging.offsetZ).toFixed(3));
-      recalculateProjectorGeometry(object);
     } else {
       const x = Number(snapCoordinate("x", point.x + state.dragging.offsetX, object).toFixed(3));
       const z = Number(snapCoordinate("z", point.z + state.dragging.offsetZ, object).toFixed(3));
@@ -999,8 +1016,10 @@
     drawScene();
     refreshActiveValues();
     scheduleLiveSync(0);
+    const movedObjects = state.dragging.kind === "group" ? state.dragging.positions.map(position => state.objects.find(candidate => candidate.id === position.id)).filter(Boolean) : [object];
+    projectorsAffectedBy(movedObjects).forEach(projector => scheduleProjectorGeometry(projector, "drag", 40));
   });
-  function clearDragState(event, commit = true) { const pointerId = event?.pointerId; const drag = state.dragging; const moved = Boolean(drag && !drag.pending && drag.kind !== "pan"); const affected = moved ? (drag.kind === "group" ? drag.positions.map(position => state.objects.find(object => object.id === position.id)).filter(Boolean) : [state.objects.find(object => object.id === drag.id)].filter(Boolean)) : []; if (commit && moved && liveSyncTimer) { clearTimeout(liveSyncTimer); liveSyncTimer = null; void runLiveSync(); } state.dragging = null; state.guides = []; if (commit) { persist(!moved); if (moved) commitAffectedProjectors(affected); } render(); if (pointerId !== undefined && canvas.hasPointerCapture?.(pointerId)) canvas.releasePointerCapture(pointerId); }
+  function clearDragState(event, commit = true) { const pointerId = event?.pointerId; const drag = state.dragging; const moved = Boolean(drag && !drag.pending && drag.kind !== "pan"); const affected = moved ? (drag.kind === "group" ? drag.positions.map(position => state.objects.find(object => object.id === position.id)).filter(Boolean) : [state.objects.find(object => object.id === drag.id)].filter(Boolean)) : []; if (commit && moved && liveSyncTimer) { clearTimeout(liveSyncTimer); liveSyncTimer = null; void runLiveSync(); } state.dragging = null; state.guides = []; if (commit) { persist(!moved); if (moved) projectorsAffectedBy(affected).forEach(object => scheduleProjectorGeometry(object, "pointerup", 0)); } render(); if (pointerId !== undefined && canvas.hasPointerCapture?.(pointerId)) canvas.releasePointerCapture(pointerId); }
   canvas.addEventListener("pointerup", event => clearDragState(event)); canvas.addEventListener("pointercancel", event => { cancelProjectorTargetPlacement(); clearDragState(event, false); }); canvas.addEventListener("lostpointercapture", event => { if (state.dragging) clearDragState(event); }); window.addEventListener("lostpointercapture", event => { if (state.dragging) clearDragState(event); }); window.addEventListener("blur", () => { cancelProjectorTargetPlacement(); if (state.dragging) clearDragState(undefined, false); }); document.addEventListener?.("visibilitychange", () => { if (document.hidden) { cancelProjectorTargetPlacement(); if (state.dragging) clearDragState(undefined, false); } }); window.addEventListener("resize", drawScene);
   canvas.addEventListener("wheel", event => { event.preventDefault(); state.zoom = clamp(state.zoom + (event.deltaY < 0 ? .1 : -.1), ZOOM_MIN, ZOOM_MAX); drawScene(); }, { passive: false });
   canvas.addEventListener("contextmenu", event => { event.preventDefault(); const object = hitTestProjectorTarget(event.clientX, event.clientY) || hitTest(event.clientX, event.clientY); if (object) openCanvasContextMenu(event, object); else { const rect = canvas.getBoundingClientRect(); openCanvasCreateMenu(event, toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false))); } });
@@ -1027,5 +1046,5 @@
     if (type === "camera" && paths.filter(path => path.startsWith("objects/camera/")).length < 2) throw new Error("Designer ownership metadata is incomplete for camera");
     return paths;
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, commitProjectorConfiguration, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, plannerLog, setActiveError, resolveActiveError, diagnosticsLogs, plannerLogEntries, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, commitProjectorConfiguration, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, scheduleProjectorGeometry, projectorCycleRevisions, plannerLog, setActiveError, resolveActiveError, diagnosticsLogs, plannerLogEntries, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
 })();
