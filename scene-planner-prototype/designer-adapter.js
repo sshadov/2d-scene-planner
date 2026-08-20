@@ -946,8 +946,9 @@ def resource_exists(path):
     verification_failures = []
     verification_succeeded = False
     try:
+        exists_result = resourceManager.exists(Path(path))
         verification_succeeded = True
-        if resourceManager.exists(Path(path)): return True
+        if exists_result: return True
     except Exception as error:
         verification_failures.append("resourceManager.exists: " + str(error))
     try:
