@@ -761,16 +761,16 @@ return json.dumps({"deleted": deleted, "skipped": skipped})`;
 
   function stageDeleteScript(designerIds, managed) {
     const requested = managed ? designerIds.filter(item => item && typeof item === "object" && item.owned === true) : designerIds;
-    const allowed = managed ? [...new Set(requested.flatMap(item => Array.isArray(item.ownedPaths) ? item.ownedPaths : []).map(String))] : [];
     const collections = [...new Set(Object.values(typeCollections).filter(collection => collection !== "displays"))];
     return `import json
 from d3 import Path, Resource, DirectProjection
 requested = json.loads(${payloadText(requested)})
+def request_id(item):
+    return str(item.get("id", "")) if isinstance(item, dict) else str(item)
+request_by_id = dict((request_id(item), item if isinstance(item, dict) else {}) for item in requested)
 target_ids = set(str(item.get("id", item)) if isinstance(item, dict) else str(item) for item in requested)
 target_paths = set(str(item.get("path", "")) for item in requested if isinstance(item, dict) and item.get("path"))
 target_pairs = set((str(item.get("id", "")), str(item.get("path", ""))) for item in requested if isinstance(item, dict) and item.get("path"))
-allowed_owned_paths = set(${quote(allowed)})
-remove_resources = any(bool(item.get("removeResource")) for item in requested if isinstance(item, dict))
 stage = state.stage
 skipped = []
 pending = []
@@ -782,24 +782,42 @@ def uid_of(candidate):
     return str(getattr(candidate, "uid", ""))
 def path_of(candidate):
     return str(getattr(candidate, "path", ""))
-def owned_resource_paths(candidate):
+def request_owned_paths(candidate_id):
+    item = request_by_id.get(candidate_id, {})
+    return set(str(path) for path in item.get("ownedPaths", []))
+def sole_target(reference, candidate):
+    count = 0
+    matched = False
+    for screen in getattr(reference, "screens", []):
+        count += 1
+        if uid_of(screen) == uid_of(candidate): matched = True
+    return count == 1 and matched
+def owned_resource_paths(candidate, allowed_paths):
     paths = []
+    blockers = []
     config_path = path_of(getattr(candidate, "config", None))
-    if config_path: paths.append(config_path)
+    if config_path and (not allowed_paths or config_path in allowed_paths): paths.append(config_path)
     for child in getattr(candidate, "children", []):
         child_path = path_of(child)
-        if child_path: paths.append(child_path)
+        if child_path and (not allowed_paths or child_path in allowed_paths): paths.append(child_path)
         projection_path = path_of(getattr(child, "projection", None))
-        if projection_path: paths.append(projection_path)
+        if projection_path and (not allowed_paths or projection_path in allowed_paths): paths.append(projection_path)
     try:
-        for projection in candidate.findResourcesPointingToThis(DirectProjection):
-            screens = getattr(projection, "screens", [])
-            if len(screens) == 1 and uid_of(screens[0]) == uid_of(candidate):
-                projection_path = path_of(projection)
-                if projection_path: paths.append(projection_path)
-    except Exception:
-        pass
-    return list(dict.fromkeys(paths))
+        for reference in candidate.findResourcesPointingToThis(Resource):
+            reference_path = path_of(reference)
+            reference_type = type(reference).__name__
+            if type(reference) is DirectProjection:
+                if not sole_target(reference, candidate):
+                    blockers.append("unexpected inbound reference " + reference_type + " " + reference_path)
+                elif allowed_paths and reference_path not in allowed_paths:
+                    blockers.append("unexpected inbound reference outside ownership " + reference_path)
+                elif reference_path:
+                    paths.append(reference_path)
+            elif reference_type != "Stage":
+                blockers.append("unexpected inbound reference " + reference_type + " " + reference_path)
+    except Exception as error:
+        if type(candidate).__name__ == "FixtureGroup": blockers.append("inbound reference inspection: " + str(error))
+    return list(dict.fromkeys(paths)), blockers
 def matches(candidate):
     candidate_id = uid_of(candidate)
     candidate_path = path_of(candidate)
@@ -807,7 +825,8 @@ def matches(candidate):
     if candidate_id not in target_ids: return False
     if target_paths and candidate_path not in target_paths: return False
     if target_pairs and (candidate_id, candidate_path) not in target_pairs: return False
-    if allowed_owned_paths and candidate_path not in allowed_owned_paths: return False
+    allowed_paths = request_owned_paths(candidate_id)
+    if allowed_paths and candidate_path not in allowed_paths: return False
     return candidate_id not in processed
 for collection_name in collection_names:
     collection = getattr(stage, collection_name, [])
@@ -815,17 +834,23 @@ for collection_name in collection_names:
         if matches(candidate):
             candidate_id = uid_of(candidate)
             processed.add(candidate_id)
-            pending.append((candidate_id, path_of(candidate), candidate, owned_resource_paths(candidate), collection_name))
+            allowed_paths = request_owned_paths(candidate_id)
+            owned_paths, blockers = owned_resource_paths(candidate, allowed_paths)
+            remove_resource = bool(request_by_id.get(candidate_id, {}).get("removeResource"))
+            pending.append((candidate_id, path_of(candidate), candidate, owned_paths, blockers, collection_name, remove_resource, allowed_paths))
 for resource_path in target_paths:
     try:
         candidate = resourceManager.load(Path(resource_path), Resource)
         if matches(candidate):
             candidate_id = uid_of(candidate)
             processed.add(candidate_id)
-            pending.append((candidate_id, resource_path, candidate, owned_resource_paths(candidate), class_collections.get(type(candidate).__name__, "children")))
+            allowed_paths = request_owned_paths(candidate_id)
+            owned_paths, blockers = owned_resource_paths(candidate, allowed_paths)
+            remove_resource = bool(request_by_id.get(candidate_id, {}).get("removeResource"))
+            pending.append((candidate_id, resource_path, candidate, owned_paths, blockers, class_collections.get(type(candidate).__name__, "children"), remove_resource, allowed_paths))
     except Exception:
         pass
-for candidate_id, resource_path, candidate, owned_paths, collection_name in pending:
+for candidate_id, resource_path, candidate, owned_paths, blockers, collection_name, remove_resource, allowed_paths in pending:
     try:
         collection = getattr(stage, collection_name)
         collection.remove(candidate)
@@ -842,28 +867,58 @@ def stage_contains(target_id, collection_name):
     for candidate in getattr(stage, collection_name, []):
         if uid_of(candidate) == target_id: return True
     return False
+def resource_exists(path):
+    try:
+        if resourceManager.exists(Path(path)): return True
+    except Exception:
+        pass
+    try:
+        folder = path.rsplit("/", 1)[0] + "/"
+        for candidate_path in resourceManager.package.findAllBeginsWith(folder):
+            if str(candidate_path).lower() == path.lower(): return True
+    except Exception:
+        pass
+    return False
 deleted = []
 resources_deleted = []
 resource_delete_failed = []
-for candidate_id, resource_path, candidate, owned_paths, collection_name in pending:
+resource_path_failures = []
+for candidate_id, resource_path, candidate, owned_paths, blockers, collection_name, remove_resource, allowed_paths in pending:
     if not stage_saved or candidate_id not in detached_ids or stage_contains(candidate_id, collection_name):
         skipped.append("stage still contains " + candidate_id)
         continue
     deleted.append(candidate_id)
-    if remove_resources:
-        paths_to_remove = owned_paths
-        if allowed_owned_paths:
-            paths_to_remove = [path for path in owned_paths if path in allowed_owned_paths]
-        paths_to_remove = list(dict.fromkeys(paths_to_remove + ([resource_path] if resource_path else [])))
-        try:
-            candidate.saveOnDelete()
-            for path in paths_to_remove:
-                resourceManager.remove(path)
+    if remove_resource:
+        dependency_failed = False
+        for blocker in blockers:
+            skipped.append("resource delete " + candidate_id + ": " + blocker)
+            resource_path_failures.append({"id": candidate_id, "path": resource_path, "error": blocker})
+            dependency_failed = True
+        dependency_paths = [path for path in owned_paths if path != resource_path and (not allowed_paths or path in allowed_paths)]
+        for path in dependency_paths:
+            if dependency_failed: break
+            try:
+                resourceManager.remove(Path(path))
+                if resource_exists(path): raise RuntimeError("resource still exists after remove")
                 resources_deleted.append(path)
-        except Exception as error:
-            skipped.append("resource delete " + candidate_id + ": " + str(error))
+            except Exception as error:
+                message = str(error)
+                skipped.append("resource delete " + candidate_id + " " + path + ": " + message)
+                resource_path_failures.append({"id": candidate_id, "path": path, "error": message})
+                dependency_failed = True
+        if dependency_failed:
             resource_delete_failed.append(candidate_id)
-return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "resourceDeleteFailed": resource_delete_failed, "skipped": skipped})`;
+            continue
+        try:
+            resourceManager.remove(Path(resource_path))
+            if resource_exists(resource_path): raise RuntimeError("resource still exists after remove")
+            resources_deleted.append(resource_path)
+        except Exception as error:
+            message = str(error)
+            skipped.append("resource delete " + candidate_id + " " + resource_path + ": " + message)
+            resource_path_failures.append({"id": candidate_id, "path": resource_path, "error": message})
+            resource_delete_failed.append(candidate_id)
+return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "resourceDeleteFailed": resource_delete_failed, "resourcePathFailures": resource_path_failures, "skipped": skipped})`;
   }
   function deleteScript(designerIds) { return stageDeleteScript(designerIds, false); }
   function deleteManagedScript(designerIds) { return stageDeleteScript(designerIds, true); }
