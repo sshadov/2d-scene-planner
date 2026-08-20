@@ -1,5 +1,14 @@
 # Architecture Decisions
 
+## ADR-032: Explicit Projector configuration finalization
+
+- Date: 2026-08-20
+- Status: accepted
+
+The Planner calculates provisional projector geometry locally so it remains useful without Designer. A bound projection surface is also bound in Designer through the public `Projector.removeScreen()` and `Projector.addScreen(Screen2)` methods, resolved by exact UID/path. Projector create waits for the bound Surface to exist in Designer.
+
+LIVE carries only confirmed simple properties: `configPosition`, `configLookAt`, `configLookDistance`, `configThrowRatio`, and read-only `fieldOfView`. It never writes `configRotation` or the complex `screens` collection. A drag updates only its direct LIVE property while locally derived optics remain preview state. After a completed drag, numeric commit, Surface geometry change, or binding change, one Python operation writes Position, Look At, Look Distance, Throw Ratio, Surface binding, then final `configRotation.z`; it preserves `configRotation.x/y`, forces `.z` to `0°` or `90°`, saves Projector and Stage, and returns authoritative readback. This narrow final roll is the only permitted `configRotation` write and supersedes ADR-010's blanket prohibition.
+
 ## ADR-016: Guided dimension entry and confirmed LIVE baseline
 
 - Date: 2026-08-18
@@ -222,16 +231,16 @@ Subscription ids are session-scoped. The adapter therefore invalidates all ids o
 - Date: 2026-08-19
 - Status: accepted
 
-The Planner's projector contract is `Projector.configPosition` plus `Projector.configLookAt`. Generic `rotation` and calculated `configRotation` are Designer implementation state and are never imported, displayed, or written by the Planner. Readback exposes a zero UI rotation and validates only the config vectors. The adapter provides a read-only `projectorReadbackProbe`; a protocol-level mock covers the request/response contract, while a live Designer probe remains a release prerequisite.
+The Planner's projector contract began as `Projector.configPosition` plus `Projector.configLookAt`. Generic body `rotation` remains Designer implementation state and is never imported or displayed. ADR-032 supersedes the blanket `configRotation` write prohibition: only final `.z` roll is written, while `.x/.y` are preserved. Readback exposes zero UI body rotation plus the complete config/optics/binding probe; a live Designer probe remains a release prerequisite.
 
 ## ADR-027: Projector target binding and Designer-owned optics
 
 - Date: 2026-08-19
 - Status: accepted
 
-Projectors expose either a rounded manual Look At point or a projection-surface binding under Direction. A bound surface supplies the effective target and the approximate throw ratio. Moving the projector changes only `configPosition`; moving the Look At point detaches the surface and changes only `configLookAt`. Designer remains authoritative for the resulting rotation, Look At distance, and field of view.
+Projectors expose either a rounded manual Look At point or a projection-surface binding under Direction. A bound surface supplies the effective target and approximate optical geometry. Moving the Look At point detaches the surface. ADR-032 supersedes this decision's Designer-only optics model by calculating geometry locally and finalizing the complete configuration after interaction.
 
-The adapter writes `configThrowRatio` and reads `fieldOfView` plus `configLookDistance` through official Live Update subscriptions. The plan beam uses Designer's field of view and the distance to the effective target. Projector rotation handles and editable Yaw are removed; earlier gesture decisions describing them are superseded for projectors.
+The adapter writes `configThrowRatio` and `configLookDistance` and reads `fieldOfView` through official Live Update subscriptions. The plan beam also has a complete local calculation. Projector rotation handles and editable Yaw remain removed; final roll is the automatic `0/90°` commit defined by ADR-032.
 
 ## ADR-028: No Ctrl-drag duplication in Designer
 

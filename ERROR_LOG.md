@@ -1,5 +1,13 @@
 # Error Log
 
+## ERR-058: Projector configuration and Surface binding diverged
+
+- Date: 2026-08-20
+- Symptom: Planner throw ratio/look distance/beam did not follow projector or Surface changes; Surface selection was not reflected in Designer; projector roll drifted by several degrees; old projectors could emit `NaN` Look Distance over LIVE.
+- Root cause: payloads contained only a Look At point, the adapter never changed `Projector.screens`, Look Distance was marked read-only in LIVE, and no ordered final configuration transaction existed after interaction.
+- Fix: calculate complete geometry locally; carry exact Surface UID/path; create a bound Surface before its Projector; use `removeScreen/addScreen`; send only Position or Look At during drag; make Look Distance writable; derive missing distance from Position/Look At; finalize roll as literal `0/90°`; and apply Designer readback.
+- Regression coverage: scene-planner geometry/order/finalization tests, generated Python lifecycle assertions, Projector probe contract, and LIVE writable/read-only protocol tests.
+
 ## ERR-052: Valid Projector readback caused repeated creation
 
 - Date: 2026-08-20

@@ -58,9 +58,9 @@ Both calls must succeed. Proxy software must bypass localhost, the Director host
 1. A `20 x 12 m` Scene has bounds `X=-10..10`, `Z=-6..6` around world origin.
 2. A screen with width `4`, height `2`, position `(3,0,-5)`, yaw `0` writes Designer `offset=(3,1,-5)`, `scale=(4,2,0.1)`, `rotation=(0,0,0)`.
 3. Changing object Y does not move its top-view position.
-4. A projector at `(3,2.5,-5)` looking at `(0,0.8,0)` writes and reads `configPosition/configLookAt`. Body `offset/rotation` and `configRotation` are not part of the Planner contract.
+4. A projector at `(3,2.5,-5)` looking at `(0,0.8,0)` writes and reads Position, Look At, Look Distance, Throw Ratio, field of view, Surface binding, and final roll. Body `offset/rotation` are not part of the Planner contract; `configRotation` is used only for final `.z` roll.
 5. Run `node tests/projector-contract.test.cjs`, then run the adapter's read-only `projectorReadbackProbe` against a real disposable Designer projector. The probe must not mutate the resource.
-6. Treat `configThrowRatio` and `configLensShift` as a separate compatibility probe. Do not expose distortion, skew, or warp fields without a verified Designer-version contract.
+6. Treat `configLensShift` as a separate compatibility probe. Do not expose distortion, skew, or warp fields without a verified Designer-version contract.
 
 ## LIVE/WebSocket Smoke
 
@@ -121,6 +121,13 @@ The live command uses `debugScripts.createScript` and `debugScripts.deleteManage
 6. No `dsg-smoke-*` typed Stage entry, `stage.children` entry, or package resource reappears during the cleanup stability window, and the UIDs/classes of manual `1`, `2`, `3`, `cam1`, `projector 1`, and `surface 1` resources are unchanged.
 
 Run one kind at a time with `--kind dmxLight`, `--kind camera`, or `--kind projector` when isolating a Designer failure. Do not run this against a production project.
+
+## Projector Manual Smoke
+
+1. Add a horizontal Surface and a Projector, bind the Projector to the Surface, and confirm Designer lists the Surface in the Projector screen binding.
+2. Move the Projector and its Look At point. During movement the Planner remains responsive; after release Designer position, Look At, Look Distance, Throw Ratio, and the Planner beam settle to the same configuration.
+3. Change Surface width/height and confirm optics recalculate. Make height greater than width and confirm final Projector roll becomes exactly `90°`; return to horizontal and confirm `0°`.
+4. Restart the plugin window and confirm the Projector still shows the same bound Surface by Designer UID/path.
 
 ## Release Evidence
 

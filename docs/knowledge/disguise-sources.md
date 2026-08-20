@@ -94,6 +94,9 @@ The local type stub is `D:\Disguise\Vibecode\d3.pyi`.
 - `configThrowRatio: float`
 - `configLookDistance: float`
 - `configLensShift: Vec2`
+- `configRotation: Vec`
+- `screens: List[Screen2]`
+- `addScreen(Screen2)` / `removeScreen(Screen2)`
 
 It also declares read-only `fieldOfView: float`. `class ProjectorConfig` exposes public `throwRatio`, `lookDistance`, `lensShift`, and `fieldOfView`, while underscore fields such as `_throw_ratio` and `_look_distance` are implementation details and are not a plugin contract.
 
@@ -102,12 +105,14 @@ The installed Designer help file `C:\Program Files\d3 Production Suite\build\msv
 Therefore the safe Planner boundary for the optical extension is:
 
 ```text
-write:  Projector.configThrowRatio
-read:   Projector.fieldOfView, Projector.configLookDistance
 write:  Projector.configPosition / Projector.configLookAt
+write:  Projector.configLookDistance / Projector.configThrowRatio
+read:   Projector.fieldOfView
+bind:   Projector.removeScreen(Screen2) / Projector.addScreen(Screen2)
+final:  preserve Projector.configRotation.x/y; force only .z to 0 or 90 degrees
 ```
 
-Do not write body `offset`, body `rotation`, `configRotation`, or private `ProjectorConfig._*` fields for this feature. The exact Live Update property paths must still be smoke-tested against the installed Designer build before release.
+Do not write body `offset`, body `rotation`, or private `ProjectorConfig._*` fields. Do not send `configRotation` or `screens` through LIVE. The only `configRotation` write is the final Python commit of `.z` after all position, aiming, optical, and Surface-binding changes; `.x/.y` are preserved.
 
 ## Implications For This Plugin
 
@@ -126,7 +131,7 @@ The installed Designer runtime also uses an older embedded Python grammar than t
 When deleting any Stage device, remove the exact object from its owning typed Stage collection, save the parent Stage, and read back that same collection to verify the UID is absent. Do not treat a stale `stage.children` hierarchy reference as top-level Stage membership. Only the explicit Device list option may then remove named package resources. Removing the package file alone can leave a stale Stage reference.
 
 - Keep one official Live Update WebSocket and explicit binding state; do not add a second socket for optics.
-- Projector movement should change only the position binding. Designer remains the authority for the resulting Look At, rotation, and look distance.
-- Look At dragging should change only the Look At binding. The next Designer `valuesChanged` message supplies derived optical values.
-- Surface binding is a UI convenience: it stores a target surface identity and derives the target point from that surface. It must not introduce a second Designer transform contract.
+- Projector movement updates local geometry but sends only the LIVE Position binding, then finalizes the complete public configuration once the interaction ends.
+- Look At dragging sends only the LIVE Look At binding while optics remain local preview state; Designer readback becomes authoritative after the final commit.
+- Surface binding stores exact Planner and Designer identities, derives the target point from that Surface, and uses public `addScreen/removeScreen` so Designer has the same binding.
 - Throw-ratio UI should be labelled as an approximate planning value. The Planner can calculate it from projector-to-screen distance and the requested projected width, send `configThrowRatio`, and draw a provisional cone from the returned field of view. It must not claim calibration accuracy.

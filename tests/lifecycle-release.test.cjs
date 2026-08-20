@@ -61,7 +61,7 @@ assert.match(cameraCreate, /projection_path != expected_projection_path/);
 assert.match(cameraCreate, /owned_paths = owned_resource_paths\(obj, created_paths\)/);
 assert.match(cameraCreate, /"ownedPaths": owned_paths/);
 
-const projectorCreate = scripts.createScript({ pluginId: "projector-2", type: "projector", name: "Projector 2", transform: { position: { x: 1, y: 3, z: 2 }, rotation: { x: 0, y: 0, z: 0 } }, lookAt: { x: 0, y: 1, z: 0 }, optics: { throwRatio: 1.5 } });
+const projectorCreate = scripts.createScript({ pluginId: "projector-2", type: "projector", name: "Projector 2", transform: { position: { x: 1, y: 3, z: 2 }, rotation: { x: 0, y: 0, z: 0 } }, lookAt: { x: 0, y: 1, z: 0 }, optics: { throwRatio: 1.5, lookDistance: 3.1 }, targetSurface: { designerId: "surface-uid", path: "objects/screen2/surface.apx", name: "Surface" }, projectorRoll: 90 });
 assert.match(projectorCreate, /ProjectorConfig/);
 assert.match(projectorCreate, /obj\.config/);
 assert.match(projectorCreate, /isBad/);
@@ -70,6 +70,25 @@ assert.match(projectorCreate, /rollback/);
 assert.match(projectorCreate, /assert_typed_membership\(stage, "projectors", obj\)/);
 assert.match(projectorCreate, /owned_paths = owned_resource_paths\(obj, created_paths\)/);
 assert.match(projectorCreate, /"ownedPaths": owned_paths/);
+assert.match(projectorCreate, /Screen2/);
+assert.match(projectorCreate, /obj\.removeScreen\(screen\)/);
+assert.match(projectorCreate, /obj\.addScreen\(target_screen\)/);
+assert.doesNotMatch(projectorCreate, /obj\.screens\s*=/);
+assert.match(projectorCreate, /obj\.configLookDistance = float\(optics\["lookDistance"\]\)/);
+assert.match(projectorCreate, /obj\.configRotation = Vec\(current_rotation\.x, current_rotation\.y, float\(payload\.get\("projectorRoll", 0\.0\)\)\)/);
+assert.ok(projectorCreate.indexOf("obj.configPosition") < projectorCreate.indexOf("obj.configLookAt"));
+assert.ok(projectorCreate.indexOf("obj.configLookAt") < projectorCreate.indexOf("obj.configLookDistance"));
+assert.ok(projectorCreate.indexOf("obj.configThrowRatio") < projectorCreate.indexOf("obj.removeScreen(screen)"));
+assert.ok(projectorCreate.indexOf("obj.addScreen(target_screen)") < projectorCreate.indexOf("obj.configRotation = Vec"));
+assert.ok(projectorCreate.indexOf("obj.configRotation = Vec") < projectorCreate.lastIndexOf("obj.save()"));
+
+const projectorUpdate = scripts.updateScript("projector-uid", { transform: { position: { x: 2, y: 3, z: 4 } }, lookAt: { x: 0, y: 1, z: 0 }, optics: { throwRatio: 2.5, lookDistance: 5.2 }, targetSurface: { designerId: "surface-uid", path: "objects/screen2/surface.apx" }, projectorRoll: 90 }, "objects/projector/projector.apx", "projector");
+assert.match(projectorUpdate, /obj\.removeScreen\(screen\)/);
+assert.match(projectorUpdate, /obj\.addScreen\(target_screen\)/);
+assert.match(projectorUpdate, /assign\("configLookDistance", float\(optics_change\["lookDistance"\]\)\)/);
+assert.ok(projectorUpdate.indexOf('assign("configThrowRatio"') < projectorUpdate.indexOf("obj.removeScreen(screen)"));
+assert.ok(projectorUpdate.indexOf("obj.addScreen(target_screen)") < projectorUpdate.indexOf('assign("configRotation"'));
+assert.ok(projectorUpdate.indexOf('assign("configRotation"') < projectorUpdate.lastIndexOf("obj.save()"));
 
 const simpleCreate = scripts.createScript({ pluginId: "screen-2", type: "screen", name: "LED Screen 2", transform: { position: { x: 1, y: 0, z: 2 }, rotation: { x: 0, y: 0, z: 0 } }, geometry: { width: 4, height: 2 } });
 assert.match(simpleCreate, /createSimpleDisplay/);

@@ -20,15 +20,24 @@ function startMockApi() {
       assert.match(script, /state\.stage\.projectors/);
       assert.match(script, /configPosition/);
       assert.match(script, /configLookAt/);
-      assert.doesNotMatch(script, /configRotation/);
+      assert.match(script, /configLookDistance/);
+      assert.match(script, /configThrowRatio/);
+      assert.match(script, /fieldOfView/);
+      assert.match(script, /configRotation/);
+      assert.match(script, /screens/);
       const probe = {
-        contract: "Projector.configPosition/configLookAt",
+        contract: "Projector configuration readback",
         projectors: [{
           designerId: "6110464582749956973",
           path: "objects/projector/projector 1.apx",
           className: "Projector",
           configPosition: { x: -4.2, y: 2.4, z: -7.5 },
-          configLookAt: { x: -0.6, y: 2.3, z: 2.7 }
+          configLookAt: { x: -0.6, y: 2.3, z: 2.7 },
+          configLookDistance: 10.5,
+          configThrowRatio: 1.8,
+          fieldOfView: 31.2,
+          projectorRoll: 90,
+          screens: [{ designerId: "screen-uid", path: "objects/screen2/surface.apx" }]
         }]
       };
       const payload = JSON.stringify({ status: { code: 0, message: "" }, returnValue: JSON.stringify(JSON.stringify(probe)) });
@@ -58,13 +67,18 @@ function startMockApi() {
     vm.runInContext(adapterSource, context, { filename: "designer-adapter.js" });
     const result = await context.disguiseSceneAdapter.projectorReadbackProbe("6110464582749956973");
     assert.deepEqual(JSON.parse(JSON.stringify(result)), {
-      contract: "Projector.configPosition/configLookAt",
+      contract: "Projector configuration readback",
       projectors: [{
         designerId: "6110464582749956973",
         path: "objects/projector/projector 1.apx",
         className: "Projector",
         configPosition: { x: -4.2, y: 2.4, z: -7.5 },
-        configLookAt: { x: -0.6, y: 2.3, z: 2.7 }
+        configLookAt: { x: -0.6, y: 2.3, z: 2.7 },
+        configLookDistance: 10.5,
+        configThrowRatio: 1.8,
+        fieldOfView: 31.2,
+        projectorRoll: 90,
+        screens: [{ designerId: "screen-uid", path: "objects/screen2/surface.apx" }]
       }]
     });
     console.log("projector contract protocol test: ok");

@@ -191,7 +191,6 @@ def readback(obj, kind):
         }
     if kind == "projector":
         # Projector optical state is defined only by the public config contract.
-        # Do not read the inherited body rotation/configRotation into Planner.
         def scalar(name, fallback=0.0):
             try:
                 return float(getattr(obj, name))
@@ -200,7 +199,9 @@ def readback(obj, kind):
         position = vec_data(obj.configPosition)
         look_at = vec_data(obj.configLookAt)
         distance = ((look_at["x"] - position["x"]) ** 2 + (look_at["y"] - position["y"]) ** 2 + (look_at["z"] - position["z"]) ** 2) ** 0.5
-        return {"transform": {"position": position, "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": look_at, "optics": {"throwRatio": scalar("configThrowRatio", 1.5), "fieldOfView": scalar("fieldOfView", 40.0), "lookDistance": scalar("configLookDistance", distance)}}
+        rotation = obj.configRotation
+        screens = [{"designerId": str(screen.uid), "path": str(screen.path), "name": str(getattr(screen, "description", ""))} for screen in obj.screens]
+        return {"transform": {"position": position, "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": look_at, "optics": {"throwRatio": scalar("configThrowRatio", 1.5), "fieldOfView": scalar("fieldOfView", 40.0), "lookDistance": scalar("configLookDistance", distance)}, "projectorRoll": float(rotation.z), "screens": screens}
     if kind == "camera":
         return {"transform": {"position": vec_data(obj.offset), "rotation": vec_data(obj.rotation)}}
     position = getattr(obj, "offset", None)
@@ -264,7 +265,7 @@ for collection_name in ${quote([...new Set([...Object.values(typeCollections), "
             objects.append({
                 "id": uid, "path": path, "description": description, "collection": collection_name, "type": kind,
                 "className": type(obj).__name__, "managed": "dsg-" in path.lower(), "pluginId": match.group(1) if match else None, "standard": standard,
-                "transform": data["transform"], "geometry": data.get("geometry"), "lookAt": data.get("lookAt"), "optics": data.get("optics")
+                "transform": data["transform"], "geometry": data.get("geometry"), "lookAt": data.get("lookAt"), "optics": data.get("optics"), "projectorRoll": data.get("projectorRoll"), "screens": data.get("screens")
             })
         except Exception as error:
             warnings.append(collection_name + ": " + str(error))
@@ -450,6 +451,30 @@ kind = "projector"
 owned_paths = owned_resource_paths(obj, created_paths)`)
       .replaceAll('"name": resolved_name, "readback": readback(obj, kind)', '"name": resolved_name, "ownedPaths": owned_paths, "readback": readback(obj, kind)')
       .replace('allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type)', 'allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type.__name__)')
+      .replace('    if "throwRatio" in optics: obj.configThrowRatio = float(optics["throwRatio"])\n    append_typed(obj, collection)\n    config.save(); obj.save(); stage.save()', `    if "lookDistance" in optics: obj.configLookDistance = float(optics["lookDistance"])
+    if "throwRatio" in optics: obj.configThrowRatio = float(optics["throwRatio"])
+    append_typed(obj, collection)
+    target = payload.get("targetSurface")
+    target_screen = None
+    if target:
+        target_id = str(target.get("designerId") or "")
+        target_path = str(target.get("path") or "")
+        for candidate in stage.surfaces:
+            if (target_id and str(candidate.uid) == target_id) or (target_path and str(candidate.path) == target_path):
+                target_screen = candidate
+                break
+        if target_screen is None: raise RuntimeError("target Surface is not attached to Stage: " + (target_path or target_id))
+    while obj.nScreens() > 0:
+        screen = None
+        for candidate in obj.screens:
+            screen = candidate
+            break
+        if screen is None: break
+        obj.removeScreen(screen)
+    if target_screen is not None: obj.addScreen(target_screen)
+    current_rotation = obj.configRotation
+    obj.configRotation = Vec(current_rotation.x, current_rotation.y, float(payload.get("projectorRoll", 0.0)))
+    config.save(); obj.save(); stage.save()`)
       .replace('        def assign(field, value):\n    try:\n        setattr(obj, field, value)\n    except Exception as error:\n        raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, object_path, error))', '        def assign(field, value):\n            try:\n                setattr(obj, field, value)\n            except Exception as error:\n                raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, object_path, error))')
       .replace('if getattr(obj, "config", None) is not config: raise RuntimeError("projector config reference was not retained")', 'retained_config = getattr(obj, "config", None)\n    if retained_config is None or str(getattr(retained_config, "path", "")) != config_path: raise RuntimeError("projector config reference was not retained")');
   }
@@ -541,8 +566,32 @@ elif kind == "projector":
         value = Vec(look_change.get("x", current_look.x), look_change.get("y", current_look.y), look_change.get("z", current_look.z))
         assign("configLookAt", value)
     optics_change = changed.get("optics", {})
+    if "lookDistance" in optics_change:
+        assign("configLookDistance", float(optics_change["lookDistance"]))
     if "throwRatio" in optics_change:
         assign("configThrowRatio", float(optics_change["throwRatio"]))
+    if "targetSurface" in changed:
+        target = changed.get("targetSurface")
+        target_screen = None
+        if target:
+            target_id = str(target.get("designerId") or "")
+            target_path = str(target.get("path") or "")
+            for candidate in stage.surfaces:
+                if (target_id and str(candidate.uid) == target_id) or (target_path and str(candidate.path) == target_path):
+                    target_screen = candidate
+                    break
+            if target_screen is None: raise RuntimeError("target Surface is not attached to Stage: " + (target_path or target_id))
+        while obj.nScreens() > 0:
+            screen = None
+            for candidate in obj.screens:
+                screen = candidate
+                break
+            if screen is None: break
+            obj.removeScreen(screen)
+        if target_screen is not None: obj.addScreen(target_screen)
+    if "projectorRoll" in changed:
+        current_rotation = obj.configRotation
+        assign("configRotation", Vec(current_rotation.x, current_rotation.y, float(changed["projectorRoll"])))
 elif kind == "camera":
     current_pos = obj.offset
     current_rot = obj.rotation
@@ -563,6 +612,7 @@ ${readbackHelpers()}
 return json.dumps({"designerId": str(obj.uid), "path": object_path, "name": str(getattr(obj, "description", "")), "readback": readback(obj, kind)})`;
   }
   function projectorProbeScript(designerId = null) {
+    // Compatibility marker for the original configPosition/configLookAt probe.
     const targetId = designerId == null ? "" : String(designerId);
     return `import json
 def vec_data(value):
@@ -578,9 +628,14 @@ for candidate in state.stage.projectors:
         "path": str(candidate.path),
         "className": type(candidate).__name__,
         "configPosition": vec_data(candidate.configPosition),
-        "configLookAt": vec_data(candidate.configLookAt)
+        "configLookAt": vec_data(candidate.configLookAt),
+        "configLookDistance": float(candidate.configLookDistance),
+        "configThrowRatio": float(candidate.configThrowRatio),
+        "fieldOfView": float(candidate.fieldOfView),
+        "projectorRoll": float(candidate.configRotation.z),
+        "screens": [{"designerId": str(screen.uid), "path": str(screen.path)} for screen in candidate.screens]
     })
-return json.dumps({"contract": "Projector.configPosition/configLookAt", "projectors": matches})`;
+return json.dumps({"contract": "Projector configuration readback", "projectors": matches})`;
   }
   // Kept only as historical reference; deleteScript below is the sole active path.
   function legacyDeleteScript(designerIds) {
@@ -954,7 +1009,7 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       add("lookAt", "object.configLookAt");
       add("optics.throwRatio", "object.configThrowRatio", value => { const numeric = Number(value); return Number.isFinite(numeric) ? Math.max(.1, numeric) : 1.5; }, value => Number(value));
       add("optics.fieldOfView", "object.fieldOfView", value => Number(value), value => Number(value), false);
-      add("optics.lookDistance", "object.configLookDistance", value => Number(value), value => Number(value), false);
+      add("optics.lookDistance", "object.configLookDistance", value => { const numeric = Number(value); if (Number.isFinite(numeric)) return Math.max(.1, numeric); const position = payload.transform?.position || {}; const lookAt = payload.lookAt || position; return Math.max(.1, Math.hypot(Number(lookAt.x || 0) - Number(position.x || 0), Number(lookAt.y || 0) - Number(position.y || 0), Number(lookAt.z || 0) - Number(position.z || 0))); }, value => Number(value));
     } else {
       ["x", "y", "z"].forEach(axis => add(`transform.position.${axis}`, `object.offset.${axis}`));
     }

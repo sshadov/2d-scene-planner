@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.20.0 - 2026-08-20
+
+- Bound Planner projectors to exact Designer `Screen2` resources through public `addScreen/removeScreen` operations.
+- Added deterministic local projector distance, throw ratio, field-of-view, beam, and `0/90°` roll calculations.
+- Limited Projector drag LIVE traffic to Position or Look At, then finalized once per completed interaction and applied Designer readback.
+- Made Look Distance writable and prevented missing legacy values from producing `NaN` LIVE messages.
+- Preserved projector bindings across Designer readback/import and ordered bound Surface creation before Projector creation.
+
 ## 0.19.2 - 2026-08-20
 
 - Accept Designer numeric readback drift up to `0.001 m`.

@@ -20,7 +20,7 @@ Verified/used conclusions for this project:
 - Relevant stage collections are `ledScreens`, `surfaces`, `cameras`, `projectors`, and `lights`.
 - Used transform properties are `offset/rotation/scale`, projector `configPosition/configLookAt`, and concrete camera `offset/rotation`.
 - Projector config and body transforms are not interchangeable: writing inherited `offset/rotation` after `configPosition/configRotation` changes the optical config again. Projectors therefore write public config fields only.
-- `Projector.configLookAt`, `configPosition`, `configThrowRatio`, and `configLookDistance` are declared by the current local `d3.pyi`; `Projector.fieldOfView` is read-only. The Planner writes position, Look At, and throw ratio while accepting Designer-derived Look At, rotation, look distance, and field of view through LIVE.
+- `Projector.configLookAt`, `configPosition`, `configThrowRatio`, `configLookDistance`, `screens`, `addScreen/removeScreen`, and `configRotation` are declared by the current local `d3.pyi`; `Projector.fieldOfView` is read-only. The Planner writes the simple optical values through LIVE, binds surfaces through Python, and uses `configRotation` only for final automatic `.z` roll.
 - Projector LIVE bindings use complete `configPosition` and `configLookAt` vectors to avoid transient invalid component combinations. Moving a projector leaves its local Look At untouched until Designer sends the authoritative derived values back.
 - `Camera` inherits `Object`; `VirtualCamera` is a distinct subclass and is not created by this planner.
 - `stage.floor_pos` is a `Vec`; this project uses `stage.floor_pos.y` as the floor vertical reference.
