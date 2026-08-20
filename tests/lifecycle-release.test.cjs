@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -185,5 +186,118 @@ assert.match(adapterSource, /getOperationLogs/);
 assert.match(adapterSource, /action: meta\.action/);
 assert.match(adapterSource, /stage_name_taken/);
 assert.match(adapterSource, /resolved_name = allocate_name/);
+
+function runFixtureGroupDelete({ ownedPaths, directProjectionPaths = [], inspectionError = null }) {
+  const cleanup = scripts.deleteManagedScript([{
+    id: "fixture-1",
+    path: "objects/fixturegroup/light.apx",
+    owned: true,
+    ownedPaths,
+    removeResource: true
+  }]);
+  const fixtureCase = JSON.stringify({ directProjectionPaths, inspectionError });
+  const runner = `
+import json
+import sys
+import types
+
+fixture_case = json.loads(${JSON.stringify(fixtureCase)})
+
+class Path(str):
+    pass
+
+class Resource:
+    pass
+
+class DirectProjection(Resource):
+    def __init__(self, projection_path, screens):
+        self.path = projection_path
+        self.screens = screens
+
+class FixtureGroup(Resource):
+    def __init__(self):
+        self.uid = "fixture-1"
+        self.path = "objects/fixturegroup/light.apx"
+        self.children = []
+        self.config = None
+
+    def findResourcesPointingToThis(self, resource_type):
+        if fixture_case["inspectionError"]:
+            raise RuntimeError(fixture_case["inspectionError"])
+        return [DirectProjection(projection_path, [self]) for projection_path in fixture_case["directProjectionPaths"]]
+
+class Stage:
+    def __init__(self, fixture):
+        self.dmxLights = [fixture]
+
+    def save(self):
+        pass
+
+class Package:
+    def findAllBeginsWith(self, folder):
+        return []
+
+class ResourceManager:
+    def __init__(self, fixture):
+        self.fixture = fixture
+        self.removed = []
+        self.package = Package()
+
+    def load(self, resource_path, resource_type):
+        if str(resource_path) == self.fixture.path:
+            return self.fixture
+        raise RuntimeError("unexpected resource load")
+
+    def remove(self, resource_path):
+        self.removed.append(str(resource_path))
+
+    def exists(self, resource_path):
+        return False
+
+d3 = types.ModuleType("d3")
+d3.Path = Path
+d3.Resource = Resource
+d3.DirectProjection = DirectProjection
+sys.modules["d3"] = d3
+
+fixture = FixtureGroup()
+state = types.SimpleNamespace(stage=Stage(fixture))
+resourceManager = ResourceManager(fixture)
+
+def run():
+${cleanup.split("\n").map(line => `    ${line}`).join("\n")}
+
+print(json.dumps({"result": json.loads(run()), "removed": resourceManager.removed}))
+`;
+  return JSON.parse(execFileSync("python", ["-c", runner], { encoding: "utf8" }));
+}
+
+function assertFixtureGroupPhysicalCleanupBlocked(outcome, failureText) {
+  assert.deepEqual(outcome.result.deleted, ["fixture-1"]);
+  assert.deepEqual(outcome.result.resourceDeleteFailed, ["fixture-1"]);
+  assert.deepEqual(outcome.removed, []);
+  assert.ok(outcome.result.cleanupPhases.some(phase => phase.phase === "stage-detach" && phase.status === "ok"));
+  assert.ok(outcome.result.cleanupPhases.some(phase => phase.phase === "dependency-inspection" && phase.status === "failed" && phase.error.includes(failureText)));
+}
+
+assertFixtureGroupPhysicalCleanupBlocked(runFixtureGroupDelete({
+  ownedPaths: [],
+  directProjectionPaths: ["objects/directprojection/light-direct.apx"]
+}), "ownership metadata");
+
+assertFixtureGroupPhysicalCleanupBlocked(runFixtureGroupDelete({
+  ownedPaths: ["objects/fixturegroup/light.apx", "objects/directprojection/persisted.apx"],
+  directProjectionPaths: ["objects/directprojection/extra.apx"]
+}), "outside ownership");
+
+assertFixtureGroupPhysicalCleanupBlocked(runFixtureGroupDelete({
+  ownedPaths: ["objects/fixturegroup/light.apx", "objects/directprojection/persisted.apx"],
+  directProjectionPaths: []
+}), "missing from inspection");
+
+assertFixtureGroupPhysicalCleanupBlocked(runFixtureGroupDelete({
+  ownedPaths: ["objects/fixturegroup/light.apx", "objects/directprojection/light-direct.apx"],
+  inspectionError: "inspection unavailable"
+}), "inbound reference inspection");
 
 console.log("lifecycle release contract test: ok");

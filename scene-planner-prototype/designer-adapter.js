@@ -862,6 +862,37 @@ def sole_target(reference, candidate):
 def owned_resource_paths(candidate, allowed_paths):
     paths = []
     blockers = []
+    candidate_type = type(candidate).__name__
+    candidate_path = path_of(candidate)
+    if candidate_type == "FixtureGroup":
+        if not allowed_paths or candidate_path not in allowed_paths:
+            blockers.append("FixtureGroup ownership metadata is missing the main resource path")
+            return [], blockers
+        persisted_dependencies = set(path for path in allowed_paths if path != candidate_path)
+        discovered_dependencies = set()
+        try:
+            for reference in candidate.findResourcesPointingToThis(Resource):
+                reference_path = path_of(reference)
+                reference_type = type(reference).__name__
+                if type(reference) is DirectProjection:
+                    if not sole_target(reference, candidate):
+                        blockers.append("unexpected inbound reference " + reference_type + " " + reference_path)
+                    elif not reference_path:
+                        blockers.append("FixtureGroup DirectProjection inspection returned no path")
+                    else:
+                        discovered_dependencies.add(reference_path)
+                elif reference_type != "Stage":
+                    blockers.append("unexpected inbound reference " + reference_type + " " + reference_path)
+        except Exception as error:
+            blockers.append("inbound reference inspection: " + str(error))
+            return [], blockers
+        for path in sorted(discovered_dependencies - persisted_dependencies):
+            blockers.append("FixtureGroup discovered dependency outside ownership " + path)
+        for path in sorted(persisted_dependencies - discovered_dependencies):
+            blockers.append("FixtureGroup persisted dependency missing from inspection " + path)
+        if blockers:
+            return [], blockers
+        return sorted(discovered_dependencies), blockers
     config_path = path_of(getattr(candidate, "config", None))
     if config_path and (not allowed_paths or config_path in allowed_paths): paths.append(config_path)
     for child in getattr(candidate, "children", []):
@@ -882,8 +913,8 @@ def owned_resource_paths(candidate, allowed_paths):
                     paths.append(reference_path)
             elif reference_type != "Stage":
                 blockers.append("unexpected inbound reference " + reference_type + " " + reference_path)
-    except Exception as error:
-        if type(candidate).__name__ == "FixtureGroup": blockers.append("inbound reference inspection: " + str(error))
+    except Exception:
+        pass
     return list(dict.fromkeys(paths)), blockers
 def matches(candidate):
     candidate_id = uid_of(candidate)

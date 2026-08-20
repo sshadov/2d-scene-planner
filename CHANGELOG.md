@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.0 - 2026-08-20
+
+- Added revisioned projector LIVE geometry and Auto-optics updates, with Designer-owned Look Distance and field-of-view readback.
+- Added structured Stage-first deletion diagnostics and opt-in Device-list cleanup for managed resources.
+- Require FixtureGroup physical cleanup to prove exact persisted ownership against inspected sole-target `DirectProjection` dependencies; uncertain ownership now leaves the detached Stage object out of package deletion.
+
 ## 0.20.0 - 2026-08-20
 
 - Bound Planner projectors to exact Designer `Screen2` resources through public `addScreen/removeScreen` operations.
