@@ -309,7 +309,10 @@ def allocate_name(collection, base_name):
         suffix += 1
     return resolved
 
-def allocate_path(folder, base_name, expected_class):`)
+def allocate_path(folder, base_name, expected_class):
+    expected_class_name = expected_class if isinstance(expected_class, str) else expected_class.__name__`)
+      .replace("actual is not None and actual != expected_class:", "actual is not None and actual != expected_class_name:")
+      .replace("actual, expected_class))", "actual, expected_class_name))")
       .replace(`    folder = "objects/${typeResourceFolders[payload.type]}"
     resolved_name, object_path = allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type)
     created_paths = []
@@ -360,19 +363,31 @@ def owned_resource_paths(resource, created_paths):
 def rollback(created_paths, stage, attached, collection_name):
     errors = []
     rollback_paths = owned_resource_paths(attached, created_paths)
+    attached_in_collection = False
     if attached:
         try:
-            attached.remove()
+            collection = getattr(stage, collection_name)
+            attached_id = str(getattr(attached, "uid", ""))
+            for candidate in collection:
+                if str(getattr(candidate, "uid", "")) == attached_id:
+                    attached_in_collection = True
+                    break
+        except Exception as error:
+            errors.append("inspect attachment: " + str(error))
+    if attached_in_collection:
+        try:
+            collection.remove(attached)
         except Exception as error:
             errors.append("detach: " + str(error))`)
       .replace(`    try:
         stage.save()
     except Exception:
         pass
-    for path in reversed(created_paths):`, `    try:
-        stage.save()
-    except Exception as error:
-        errors.append("stage save: " + str(error))
+    for path in reversed(created_paths):`, `    if attached_in_collection:
+        try:
+            stage.save()
+        except Exception as error:
+            errors.append("stage save: " + str(error))
     if errors: return errors
     for path in reversed(rollback_paths):`)
       .replace(`    for path in reversed(rollback_paths):
@@ -751,6 +766,7 @@ from d3 import Path, Resource, DirectProjection
 requested = json.loads(${payloadText(requested)})
 target_ids = set(str(item.get("id", item)) if isinstance(item, dict) else str(item) for item in requested)
 target_paths = set(str(item.get("path", "")) for item in requested if isinstance(item, dict) and item.get("path"))
+target_pairs = set((str(item.get("id", "")), str(item.get("path", ""))) for item in requested if isinstance(item, dict) and item.get("path"))
 allowed_owned_paths = set(${quote(allowed)})
 remove_resources = any(bool(item.get("removeResource")) for item in requested if isinstance(item, dict))
 stage = state.stage
@@ -788,6 +804,7 @@ def matches(candidate):
     if candidate_path == "objects/object/dsg-scene-cube.apx": return False
     if candidate_id not in target_ids: return False
     if target_paths and candidate_path not in target_paths: return False
+    if target_pairs and (candidate_id, candidate_path) not in target_pairs: return False
     if allowed_owned_paths and candidate_path not in allowed_owned_paths: return False
     return candidate_id not in processed
 for collection_name in collection_names:
@@ -808,7 +825,8 @@ for resource_path in target_paths:
         pass
 for candidate_id, resource_path, candidate, owned_paths, collection_name in pending:
     try:
-        candidate.remove()
+        collection = getattr(stage, collection_name)
+        collection.remove(candidate)
         detached_ids.add(candidate_id)
     except Exception as error:
         skipped.append("detach " + candidate_id + ": " + str(error))
@@ -818,15 +836,15 @@ try:
 except Exception as error:
     stage_saved = False
     skipped.append("stage save: " + str(error))
-def stage_contains(target_id):
-    for collection_name in collection_names + ["children"]:
-        for candidate in getattr(stage, collection_name, []):
-            if uid_of(candidate) == target_id: return True
+def stage_contains(target_id, collection_name):
+    for candidate in getattr(stage, collection_name, []):
+        if uid_of(candidate) == target_id: return True
     return False
 deleted = []
 resources_deleted = []
+resource_delete_failed = []
 for candidate_id, resource_path, candidate, owned_paths, collection_name in pending:
-    if not stage_saved or candidate_id not in detached_ids or stage_contains(candidate_id):
+    if not stage_saved or candidate_id not in detached_ids or stage_contains(candidate_id, collection_name):
         skipped.append("stage still contains " + candidate_id)
         continue
     deleted.append(candidate_id)
@@ -842,7 +860,8 @@ for candidate_id, resource_path, candidate, owned_paths, collection_name in pend
                 resources_deleted.append(path)
         except Exception as error:
             skipped.append("resource delete " + candidate_id + ": " + str(error))
-return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "skipped": skipped})`;
+            resource_delete_failed.append(candidate_id)
+return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "resourceDeleteFailed": resource_delete_failed, "skipped": skipped})`;
   }
   function deleteScript(designerIds) { return stageDeleteScript(designerIds, false); }
   function deleteManagedScript(designerIds) { return stageDeleteScript(designerIds, true); }

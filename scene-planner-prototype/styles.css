@@ -191,7 +191,9 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .scene-config { padding: 12px 14px 10px; border-bottom: 1px solid #465361; background: #1a232c; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .panel-heading h1 { font-size: 16px; font-weight: 650; }
+.panel-heading-meta { display: flex; align-items: center; gap: 6px; }
 .panel-heading span { min-width: 22px; padding: 3px 6px; border: 1px solid #3a4652; border-radius: 3px; color: var(--muted); font-size: 9px; text-align: center; }
+.panel-heading .status-error-chip { width: 20px; min-width: 20px; height: 20px; padding: 0; border-color: #8b4944; display: inline-grid; place-items: center; background: #3b211f; color: #ffaca5; font-size: 12px; font-weight: 800; cursor: help; }
 .scene-dimensions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .scene-dimensions label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
 .scene-dimensions .input-shell input { width: 100%; }

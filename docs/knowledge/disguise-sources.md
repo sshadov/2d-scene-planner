@@ -2,6 +2,10 @@
 
 Research snapshot: 2026-08-19. These notes record what was checked and where the relevant examples live.
 
+## Source Priority
+
+Use official Developer documentation for supported workflows and lifecycle semantics. Validate version-sensitive behaviour in the installed Designer runtime, then use official repositories as complete examples. The local `d3.pyi` is a type-hint and API-discovery aid only; it does not override the documentation or observed runtime behaviour. Third-party toolkits may identify useful patterns, but their own guidance likewise defers to official documentation.
+
 ## Official Documentation
 
 - [Developer portal](https://developer.disguise.one/) is the index for Designer API, Python API, plugin development, distribution, and data formats.
@@ -9,6 +13,8 @@ Research snapshot: 2026-08-19. These notes record what was checked and where the
 - [Plugin configuration](https://developer.disguise.one/plugins/configuration/) documents `d3plugin.json`, the plugin UI URL, session requirements, and configuration metadata.
 - [Designer API introduction](https://developer.disguise.one/api/introduction/) documents the HTTP API surface and links to Sessions and Live Update.
 - [Live Update](https://developer.disguise.one/api/session/liveupdate/) is the WebSocket protocol used for subscriptions, value changes, writes, and unsubscription.
+- [Python Stage guide](https://developer.disguise.one/python-api/guides/stage/) states that typed Stage arrays are the correct way to add, find, and remove Stage objects; creation appends the resource to its owning typed collection.
+- [Python Resources guide](https://developer.disguise.one/python-api/guides/resources/) documents `resourceManager.loadOrCreate(path, Type)`, `markDirty(resource)` before mutation, resource save methods, lowercase package paths, and Resource removal.
 
 ## Official Repositories
 
@@ -77,9 +83,9 @@ Important files:
 
 This library is most useful for a TypeScript/Vite plugin that wants generated Python bindings. Our current plain HTML/JavaScript plugin deliberately keeps the adapter local, so adopting the loader would be a larger build-system change, not a required correctness fix.
 
-## Local API Contract Evidence
+## Local Type Reference
 
-The authoritative local stub is `D:\Disguise\Vibecode\d3.pyi`.
+The local type stub is `D:\Disguise\Vibecode\d3.pyi`.
 
 `class Projector` currently declares writable:
 
@@ -109,15 +115,15 @@ Do not write body `offset`, body `rotation`, `configRotation`, or private `Proje
 
 `resourceManager.loadOrCreate(Path("objects/camera/name.apx"), Camera)` creates only a bare `Camera`. It is not equivalent to Designer's Add Camera operation. A healthy built-in camera has a child `PerspectiveProjectionObject` (`objects/perspectiveprojectionobject/name (perspective).apx`) whose `projection` points to a named `PerspectiveProjection` (`objects/camera/name (perspective).apx`); the camera also receives the normal mesh/render-settings and calibration resources. The public construction sequence tested against the installed Designer is `Camera()` + `PerspectiveProjection()` + `PerspectiveProjectionObject()` + `projectionObject.projection = projection` + `camera.add(projectionObject)`, followed by assigning paths, saving, and appending the camera to `stage.cameras`.
 
-`Projector` likewise owns a separate `ProjectorConfig` resource (`objects/projectorconfig/...`) and must not be treated as a standalone resource just because `loadOrCreate(..., Projector)` returns an object. Creating incomplete camera/projector graphs can leave objects absent from Designer's device list or crash native rendering. Until a complete public construction/duplication path is validated, automatic creation of these composite devices must be considered unsupported rather than falling back to a bare resource.
+`Projector` likewise owns a separate `ProjectorConfig` resource (`objects/projectorconfig/...`) and must not be treated as a standalone resource just because `loadOrCreate(..., Projector)` returns an object. Creating incomplete camera/projector graphs can leave objects absent from Designer's device list or crash native rendering. Creation must therefore be one explicit Python lifecycle operation that builds and saves the complete graph before appending the main resource to its typed Stage collection; LIVE must never attempt automatic repair or recreation.
 
-Runtime validation against the installed 2026 build found API details not captured accurately by static assumptions. `Resource.isBad`, `isIncomplete`, and `isInError` are boolean attributes at runtime although the supplied `d3.pyi` declares methods. For deletion, resolve the exact instance from the typed Stage collection and call its documented `Object.remove()` before saving and verifying Stage. Do not assign filtered Python lists to `stage.dmxLights`, `stage.cameras`, `stage.projectors`, or the other typed properties: Designer's GUI callbacks receive an internal `ArrayBox` and fail. LED/DMX/surface devices receive a separate `DirectProjection`; discover sole-screen references with `findResourcesPointingToThis(DirectProjection)` and remove them during owned-resource cleanup.
+Runtime validation against the installed 2026 build found API details not captured accurately by static assumptions. `Resource.isBad`, `isIncomplete`, and `isInError` are boolean attributes at runtime although the supplied `d3.pyi` declares methods. For deletion, resolve the exact instance and call `remove(instance)` on its owning typed Stage collection before saving and verifying Stage. `Object.remove()` only detaches hierarchy state for top-level equipment in this build. Do not assign filtered Python lists to `stage.dmxLights`, `stage.cameras`, `stage.projectors`, or the other typed properties: Designer's GUI callbacks receive an internal `ArrayBox` and fail. LED/DMX/surface devices receive a separate `DirectProjection`; discover sole-screen references with `findResourcesPointingToThis(DirectProjection)` and remove them during owned-resource cleanup.
 
 Ownership cannot be inferred later from a human-readable resource name. A create operation must return and persist the exact main, config, child, projection-object, and generated `DirectProjection` paths it created. Normal deletion removes the Stage/3D reference only. Device/Resource list deletion is optional and must require the explicit confirmation; managed deletion intersects discovered auxiliaries with the persisted ownership list. Imported/adopted Designer resources are unowned and are never physically deleted unless the user explicitly checks the Device list option. If legacy sync data lacks the complete ownership list, refuse physical deletion rather than guessing. When a main resource is renamed, replace its old main path in the ownership list while leaving auxiliary paths unchanged.
 
 The installed Designer runtime also uses an older embedded Python grammar than the local development interpreter: `raise ... from ...` is rejected. Compile checks against desktop Python are useful but do not replace executing generated scripts in Designer.
 
-When deleting any stage device, remove the exact object from its typed Stage property and hierarchy first, save the parent Stage, and read back every supported collection to verify the UID is absent. Only the explicit Device list option may then remove named package resources. Removing the package file alone can leave a stale Stage reference.
+When deleting any Stage device, remove the exact object from its owning typed Stage collection, save the parent Stage, and read back that same collection to verify the UID is absent. Do not treat a stale `stage.children` hierarchy reference as top-level Stage membership. Only the explicit Device list option may then remove named package resources. Removing the package file alone can leave a stale Stage reference.
 
 - Keep one official Live Update WebSocket and explicit binding state; do not add a second socket for optics.
 - Projector movement should change only the position binding. Designer remains the authority for the resulting Look At, rotation, and look distance.

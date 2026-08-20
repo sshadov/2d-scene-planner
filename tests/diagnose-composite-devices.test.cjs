@@ -37,5 +37,7 @@ assert.match(generated.stdout, /stageChildrenSmoke/);
 assert.match(generated.stdout, /projectionBad/);
 assert.match(generated.stdout, /projectionIncomplete/);
 assert.match(generated.stdout, /projectionError/);
+assert.match(generated.stdout, /collection\.remove\(candidate\)/);
+assert.doesNotMatch(generated.stdout, /candidate\.remove\(\)/);
 
 console.log("composite Designer diagnostic contract test: ok");

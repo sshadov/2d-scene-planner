@@ -499,19 +499,19 @@
 - Date: 2026-08-20
 - Symptom: `ProjectorEditor.handleStageDisplaysChanged` failed during `Stage::checkRemoveScreens` after a create, duplicate, or delete operation. The error could disappear after opening a device Preferences dialog because Designer rebuilt its editor state.
 - Cause: replacing a typed Stage collection such as `stage.projectors` with a normal Python list. Designer expects its `ArrayBox`-backed collection to remain intact; the next editor notification then received an unsupported container.
-- Fix: remove the exact object with `candidate.remove()`, save the Stage, and only then remove owned package resources. The adapter no longer assigns filtered Python lists to Stage collections.
+- Superseded fix attempt: `candidate.remove()` avoided collection replacement but only detached hierarchy state, so the object returned during reconciliation. ERR-054 and ERR-057 record the final typed-collection mutation path.
 - Diagnostics: the `LIVE log` panel merges Planner actions, Python API requests/responses/errors, and WebSocket events by timestamp. Every API operation has an `opId` plus object UID/path/type, so a Designer console timestamp can be matched to the preceding operation.
-- Regression test: `tests/lifecycle-release.test.cjs` rejects collection replacement and requires `candidate.remove()` before `resourceManager.remove(path)`; `tests/scene-planner.test.cjs` requires Planner action logging.
+- Regression test: `tests/lifecycle-release.test.cjs` rejects collection replacement and requires `collection.remove(candidate)` before `resourceManager.remove(path)`; `tests/scene-planner.test.cjs` requires Planner action logging.
 
 ## ERR-054: Delete detached the 3D object but left a bad Stage entry
 
 - Date: 2026-08-20
 - Symptom: an object disappeared from the 3D view, then returned after the next Planner action; Designer marked the Stage entry as bad and later creates produced duplicate names.
 - Cause: `Object.remove()` alone does not persistently remove top-level equipment from Designer's typed Stage list in the installed build. The old generic collection assignment also triggered the `ArrayBox` editor error.
-- Superseded fix: assigning a filtered list through an explicit typed property was also unsafe and caused ERR-057. The current path resolves the exact Stage instance, calls only `candidate.remove()`, saves Stage, and reads back all typed collections plus `stage.children`. Planner confirms deletion only when the UID is absent.
+- Superseded fixes: assigning a filtered list through an explicit typed property caused ERR-057, while `candidate.remove()` only detached hierarchy state and the object returned on the next import. The current path resolves the exact Stage instance, calls `collection.remove(candidate)` on its owning typed collection, saves Stage, and confirms the UID is absent from that same owning collection. A stale hierarchy reference in `stage.children` is not top-level Stage membership and cannot fail the deletion.
 - Resource policy: normal Delete leaves the Device/Resource list entry. The confirmation dialog has one optional `Delete from Device list` checkbox; only when checked are `saveOnDelete()` and `resourceManager.remove()` executed for owned resources.
 - Name policy: creation checks names in the matching typed Stage list. `Projector 1` and `Screen 1` are independent; a duplicate projector becomes `Projector 2` before resource creation.
-- Reconciliation: successful deletes store a UID/path tombstone so startup and LIVE scene imports do not recreate the removed object.
+- Import policy: successful deletes store a UID/path tombstone so startup and LIVE scene imports do not restore the removed object. LIVE itself never creates resources.
 
 ## ERR-055: Designer rejected diagnostics download
 
@@ -532,4 +532,4 @@
 - Date: 2026-08-20
 - Symptom: deleting LED screens or projectors produced `Access to object of type 'ArrayBox' is not allowed` in `ProjectorEditor.handleStageDisplaysChanged`, with `SetField:ledScreens` or `SetField:projectors` and `set_stage_collection` in the trace.
 - Cause: assigning a normal Python list through `stage.ledScreens = retained` or another typed setter still replaces the value observed by Designer's GUI callback. Avoiding generic `setattr` was not sufficient.
-- Fix: never assign typed Stage collections during deletion. Resolve the exact object by UID/path from the typed collection, invoke its documented `Object.remove()`, save Stage, and confirm the UID is absent before reporting success or touching Device-list resources.
+- Fix: never assign typed Stage collections during deletion. Resolve the exact object by UID/path, invoke `remove(object)` on its owning typed collection, save Stage, and confirm the UID is absent before reporting success or touching Device-list resources. `Object.remove()` is insufficient for top-level Stage membership.

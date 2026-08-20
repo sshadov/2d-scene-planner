@@ -100,7 +100,7 @@ Use disposable resources only.
 7. Imported/manual Designer objects are physically removed only through the explicit `Delete from Designer?` confirmation. Confirm the request uses the exact selected UID/path and removes the typed Stage reference before discovered dependencies.
 8. Startup inspection deduplicates typed collections and technical `stage.children` entries by UID and ignores internal helpers, MR Sets, and Skeletons.
 9. Delete an imported object once, wait for LIVE reconciliation, and confirm its UID is absent from every typed Stage collection and does not reappear in Planner. The Delete dialog shows a separate `Imported from Designer` line above the unchanged `Delete object?` prompt.
-10. Delete a Planner-owned object, press Planner Undo, and confirm LIVE recreates it in Designer when its old UID/path is absent.
+10. Delete a Planner-owned object, press Planner Undo, and confirm only the local Planner object returns; LIVE must not inspect or recreate it in Designer.
 
 ### Composite Device Smoke
 
@@ -116,7 +116,7 @@ The live command uses `debugScripts.createScript` and `debugScripts.deleteManage
 1. DMX Light is a healthy `FixtureGroup` in `stage.dmxLights`.
 2. Camera is healthy and owns one healthy `PerspectiveProjectionObject` linked to a named `PerspectiveProjection`.
 3. Projector and its named `ProjectorConfig` are healthy; Designer returns derived field of view and look distance.
-4. Cleanup calls `Object.remove()` on the exact instance resolved from the typed Stage collection before the main, child/config, and `DirectProjection` package resources. It never assigns a Python list to a typed Stage property.
+4. Cleanup calls `remove(instance)` on the owning typed Stage collection before the main, child/config, and `DirectProjection` package resources. It never calls `Object.remove()` for top-level Stage membership and never assigns a Python list to a typed Stage property.
 5. Cleanup is restricted to the explicit `ownedPaths` returned by creation; imported/manual resources are never accepted by managed deletion.
 6. No `dsg-smoke-*` typed Stage entry, `stage.children` entry, or package resource reappears during the cleanup stability window, and the UIDs/classes of manual `1`, `2`, `3`, `cam1`, `projector 1`, and `surface 1` resources are unchanged.
 

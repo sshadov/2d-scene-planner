@@ -47,6 +47,7 @@
   let pendingFocusPath = null;
   let projectorTargetPlacement = null;
   let pendingDesignerDeletes = new Set();
+  let pendingDesignerCreates = new Map();
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -382,7 +383,7 @@
   }
   function renderActiveInspector() { activeFieldRefs = new Map(); activeObjectStrip.replaceChildren(); const object = selectedObject(); if (!object) { activeObjectStrip.append(element("div", "active-empty", "No object selected")); pendingFocusPath = null; return; } const identity = element("div", "active-identity"); identity.append(element("span", "", typeConfig[object.type]?.label || "Designer Object")); const name = document.createElement("strong"); name.className = "editable-object-name"; name.textContent = object.name; name.title = "Click to rename"; name.addEventListener("click", () => { const input = document.createElement("input"); input.className = "object-name-input"; input.value = object.name; input.select?.(); input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); commitObjectName(object, input); } if (event.key === "Escape") render(); }); input.addEventListener("blur", () => commitObjectName(object, input)); identity.replaceChildren(identity.children[0], input); input.focus?.(); input.select?.(); }); identity.append(name); activeObjectStrip.append(identity); fieldSections(object).forEach(definition => activeObjectStrip.append(makePropertySection(object, definition))); const focusPath = pendingFocusPath; if (focusPath) setTimeout(() => focusActiveField(focusPath), 0); }
   function refreshActiveValues() { const object = selectedObject(); if (!object) return; document.querySelectorAll("#active-object-strip input[data-field]").forEach(input => { if (document.activeElement === input) return; const step = finite(input.dataset.step, .1); input.value = formatValue(getFieldValue(object, input.dataset.field), step); }); }
-  function renderStatus() { const currentIds = new Set(state.objects.map(object => object.pluginId)); const statuses = state.objects.map(objectSyncStatus); const synced = statuses.filter(status => status === "synced").length; const changed = statuses.filter(status => status === "changed").length; const errors = Object.keys(state.sync.errors || {}).filter(id => currentIds.has(id)).length; document.querySelector("#status-synced").textContent = synced; document.querySelector("#status-changed").textContent = changed; document.querySelector("#status-errors").textContent = errors; document.querySelector("#status-error-chip").hidden = errors === 0; document.querySelector("#live-toggle").checked = Boolean(state.liveEnabled); }
+  function renderStatus() { const currentIds = new Set(state.objects.map(object => object.pluginId)); const statuses = state.objects.map(objectSyncStatus); const synced = statuses.filter(status => status === "synced").length; const changed = statuses.filter(status => status === "changed").length; const errorMessages = Object.entries(state.sync.errors || {}).filter(([id]) => currentIds.has(id) || id === "deviceList").map(([, message]) => String(message)); const errors = errorMessages.length; const errorChip = document.querySelector("#status-error-chip"); document.querySelector("#status-synced").textContent = synced; document.querySelector("#status-changed").textContent = changed; document.querySelector("#status-errors").textContent = errors; errorChip.hidden = errors === 0; errorChip.textContent = errors ? "!" : ""; errorChip.title = errorMessages.join("\n"); document.querySelector("#live-toggle").checked = Boolean(state.liveEnabled); }
   function render() { syncStaticInputs(); drawScene(); renderObjectGroups(); renderActiveInspector(); renderStatus(); }
   function updateProjectorTargetPlacement(point) {
     if (!projectorTargetPlacement || !point) return false;
@@ -399,10 +400,12 @@
   function commitProjectorTargetPlacement(point) {
     if (!projectorTargetPlacement) return false;
     if (point) updateProjectorTargetPlacement(point);
+    const object = state.objects.find(item => item.id === projectorTargetPlacement.objectId);
     projectorTargetPlacement = null;
     pendingFocusPath = "transform.position.y";
     persist();
     render();
+    void createDesignerObject(object);
     return true;
   }
   function cancelProjectorTargetPlacement() {
@@ -423,11 +426,11 @@
       ...details
     });
   }
-  function addObjectAt(type, x = 0, z = 0, focusDimensions = false) { syncModelsFromInputs(); saveHistory(); const bounds = stageBounds(); const object = newObject(type, clamp(x, bounds.minX, bounds.maxX), clamp(z, bounds.minZ, bounds.maxZ)); state.objects.push(object); logPlannerAction("create", object, { phase: "local", x: object.transform.position.x, z: object.transform.position.z }); selectObject(object); if (type === "projector") { projectorTargetPlacement = { objectId: object.id }; pendingFocusPath = null; persist(false); } else { pendingFocusPath = initialObjectFocusPath(object); persist(); } render(); return object; }
+  function addObjectAt(type, x = 0, z = 0, focusDimensions = false) { syncModelsFromInputs(); saveHistory(); const bounds = stageBounds(); const object = newObject(type, clamp(x, bounds.minX, bounds.maxX), clamp(z, bounds.minZ, bounds.maxZ)); state.objects.push(object); logPlannerAction("create", object, { phase: "local", x: object.transform.position.x, z: object.transform.position.z }); selectObject(object); if (type === "projector") { projectorTargetPlacement = { objectId: object.id }; pendingFocusPath = null; persist(false); } else { pendingFocusPath = initialObjectFocusPath(object); persist(); } render(); if (type !== "projector") void createDesignerObject(object); return object; }
   function addObject(type) { return addObjectAt(type); }
-  function duplicateObject(id, mirrorAxis = null, options = {}) { const source = state.objects.find(object => object.id === id); if (!source) return null; if (options.history !== false) saveHistory(); const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(source.type); delete copy.designer; if (mirrorAxis === "x") { copy.transform.position.x = Number((-source.transform.position.x).toFixed(3)); copy.transform.rotation.y = normalizeYaw(-source.transform.rotation.y); } else if (mirrorAxis === "z") { copy.transform.position.z = Number((-source.transform.position.z).toFixed(3)); copy.transform.rotation.y = normalizeYaw(180 - source.transform.rotation.y); } else if (options.offset !== false) copy.transform.position.x = Number((source.transform.position.x + .5).toFixed(3)); if (source.type === "projector" && mirrorAxis) { const target = effectiveLookAt(source); copy.lookAt = { ...target, [mirrorAxis]: Number((-target[mirrorAxis]).toFixed(3)) }; } state.objects.push(copy); logPlannerAction("duplicate", copy, { phase: "local", sourcePluginId: source.pluginId, mirrorAxis }); selectObject(copy); if (options.persist !== false) persist(); if (options.render !== false) render(); return copy; }
+  function duplicateObject(id, mirrorAxis = null, options = {}) { const source = state.objects.find(object => object.id === id); if (!source) return null; if (options.history !== false) saveHistory(); const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(source.type); delete copy.designer; if (mirrorAxis === "x") { copy.transform.position.x = Number((-source.transform.position.x).toFixed(3)); copy.transform.rotation.y = normalizeYaw(-source.transform.rotation.y); } else if (mirrorAxis === "z") { copy.transform.position.z = Number((-source.transform.position.z).toFixed(3)); copy.transform.rotation.y = normalizeYaw(180 - source.transform.rotation.y); } else if (options.offset !== false) copy.transform.position.x = Number((source.transform.position.x + .5).toFixed(3)); if (source.type === "projector" && mirrorAxis) { const target = effectiveLookAt(source); copy.lookAt = { ...target, [mirrorAxis]: Number((-target[mirrorAxis]).toFixed(3)) }; } state.objects.push(copy); logPlannerAction("duplicate", copy, { phase: "local", sourcePluginId: source.pluginId, mirrorAxis }); selectObject(copy); if (options.persist !== false) persist(); if (options.render !== false) render(); void createDesignerObject(copy); return copy; }
   function copySelectedObjects() { const selected = state.objects.filter(object => state.selectedIds.has(object.id) || object.id === state.selectedId); if (!selected.length) return false; clipboardObjects = selected.map(object => clone(object)); return true; }
-  function pasteCopiedObjects() { if (!clipboardObjects.length) return false; saveHistory(); const pasted = clipboardObjects.map(source => { const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(copy.type); delete copy.designer; copy.transform.position.x = Number((copy.transform.position.x + .5).toFixed(3)); logPlannerAction("duplicate", copy, { phase: "local", method: "paste", sourcePluginId: source.pluginId }); return copy; }); state.objects.push(...pasted); selectObject(pasted[pasted.length - 1]); persist(); render(); return true; }
+  function pasteCopiedObjects() { if (!clipboardObjects.length) return false; saveHistory(); const pasted = clipboardObjects.map(source => { const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(copy.type); delete copy.designer; copy.transform.position.x = Number((copy.transform.position.x + .5).toFixed(3)); logPlannerAction("duplicate", copy, { phase: "local", method: "paste", sourcePluginId: source.pluginId }); return copy; }); state.objects.push(...pasted); selectObject(pasted[pasted.length - 1]); persist(); render(); pasted.forEach(object => { void createDesignerObject(object); }); return true; }
   function rotateObject90(id) { const object = state.objects.find(item => item.id === id); if (!object || object.type === "projector") return; saveHistory(); object.transform.rotation.y = normalizeYaw(object.transform.rotation.y + 90); persist(); render(); }
   function positionContextMenu(event, height = 300) { const width = 220; canvasContextMenu.style.left = `${Math.max(6, Math.min(event.clientX, (window.innerWidth || 1280) - width - 6))}px`; canvasContextMenu.style.top = `${Math.max(6, Math.min(event.clientY, (window.innerHeight || 720) - height - 6))}px`; canvasContextMenu.hidden = false; }
   function closeCanvasContextMenu() { if (!canvasContextMenu) return; canvasContextMenu.hidden = true; document.querySelector("#surface-context-list").hidden = true; document.querySelector("#context-delete-confirm").hidden = true; state.showSurfaceLabels = false; contextObjectId = null; contextWorldPoint = null; }
@@ -459,8 +462,13 @@
         result = await adapter.deleteDesignerObjects([{ id: record.designerId, path: record.path, removeResource: deleteFromDeviceList }]);
       }
       if (!result?.deleted?.map(String).includes(String(record.designerId))) throw new Error(result?.skipped?.join("; ") || "Designer did not confirm deletion");
-      state.sync.deleted[removed.pluginId] = { pluginId: removed.pluginId, designerId: record.designerId, path: record.path, type: removed.type, name: removed.name, deletedAt: new Date().toISOString(), resourcesDeleted: result.resourcesDeleted || [] };
+      const deviceListFailed = deleteFromDeviceList && result?.resourceDeleteFailed?.map(String).includes(String(record.designerId));
+      const deviceListError = deviceListFailed ? result?.skipped?.find(message => String(message).includes(String(record.designerId))) || "Designer did not remove the Device list resource" : null;
+      state.sync.deleted[removed.pluginId] = { pluginId: removed.pluginId, designerId: record.designerId, path: record.path, type: removed.type, name: removed.name, deletedAt: new Date().toISOString(), resourcesDeleted: result.resourcesDeleted || [], ...(deviceListError ? { deviceListError } : {}) };
+      if (deviceListError) state.sync.errors.deviceList = `Device list cleanup failed: ${deviceListError}`;
+      else if (deleteFromDeviceList) delete state.sync.errors.deviceList;
       delete state.sync.objects[removed.pluginId]; persist(false); renderStatus();
+      if (deviceListError) document.querySelector("#adapter-status").textContent = `Device list cleanup failed · ${deviceListError}`;
     } catch (error) {
       state.objects.splice(Math.min(index, state.objects.length), 0, removed);
       detachedTargets.forEach((binding, projectorId) => { const projector = state.objects.find(item => item.id === projectorId); if (projector) { projector.lookAt = binding.target; projector.targetSurfacePluginId = binding.surfacePluginId; } });
@@ -514,13 +522,44 @@
     const record = {
       pluginId: object.pluginId, designerId, path, type: object.type, name: object.name,
       lastExported: canonical(payload), payload, readbackValid: options.readbackValid ?? null, adopted: Boolean(options.adopted),
-      liveCreated: Boolean(options.liveCreated), owned: Boolean(options.owned && !ownershipError), ownedPaths
+      owned: Boolean(options.owned && !ownershipError), ownedPaths
     };
     records[object.pluginId] = record;
     state.sync.objects = records;
     persist(false);
     if (ownershipError) throw ownershipError;
     return record;
+  }
+  async function createDesignerObject(object) {
+    if (!object || object.type === "designer") return null;
+    const existing = state.sync.objects?.[object.pluginId];
+    if (existing?.designerId) return existing;
+    if (pendingDesignerCreates.has(object.pluginId)) return pendingDesignerCreates.get(object.pluginId);
+    const adapter = getAdapter();
+    if (!adapter?.createObject) return null;
+    const operation = (async () => {
+      const payload = objectPayload(object);
+      try {
+        logPlannerAction("create", object, { phase: "designer-create" });
+        const result = await adapter.createObject(payload);
+        const record = persistCreatedRecord(state.sync.objects || {}, object, payload, result, { owned: true });
+        try { validateReadback(payload, result); record.readbackValid = true; }
+        catch (validationError) { record.readbackValid = false; record.lastExported = null; throw validationError; }
+        delete state.sync.errors[object.pluginId];
+        state.sync.lastSyncAt = new Date().toISOString();
+        persist(false); render();
+        return record;
+      } catch (error) {
+        state.sync.errors[object.pluginId] = `Create failed: ${error.message || error}`;
+        persist(false); renderObjectGroups(); renderStatus();
+        document.querySelector("#adapter-status").textContent = `Create failed · ${error.message || error}`;
+        return null;
+      } finally {
+        pendingDesignerCreates.delete(object.pluginId);
+      }
+    })();
+    pendingDesignerCreates.set(object.pluginId, operation);
+    return operation;
   }
   async function syncToDesigner(diff) {
     const records = state.sync.objects || {};
@@ -596,49 +635,13 @@
       catch (error) { state.sync.errors.live = error.message || String(error); persist(false); liveStatus({ status: "error", detail: error.message || String(error) }); }
     }, 120);
   }
-  async function ensureLiveObjects(adapter) {
-    const records = state.sync.objects || {};
-    const supported = new Set(["screen", "dmxScreen", "surface", "dmxLight", "projector", "camera"]);
-    const hasInspection = typeof adapter.inspectScene === "function";
-    const inspection = hasInspection ? await adapter.inspectScene() : null;
-    const inspected = inspection?.objects || [];
-    const present = record => inspected.some(item => String(item.id || item.uid || "") === String(record.designerId || "") || String(item.path || "") === String(record.path || ""));
-    for (const object of state.objects) {
-      if (!supported.has(object.type)) continue;
-      let existing = records[object.pluginId];
-      // Undo can restore a local snapshot after Designer has already removed
-      // the old resource. Recreate owned objects instead of updating a dead UID.
-      if (hasInspection && existing?.designerId && existing.owned && !present(existing)) {
-        delete existing.designerId;
-        delete existing.path;
-        existing.ownedPaths = [];
-        existing.lastExported = null;
-        existing.readbackValid = false;
-      }
-      const payload = objectPayload(object);
-      if (existing?.designerId) {
-        if (existing.readbackValid === false) {
-          const result = await adapter.updateObject(existing.designerId, payload, existing.path, object.type);
-          validateReadback(payload, result);
-          existing.payload = payload; existing.lastExported = canonical(payload); existing.readbackValid = true; persist(false);
-        }
-        continue;
-      }
-      const result = await adapter.createObject(payload);
-      const record = persistCreatedRecord(records, object, payload, result, { owned: true, liveCreated: true });
-      try { validateReadback(payload, result); record.readbackValid = true; persist(false); }
-      catch (validationError) { record.readbackValid = false; record.lastExported = null; persist(false); throw validationError; }
-    }
-    state.sync.objects = records;
-    persist(false);
-  }
   async function runLiveSync() {
     if (liveSyncInFlight || !state.liveEnabled) return;
     const adapter = getAdapter(); if (!adapter?.liveSync) return;
     liveSyncInFlight = true; liveSyncQueued = false;
     try {
-      await ensureLiveObjects(adapter);
-      const sent = adapter.liveSync(state.objects.map(object => ({ payload: objectPayload(object), record: state.sync.objects?.[object.pluginId] })));
+      const boundObjects = state.objects.filter(object => state.sync.objects?.[object.pluginId]?.designerId);
+      const sent = adapter.liveSync(boundObjects.map(object => ({ payload: objectPayload(object), record: state.sync.objects[object.pluginId] })));
       if (sent === false) throw new Error("Live Update WebSocket is not open");
       document.querySelector("#adapter-status").textContent = "LIVE: changes sent over WebSocket";
     } catch (error) {
@@ -829,5 +832,5 @@
     if (type === "camera" && paths.filter(path => path.startsWith("objects/camera/")).length < 2) throw new Error("Designer ownership metadata is incomplete for camera");
     return paths;
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, ensureLiveObjects, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
 })();

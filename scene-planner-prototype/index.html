@@ -7,14 +7,14 @@
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
     <title>Disguise Scene Planner v11.5.2</title>
-    <link rel="stylesheet" href="./styles.css?v=11.5.11" />
+    <link rel="stylesheet" href="./styles.css?v=11.5.17" />
   </head>
   <body>
     <main class="app-shell">
       <section class="workspace" aria-label="Scene editor">
         <aside class="object-rail designer-panel" id="object-rail">
           <section class="scene-config" aria-label="Scene dimensions">
-            <div class="panel-heading"><h1>Scene</h1><span id="object-count">0</span></div>
+            <div class="panel-heading"><h1>Scene</h1><div class="panel-heading-meta"><span id="status-error-chip" class="status-error-chip" aria-label="Planner error" hidden></span><span id="object-count">0</span></div></div>
             <div class="scene-dimensions">
               <label>Width <span class="input-shell"><input id="scene-width" type="text" inputmode="decimal" value="20" /><i>m</i></span></label>
               <label>Depth <span class="input-shell"><input id="scene-depth" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
@@ -34,7 +34,7 @@
             <div class="inspector-heading">Properties</div>
             <div class="active-object-strip" id="active-object-strip" aria-live="polite"></div>
           </section>
-          <span id="status-synced" hidden>0</span><span id="status-changed" hidden>0</span><span id="status-errors" hidden>0</span><span id="status-error-chip" hidden></span><span id="scene-summary" hidden>Scene</span>
+          <span id="status-synced" hidden>0</span><span id="status-changed" hidden>0</span><span id="status-errors" hidden>0</span><span id="scene-summary" hidden>Scene</span>
         </aside>
 
         <section class="stage-panel">
@@ -90,7 +90,7 @@
          </div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=11.5.12"></script>
-    <script src="./app.js?v=11.5.12"></script>
+    <script src="./designer-adapter.js?v=11.5.17"></script>
+    <script src="./app.js?v=11.5.17"></script>
   </body>
 </html>

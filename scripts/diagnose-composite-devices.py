@@ -283,14 +283,21 @@ def is_smoke_path(path):
     return name.startswith(prefix)
 resource_prefixes = json.loads({json.dumps(RESOURCE_PREFIXES)!r})
 stage = state.stage
+pending = []
 detached = []
 for collection_name in ["ledScreens", "dmxScreens", "dmxLights", "surfaces", "cameras", "projectors"]:
-    for candidate in getattr(stage, collection_name, []):
+    collection = getattr(stage, collection_name, [])
+    for candidate in collection:
         path = str(getattr(candidate, "path", ""))
         if is_smoke_path(path):
-            try: candidate.remove()
-            except Exception: pass
-            detached.append(candidate)
+            pending.append((collection, candidate))
+for collection, candidate in pending:
+    try:
+        collection.remove(candidate)
+    except Exception:
+        pass
+    else:
+        detached.append(candidate)
 stage.save()
 for candidate in detached:
     try: candidate.saveOnDelete()
