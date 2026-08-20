@@ -607,7 +607,8 @@
     const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
     if (!record?.designerId || !adapter?.updateObject) return null;
     const payload = objectPayload(object);
-    const changed = { transform: payload.transform, lookAt: payload.lookAt, optics: payload.optics, targetSurface: payload.targetSurface, projectorRoll: payload.projectorRoll };
+    const changed = { transform: payload.transform, lookAt: payload.lookAt, optics: payload.optics, projectorRoll: payload.projectorRoll };
+    if (canonical(record.payload?.targetSurface) !== canonical(payload.targetSurface)) changed.targetSurface = payload.targetSurface;
     try {
       const result = await adapter.updateObject(record.designerId, changed, record.path, "projector");
       validateReadback(payload, result);
