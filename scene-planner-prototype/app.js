@@ -696,7 +696,7 @@
     const deletedRecords = Object.values(state.sync.deleted || {});
     const imported = (inspection.objects || []).filter(item => { const designerId = String(item.id || item.uid || ""); const path = String(item.path || ""); return !pendingDesignerDeletes.has(designerId) && !deletedRecords.some(record => String(record.designerId || "") === designerId || String(record.path || "") === path); }).map(importedObject);
     const importedPluginIds = new Set(imported.map(object => object.pluginId));
-    const localOnly = options.preserveLocal ? state.objects.filter(object => !state.sync.objects?.[object.pluginId]?.designerId && !importedPluginIds.has(object.pluginId)) : [];
+    const localOnly = options.preserveLocal ? state.objects.filter(object => !importedPluginIds.has(object.pluginId)) : [];
     // Designer is authoritative at startup. Local storage supplies mappings and UI preferences only.
     state.objects = [...imported, ...localOnly];
     const selected = state.objects.find(object => object.pluginId === previousSelectedPluginId) || state.objects[0] || null;
