@@ -45,6 +45,19 @@ function resultFor(payload, id = "designer-id") { return { designerId: id, path:
 
 (async () => {
   const core = createHarness();
+  const staleErrorHarness = createHarness({ version: 11, stage: { width: 20, depth: 12 }, objects: [], sync: { objects: {}, deleted: {}, errors: { deviceList: "old cleanup failure" } } }, "disguise-scene-generator-state-v11");
+  assert.deepEqual(JSON.parse(JSON.stringify(staleErrorHarness.state.sync.errors)), {}, "runtime errors must not survive a restart");
+  assert.equal(staleErrorHarness.__elements.get("#status-error-chip").hidden, true, "stale errors must not light the current-session indicator");
+  staleErrorHarness.plannerLog("error", "Projector", "Update failed", { objectName: "Projector 2", phase: "throw-ratio" });
+  staleErrorHarness.setActiveError("projector:test", "Update failed", { subsystem: "Projector", objectName: "Projector 2", phase: "throw-ratio" });
+  const diagnosticRows = staleErrorHarness.__elements.get("#diagnostics-output").children;
+  assert.equal(diagnosticRows.length, 2);
+  assert.match(diagnosticRows[1].className, /diagnostic-error/);
+  assert.match(diagnosticRows[1].textContent, /Projector 2/);
+  assert.match(diagnosticRows[1].textContent, /throw-ratio/);
+  assert.equal(staleErrorHarness.__elements.get("#status-error-chip").hidden, false);
+  staleErrorHarness.resolveActiveError("projector:test");
+  assert.equal(staleErrorHarness.__elements.get("#status-error-chip").hidden, true);
   assert.equal(core.state.objects.length, 0); assert.deepEqual(JSON.parse(JSON.stringify(core.state.stage)), { width: 20, depth: 12 }); assert.equal(core.newObject("projector").transform.position.y, 3); assert.equal(core.newObject("camera").transform.position.y, 1.5); assert.equal(core.newObject("screen").transform.position.y, 0); assert.equal(core.newObject("projector").lookAt.y, 0); assert.equal(core.newObject("screen").media.pixelsPerInch, 10); assert.equal("pixelsPerInch" in core.newObject("surface").media, false); assert.equal(core.newObject("dmxScreen").geometry.width, 4); assert.equal(core.newObject("dmxLight").transform.position.y, 5);
   const screen = sceneObject("screen", "plugin-screen", { x: 3, y: 0, z: -5 }); const payload = core.objectPayload(screen); assert.equal(core.finite("1,5", 9), 1.5); assert.equal(core.finite("", 9), 9); assert.equal(core.formatValue(4), "4"); assert.equal(core.formatValue(1.5), "1,5");
   const horizontalSurface = sceneObject("surface", "horizontal-surface", { x: 0, y: 0, z: 0 }); horizontalSurface.geometry = { width: 4, height: 2 }; const horizontalProjector = sceneObject("projector", "horizontal-projector", { x: 0, y: 1, z: -12 }); horizontalProjector.lookAt = { x: 0, y: 1, z: 0 }; horizontalProjector.optics = { throwRatio: 1.5, fieldOfView: 40, lookDistance: 1 }; horizontalProjector.targetSurfacePluginId = horizontalSurface.pluginId; core.state.objects = [horizontalSurface, horizontalProjector]; assert.deepEqual(JSON.parse(JSON.stringify(core.projectorGeometry(horizontalProjector))), { direction: { x: 0, y: 0, z: 1 }, distance: 12, projectedWidth: 4, throwRatio: 3, fieldOfView: 18.925, roll: 0 });
