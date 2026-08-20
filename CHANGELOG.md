@@ -7,6 +7,7 @@
 - Limited Projector drag LIVE traffic to Position or Look At, then finalized once per completed interaction and applied Designer readback.
 - Made Look Distance writable and prevented missing legacy values from producing `NaN` LIVE messages.
 - Preserved projector bindings across Designer readback/import and ordered bound Surface creation before Projector creation.
+- Ordered full-scene Surface/Projector sync and committed Surface readback before recalculating bound Projectors.
 
 ## 0.19.2 - 2026-08-20
 

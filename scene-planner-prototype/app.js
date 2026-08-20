@@ -636,20 +636,49 @@
     return [...affected];
   }
   function commitAffectedProjectors(objects) { return Promise.all(projectorsAffectedBy(objects).map(commitProjectorConfiguration)); }
-  function commitFieldChange(object, path) {
+  async function commitSurfaceConfiguration(object) {
+    if (object?.type !== "surface") return null;
+    const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
+    if (!record?.designerId || !adapter?.updateObject) return null;
+    const payload = objectPayload(object); const changed = { transform: payload.transform, geometry: payload.geometry };
+    try {
+      const result = await adapter.updateObject(record.designerId, changed, record.path, "surface");
+      validateReadback(payload, result);
+      const readback = result?.readback;
+      if (readback?.transform?.position) object.transform.position = vector(readback.transform.position);
+      if (Number.isFinite(Number(readback?.transform?.rotation?.y))) object.transform.rotation.y = Number(readback.transform.rotation.y);
+      if (readback?.geometry) {
+        if (Number.isFinite(Number(readback.geometry.width))) object.geometry.width = Number(readback.geometry.width);
+        if (Number.isFinite(Number(readback.geometry.height))) object.geometry.height = Number(readback.geometry.height);
+      }
+      recalculateSurfaceProjectors(object);
+      record.payload = objectPayload(object); record.lastExported = canonical(record.payload); record.readbackValid = true;
+      if (result?.path) record.path = result.path;
+      delete state.sync.errors[object.pluginId]; persist(false); renderStatus(); return result;
+    } catch (error) {
+      state.sync.errors[object.pluginId] = `Surface update failed: ${error.message || error}`; persist(false); renderStatus();
+      document.querySelector("#adapter-status").textContent = `Surface update failed · ${error.message || error}`; return null;
+    }
+  }
+  async function commitFieldChange(object, path) {
     if (!object || !path) return Promise.resolve([]);
     if (object.type === "projector" && (path.startsWith("transform.") || path.startsWith("lookAt.") || path.startsWith("optics.") || path.startsWith("media."))) return commitAffectedProjectors([object]);
-    if (object.type === "surface" && (path.startsWith("transform.") || path.startsWith("geometry."))) return commitAffectedProjectors([object]);
+    if (object.type === "surface" && (path.startsWith("transform.") || path.startsWith("geometry."))) {
+      const result = await commitSurfaceConfiguration(object);
+      return result ? commitAffectedProjectors([object]) : [];
+    }
     return Promise.resolve([]);
   }
   async function syncToDesigner(diff) {
     const records = state.sync.objects || {};
     await syncEnvironmentIfChanged(diff.adapter);
-    for (const item of [...diff.create, ...diff.adopt]) {
+    const pendingCreates = [...diff.create, ...diff.adopt].sort((left, right) => Number(right.object.type === "surface") - Number(left.object.type === "surface"));
+    for (const item of pendingCreates) {
       const owned = !item.designerId;
       const operation = owned ? "Create" : "Update";
       let result;
       try {
+        item.payload = objectPayload(item.object); item.serialized = canonical(item.payload);
         logPlannerAction(owned ? "create" : "update", item.object, { phase: "designer-sync", designerId: item.designerId || null, path: item.candidate?.path || null, adopted: Boolean(item.candidate) });
         result = owned ? await diff.adapter.createObject(item.payload) : await diff.adapter.updateObject(item.designerId, item.payload, item.candidate?.path, item.object.type);
         const record = persistCreatedRecord(records, item.object, item.payload, result, { owned, adopted: Boolean(item.candidate), designerId: item.designerId, path: item.candidate?.path });
@@ -900,8 +929,9 @@
     }
     drawScene();
     refreshActiveValues();
+    scheduleLiveSync(0);
   });
-  function clearDragState(event, commit = true) { const pointerId = event?.pointerId; const drag = state.dragging; const moved = Boolean(drag && !drag.pending && drag.kind !== "pan"); const affected = moved ? (drag.kind === "group" ? drag.positions.map(position => state.objects.find(object => object.id === position.id)).filter(Boolean) : [state.objects.find(object => object.id === drag.id)].filter(Boolean)) : []; state.dragging = null; state.guides = []; if (commit) { persist(); if (moved) commitAffectedProjectors(affected); } render(); if (pointerId !== undefined && canvas.hasPointerCapture?.(pointerId)) canvas.releasePointerCapture(pointerId); }
+  function clearDragState(event, commit = true) { const pointerId = event?.pointerId; const drag = state.dragging; const moved = Boolean(drag && !drag.pending && drag.kind !== "pan"); const affected = moved ? (drag.kind === "group" ? drag.positions.map(position => state.objects.find(object => object.id === position.id)).filter(Boolean) : [state.objects.find(object => object.id === drag.id)].filter(Boolean)) : []; if (commit && moved && liveSyncTimer) { clearTimeout(liveSyncTimer); liveSyncTimer = null; void runLiveSync(); } state.dragging = null; state.guides = []; if (commit) { persist(!moved); if (moved) commitAffectedProjectors(affected); } render(); if (pointerId !== undefined && canvas.hasPointerCapture?.(pointerId)) canvas.releasePointerCapture(pointerId); }
   canvas.addEventListener("pointerup", event => clearDragState(event)); canvas.addEventListener("pointercancel", event => { cancelProjectorTargetPlacement(); clearDragState(event, false); }); canvas.addEventListener("lostpointercapture", event => { if (state.dragging) clearDragState(event); }); window.addEventListener("lostpointercapture", event => { if (state.dragging) clearDragState(event); }); window.addEventListener("blur", () => { cancelProjectorTargetPlacement(); if (state.dragging) clearDragState(undefined, false); }); document.addEventListener?.("visibilitychange", () => { if (document.hidden) { cancelProjectorTargetPlacement(); if (state.dragging) clearDragState(undefined, false); } }); window.addEventListener("resize", drawScene);
   canvas.addEventListener("wheel", event => { event.preventDefault(); state.zoom = clamp(state.zoom + (event.deltaY < 0 ? .1 : -.1), ZOOM_MIN, ZOOM_MAX); drawScene(); }, { passive: false });
   canvas.addEventListener("contextmenu", event => { event.preventDefault(); const object = hitTestProjectorTarget(event.clientX, event.clientY) || hitTest(event.clientX, event.clientY); if (object) openCanvasContextMenu(event, object); else { const rect = canvas.getBoundingClientRect(); openCanvasCreateMenu(event, toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false))); } });
