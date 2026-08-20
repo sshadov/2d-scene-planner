@@ -116,7 +116,7 @@ The live command uses `debugScripts.createScript` and `debugScripts.deleteManage
 1. DMX Light is a healthy `FixtureGroup` in `stage.dmxLights`.
 2. Camera is healthy and owns one healthy `PerspectiveProjectionObject` linked to a named `PerspectiveProjection`.
 3. Projector and its named `ProjectorConfig` are healthy; Designer returns derived field of view and look distance.
-4. Cleanup removes the exact typed Stage reference before the main, child/config, and `DirectProjection` package resources.
+4. Cleanup calls `Object.remove()` on the exact instance resolved from the typed Stage collection before the main, child/config, and `DirectProjection` package resources. It never assigns a Python list to a typed Stage property.
 5. Cleanup is restricted to the explicit `ownedPaths` returned by creation; imported/manual resources are never accepted by managed deletion.
 6. No `dsg-smoke-*` typed Stage entry, `stage.children` entry, or package resource reappears during the cleanup stability window, and the UIDs/classes of manual `1`, `2`, `3`, `cam1`, `projector 1`, and `surface 1` resources are unchanged.
 

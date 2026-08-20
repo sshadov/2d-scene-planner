@@ -110,10 +110,8 @@ assert.match(remove, /paths_to_remove = \[path for path in owned_paths if path i
 assert.ok(remove.indexOf("stage.save()") < remove.indexOf("resourceManager.remove(path)"));
 assert.match(remove, /candidate\.remove\(\)/);
 assert.doesNotMatch(remove, /setattr\(stage, collection_name, \[/);
-assert.match(remove, /def set_stage_collection/);
-assert.match(remove, /stage\.projectors = value/);
-assert.match(remove, /stage\.cameras = value/);
-assert.match(remove, /stage\.dmxLights = value/);
+assert.doesNotMatch(remove, /def set_stage_collection/);
+assert.doesNotMatch(remove, /stage\.(ledScreens|dmxScreens|surfaces|dmxLights|cameras|projectors)\s*=/);
 assert.match(remove, /removeResource/);
 assert.match(remove, /stage_contains/);
 assert.ok(remove.indexOf("stage.save()") < remove.indexOf("stage_contains"));

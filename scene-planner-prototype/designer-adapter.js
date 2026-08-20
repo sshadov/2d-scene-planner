@@ -764,13 +764,6 @@ def uid_of(candidate):
     return str(getattr(candidate, "uid", ""))
 def path_of(candidate):
     return str(getattr(candidate, "path", ""))
-def set_stage_collection(name, value):
-    if name == "ledScreens": stage.ledScreens = value
-    elif name == "dmxScreens": stage.dmxScreens = value
-    elif name == "surfaces": stage.surfaces = value
-    elif name == "dmxLights": stage.dmxLights = value
-    elif name == "cameras": stage.cameras = value
-    elif name == "projectors": stage.projectors = value
 def owned_resource_paths(candidate):
     paths = []
     config_path = path_of(getattr(candidate, "config", None))
@@ -799,18 +792,11 @@ def matches(candidate):
     return candidate_id not in processed
 for collection_name in collection_names:
     collection = getattr(stage, collection_name, [])
-    retained = []
-    selected = []
     for candidate in collection:
         if matches(candidate):
             candidate_id = uid_of(candidate)
             processed.add(candidate_id)
-            selected.append(candidate)
             pending.append((candidate_id, path_of(candidate), candidate, owned_resource_paths(candidate), collection_name))
-        else:
-            retained.append(candidate)
-    if selected:
-        set_stage_collection(collection_name, retained)
 for resource_path in target_paths:
     try:
         candidate = resourceManager.load(Path(resource_path), Resource)

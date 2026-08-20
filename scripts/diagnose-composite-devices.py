@@ -284,24 +284,13 @@ def is_smoke_path(path):
 resource_prefixes = json.loads({json.dumps(RESOURCE_PREFIXES)!r})
 stage = state.stage
 detached = []
-def set_stage_collection(name, value):
-    if name == "ledScreens": stage.ledScreens = value
-    elif name == "dmxScreens": stage.dmxScreens = value
-    elif name == "dmxLights": stage.dmxLights = value
-    elif name == "surfaces": stage.surfaces = value
-    elif name == "cameras": stage.cameras = value
-    elif name == "projectors": stage.projectors = value
 for collection_name in ["ledScreens", "dmxScreens", "dmxLights", "surfaces", "cameras", "projectors"]:
-    retained = []
     for candidate in getattr(stage, collection_name, []):
         path = str(getattr(candidate, "path", ""))
         if is_smoke_path(path):
             try: candidate.remove()
             except Exception: pass
             detached.append(candidate)
-        else:
-            retained.append(candidate)
-    set_stage_collection(collection_name, retained)
 stage.save()
 for candidate in detached:
     try: candidate.saveOnDelete()

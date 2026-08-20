@@ -245,7 +245,7 @@ Ctrl-drag duplication is removed because modifier state is not reliable in the e
 - Date: 2026-08-19
 - Status: accepted
 
-Designer Stage collections are API-backed `ArrayBox` values, not ordinary Python lists. Delete scripts iterate the typed collections directly, build a retained native list, assign it through an explicit typed setter (`stage.projectors`, `stage.cameras`, `stage.dmxLights`, etc.), detach each exact object with `Object.remove()`, save the Stage, and verify the UID is absent. They do not use generic `setattr` or mutate a collection while iterating. Only the explicit Device list option calls `saveOnDelete()` followed by `resourceManager.remove(path)`; if Stage save or readback is rejected, the planner does not claim a confirmed delete.
+Designer Stage collections are API-backed `ArrayBox` values, not ordinary Python lists. Delete scripts iterate the typed collections only to resolve the exact Stage instance, call the documented `Object.remove()` on that instance, save the Stage, and verify the UID is absent. They never assign a filtered Python list back through either `setattr` or an explicit typed setter because both replace the value observed by Designer GUI callbacks and can trigger `Access to object of type 'ArrayBox' is not allowed`. Only the explicit Device list option calls `saveOnDelete()` followed by `resourceManager.remove(path)`; if Stage save or readback is rejected, the planner does not claim a confirmed delete.
 
 LIVE reconnects preserve the user's enabled intent until explicitly switched off. A Designer collection update preserves the selected plugin object and the currently focused inspector field while rebuilding the object list, so an incoming object cannot steal focus from a dimension entry.
 

@@ -508,7 +508,7 @@
 - Date: 2026-08-20
 - Symptom: an object disappeared from the 3D view, then returned after the next Planner action; Designer marked the Stage entry as bad and later creates produced duplicate names.
 - Cause: `Object.remove()` alone does not persistently remove top-level equipment from Designer's typed Stage list in the installed build. The old generic collection assignment also triggered the `ArrayBox` editor error.
-- Fix: collect the exact UID, assign the filtered list through the explicit typed property (`stage.projectors`, `stage.cameras`, `stage.dmxLights`, etc.), call `candidate.remove()`, save Stage, and read back all typed collections plus `stage.children`. Planner confirms deletion only when the UID is absent.
+- Superseded fix: assigning a filtered list through an explicit typed property was also unsafe and caused ERR-057. The current path resolves the exact Stage instance, calls only `candidate.remove()`, saves Stage, and reads back all typed collections plus `stage.children`. Planner confirms deletion only when the UID is absent.
 - Resource policy: normal Delete leaves the Device/Resource list entry. The confirmation dialog has one optional `Delete from Device list` checkbox; only when checked are `saveOnDelete()` and `resourceManager.remove()` executed for owned resources.
 - Name policy: creation checks names in the matching typed Stage list. `Projector 1` and `Screen 1` are independent; a duplicate projector becomes `Projector 2` before resource creation.
 - Reconciliation: successful deletes store a UID/path tombstone so startup and LIVE scene imports do not recreate the removed object.
@@ -517,8 +517,8 @@
 
 - Date: 2026-08-20
 - Symptom: `Export diagnostics` failed with `Attempt to download unknown file type .json`.
-- Cause: the embedded Designer plugin window does not accept `.json` as a downloadable file type.
-- Fix: diagnostics retain JSON-formatted content but download as a `text/plain` `.txt` file.
+- Cause: the embedded Designer plugin window rejects the browser `download` operation itself; changing `.json` to `.txt` did not resolve it.
+- Fix: remove browser downloads from the plugin window. `Copy diagnostics` and `Copy JSON` copy the same formatted JSON to the clipboard, with an `execCommand("copy")` fallback for the embedded Chromium.
 
 ## ERR-056: Planner Undo restored only the local object
 
@@ -526,3 +526,10 @@
 - Symptom: after deleting an object in Planner, Undo restored it in Planner but it did not return to Designer. The reverse operation, Designer `Ctrl+Z`, was visible to Planner.
 - Cause: Planner history restored the old `designerId` even though the corresponding Designer resource had already been deleted. LIVE then attempted an update against a dead UID.
 - Fix: before LIVE synchronization, inspect the current Designer scene. If an owned record points to a missing UID/path, clear the stale mapping and create a new Designer resource from the restored Planner object.
+
+## ERR-057: Explicit typed Stage setters still corrupted ArrayBox callbacks
+
+- Date: 2026-08-20
+- Symptom: deleting LED screens or projectors produced `Access to object of type 'ArrayBox' is not allowed` in `ProjectorEditor.handleStageDisplaysChanged`, with `SetField:ledScreens` or `SetField:projectors` and `set_stage_collection` in the trace.
+- Cause: assigning a normal Python list through `stage.ledScreens = retained` or another typed setter still replaces the value observed by Designer's GUI callback. Avoiding generic `setattr` was not sufficient.
+- Fix: never assign typed Stage collections during deletion. Resolve the exact object by UID/path from the typed collection, invoke its documented `Object.remove()`, save Stage, and confirm the UID is absent before reporting success or touching Device-list resources.
