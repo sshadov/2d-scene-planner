@@ -5,11 +5,9 @@
 - Date: 2026-08-20
 - Status: accepted
 
-The Planner calculates provisional projector geometry locally so it remains useful without Designer. A bound projection surface is also bound in Designer through the public `Projector.removeScreen()` and `Projector.addScreen(Screen2)` methods, resolved by exact UID/path. Projector create waits for the bound Surface to exist in Designer.
+Designer owns projector optical derivation. Position and Look At are the only bidirectional geometry inputs and are sent together in one LIVE set. Look Distance and Field of View are read-only Planner values. With Auto Throw Ratio enabled and a bound Surface, a revisioned cycle waits for Designer Look Distance, calculates Throw Ratio from projected Surface width, sends only that ratio, waits for Designer Field of View, and then applies the Rotation Z policy. A newer geometry revision cancels older derived work.
 
-LIVE carries only confirmed simple properties: `configPosition`, `configLookAt`, `configLookDistance`, `configThrowRatio`, and read-only `fieldOfView`. It never writes `configRotation` or the complex `screens` collection. A drag updates only its direct LIVE property while locally derived optics remain preview state. After a completed drag, numeric commit, Surface geometry change, or binding change, one Python operation writes Position, Look At, Look Distance, Throw Ratio, Surface binding, then final `configRotation.z`; it preserves `configRotation.x/y`, forces `.z` to `0°` or `90°`, saves Projector and Stage, and returns authoritative readback. This narrow final roll is the only permitted `configRotation` write and supersedes ADR-010's blanket prohibition.
-
-Final Python commits are serialized per Planner `pluginId`. Each edit captures its own payload, and only the latest queued version may apply readback or status to Planner state. This prevents delayed responses from overwriting newer user input; stale Surface commits also do not trigger dependent Projector finalization.
+Surface binding is a separate Python operation using `Projector.removeScreen()` and `Projector.addScreen(Screen2)` with forward and inverse verification. Rotation finalization is also separate and may write only `configRotation.z`, preserving `.x/.y`. `Rounded` is the default; `Designer` never writes Rotation Z, and fixed quarter turns are explicit choices. This supersedes the earlier standalone optical calculation and complete-configuration commit design.
 
 ## ADR-016: Guided dimension entry and confirmed LIVE baseline
 
@@ -208,7 +206,7 @@ The adapter never writes `stage.floor_size` because Free Designer Starter dispat
 
 The planner will not label debounced Python HTTP calls as LIVE. Official Live Update is the WebSocket endpoint `/api/session/liveupdate`, whose protocol uses `subscribe`, `valuesChanged`, and `set`. Supported object properties are subscribed by Designer UID; Stage collection subscriptions detect additions and deletions, while Python HTTP handles resource creation and confirmed removal.
 
-Confirmed default deletion removes the exact object from its typed Stage property and 3D hierarchy, saves Stage, and verifies the UID is absent. The Device/Resource list is not modified by default. A single Delete confirmation may opt into `resource.saveOnDelete()` followed by `resourceManager.remove(resource.path)` for owned resources.
+Confirmed default deletion removes the exact object from its typed Stage property and 3D hierarchy, saves Stage, and verifies the UID is absent. The Device/Resource list is not modified by default. A single Delete confirmation may opt into verified dependency-first `resourceManager.remove(Path(...))` calls for owned resources.
 
 ## ADR-024: Pointer gesture threshold and dimension focus
 
@@ -240,9 +238,9 @@ The Planner's projector contract began as `Projector.configPosition` plus `Proje
 - Date: 2026-08-19
 - Status: accepted
 
-Projectors expose either a rounded manual Look At point or a projection-surface binding under Direction. A bound surface supplies the effective target and approximate optical geometry. Moving the Look At point detaches the surface. ADR-032 supersedes this decision's Designer-only optics model by calculating geometry locally and finalizing the complete configuration after interaction.
+Projectors expose either a rounded manual Look At point or a projection-surface binding under Direction. A bound surface supplies the effective target. Moving the Look At point detaches the surface. ADR-032 supersedes this decision's earlier optical model and complete-configuration finalization.
 
-The adapter writes `configThrowRatio` and `configLookDistance` and reads `fieldOfView` through official Live Update subscriptions. The plan beam also has a complete local calculation. Projector rotation handles and editable Yaw remain removed; final roll is the automatic `0/90°` commit defined by ADR-032.
+The adapter subscribes to read-only `configLookDistance` and `fieldOfView`; only Position, Look At, Auto/manual Throw Ratio, and the selected Rotation Z policy are written through their narrow operations. Projector rotation handles and editable Yaw remain removed.
 
 ## ADR-028: No Ctrl-drag duplication in Designer
 
@@ -256,7 +254,7 @@ Ctrl-drag duplication is removed because modifier state is not reliable in the e
 - Date: 2026-08-19
 - Status: accepted
 
-Designer Stage collections are API-backed `ArrayBox` values, not ordinary Python lists. Delete scripts resolve the exact Stage instance and its owning typed collection, mutate that collection in place with `collection.remove(candidate)`, save the Stage, and verify the UID is absent. They do not use `Object.remove()` for top-level Stage membership and never assign a filtered Python list back through either `setattr` or an explicit typed setter because both replace the value observed by Designer GUI callbacks and can trigger `Access to object of type 'ArrayBox' is not allowed`. Only the explicit Device list option calls `saveOnDelete()` followed by `resourceManager.remove(path)`; if Stage save or readback is rejected, the planner does not claim a confirmed delete.
+Designer Stage collections are API-backed `ArrayBox` values, not ordinary Python lists. Delete scripts resolve the exact Stage instance and its owning typed collection, mutate that collection in place with `collection.remove(candidate)`, save the Stage, and verify the UID is absent. They do not use `Object.remove()` for top-level Stage membership and never assign a filtered Python list back through either `setattr` or an explicit typed setter because both replace the value observed by Designer GUI callbacks and can trigger `Access to object of type 'ArrayBox' is not allowed`. Only the explicit Device list option physically deletes owned package resources with the documented `resourceManager.remove(Path(path))`; `saveOnDelete()` is reserved for persisting a surviving named parent after an unnamed child mutation, not for a named resource that is immediately removed. Dependencies are validated by exact class, sole-target relationship, and persisted ownership path, removed before the main resource, and verified absent after each operation. If Stage save/readback or any dependency removal fails, the main resource is not removed.
 
 LIVE reconnects preserve the user's enabled intent until explicitly switched off. A Designer collection update preserves the selected plugin object and the currently focused inspector field while rebuilding the object list, so an incoming object cannot steal focus from a dimension entry.
 

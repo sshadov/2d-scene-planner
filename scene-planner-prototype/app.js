@@ -519,6 +519,15 @@
   function closeCanvasContextMenu() { if (!canvasContextMenu) return; canvasContextMenu.hidden = true; document.querySelector("#surface-context-list").hidden = true; document.querySelector("#context-delete-confirm").hidden = true; state.showSurfaceLabels = false; contextObjectId = null; contextWorldPoint = null; }
   function openCanvasCreateMenu(event, point) { contextObjectId = null; contextWorldPoint = point; document.querySelector("#empty-context-actions").hidden = false; document.querySelector("#object-context-actions").hidden = true; positionContextMenu(event, 190); }
   function openCanvasContextMenu(event, object) { if (!canvasContextMenu || !object) return; contextObjectId = object.id; contextWorldPoint = null; selectObject(object); render(); document.querySelector("#empty-context-actions").hidden = true; document.querySelector("#object-context-actions").hidden = false; const bindButton = document.querySelector("#context-bind-surface"); const rotateButton = document.querySelector('#object-context-actions [data-action="rotate-90"]'); const surfaceList = document.querySelector("#surface-context-list"); const surfaces = state.objects.filter(item => item.type === "surface"); bindButton.hidden = object.type !== "projector" || !surfaces.length; if (rotateButton) rotateButton.hidden = object.type === "projector"; surfaceList.hidden = true; surfaceList.replaceChildren(); if (object.type === "projector") { state.showSurfaceLabels = true; drawScene(); } surfaces.forEach(surface => { const button = element("button", "", surface.name); button.type = "button"; button.addEventListener("pointerenter", () => previewTargetSurface(surface.pluginId)); button.addEventListener("pointerleave", () => previewTargetSurface(targetSurface(object)?.pluginId || null)); button.addEventListener("click", () => { saveHistory(); object.targetSurfacePluginId = surface.pluginId; object.lookAt = effectiveLookAt(object); persist(); render(); closeCanvasContextMenu(); void commitProjectorBinding(object); }); surfaceList.append(button); }); document.querySelector("#context-delete-confirm").hidden = true; positionContextMenu(event); }
+  function logCleanupPhases(object, result) {
+    const subsystem = object.type === "dmxLight" ? "DMX Light" : "Designer delete";
+    for (const item of result?.cleanupPhases || []) {
+      const failed = item.status === "failed";
+      const location = item.path ? ` · ${item.path}` : "";
+      const detail = item.error ? ` · ${item.error}` : "";
+      plannerLog(failed ? "error" : "info", subsystem, `${item.phase}${location}${detail}`, { objectName: object.name, phase: item.phase, path: item.path || null });
+    }
+  }
   async function deleteObject(id, options = {}) {
     const index = state.objects.findIndex(object => object.id === id); if (index < 0) return;
     saveHistory(); const removed = state.objects[index]; const record = state.sync.objects?.[removed.pluginId];
@@ -544,12 +553,14 @@
       } else {
         result = await adapter.deleteDesignerObjects([{ id: record.designerId, path: record.path, removeResource: deleteFromDeviceList }]);
       }
+      logCleanupPhases(removed, result);
       if (!result?.deleted?.map(String).includes(String(record.designerId))) throw new Error(result?.skipped?.join("; ") || "Designer did not confirm deletion");
       const deviceListFailed = deleteFromDeviceList && result?.resourceDeleteFailed?.map(String).includes(String(record.designerId));
       const deviceListError = deviceListFailed ? result?.skipped?.find(message => String(message).includes(String(record.designerId))) || "Designer did not remove the Device list resource" : null;
+      const deviceListScope = `device-list:${record.path || record.designerId}`;
       state.sync.deleted[removed.pluginId] = { pluginId: removed.pluginId, designerId: record.designerId, path: record.path, type: removed.type, name: removed.name, deletedAt: new Date().toISOString(), resourcesDeleted: result.resourcesDeleted || [], ...(deviceListError ? { deviceListError } : {}) };
-      if (deviceListError) state.sync.errors.deviceList = `Device list cleanup failed: ${deviceListError}`;
-      else if (deleteFromDeviceList) delete state.sync.errors.deviceList;
+      if (deviceListError) setActiveError(deviceListScope, `Device list cleanup failed: ${deviceListError}`, { subsystem: removed.type === "dmxLight" ? "DMX Light" : "Designer delete", objectName: removed.name, phase: "device-list" });
+      else if (deleteFromDeviceList) resolveActiveError(deviceListScope);
       delete state.sync.objects[removed.pluginId]; persist(false); renderStatus();
       if (deviceListError) document.querySelector("#adapter-status").textContent = `Device list cleanup failed · ${deviceListError}`;
     } catch (error) {

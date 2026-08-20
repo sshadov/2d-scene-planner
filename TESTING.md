@@ -93,7 +93,7 @@ Use disposable resources only.
 
 1. Repeat create/update with the same planner object and verify no duplicate Designer resource appears after retry/timeout.
 2. Rename through Planner and confirm the adapter calls `Resource.rename(Path(...))`, updates the stored path, and does not write `Resource.description`.
-3. Delete a selected managed/default resource and confirm the Stage reference disappears first while the Device/Resource list entry remains by default. Repeat with `Delete from Device list` checked and confirm `saveOnDelete()` plus `resourceManager.remove(path)` remove only the owned package resources.
+3. Delete a selected managed/default resource and confirm the Stage reference disappears first while the Device/Resource list entry remains by default. Repeat with `Delete from Device list` checked and confirm `resourceManager.remove(Path(path))` removes only verified owned dependencies and then the main resource. Diagnostics must show each cleanup phase and exact path.
 4. Create an object whose requested name already exists in the Resource list; confirm the next numeric name is used and shown in the Planner.
 5. Rename an object to an existing Resource list name; confirm the rename is rejected, the Planner name is restored, and the error identifies the Designer Resource list.
 6. A deleted mapped object must not be recreated automatically by the next inspection or LIVE event.
@@ -125,9 +125,11 @@ Run one kind at a time with `--kind dmxLight`, `--kind camera`, or `--kind proje
 ## Projector Manual Smoke
 
 1. Add a horizontal Surface and a Projector, bind the Projector to the Surface, and confirm Designer lists the Surface in the Projector screen binding.
-2. Move the Projector and its Look At point. During movement the Planner remains responsive; after release Designer position, Look At, Look Distance, Throw Ratio, and the Planner beam settle to the same configuration.
-3. Change Surface width/height and confirm optics recalculate. Make height greater than width and confirm final Projector roll becomes exactly `90°`; return to horizontal and confirm `0°`.
+2. Move the Projector and its Look At point. Confirm one LIVE write carries Position and Look At together, Designer returns Look Distance, Auto sends only Throw Ratio, Designer returns Field of View, and Rotation Z is applied last.
+3. Change Surface width/height and confirm Auto Throw Ratio recalculates from Designer Look Distance and projected width. Verify `Designer`, `Rounded`, and fixed Rotation Z modes; no path may write `configLookDistance` or Rotation X/Y.
 4. Restart the plugin window and confirm the Projector still shows the same bound Surface by Designer UID/path.
+
+The window title and all three static asset URLs must show product version `0.21.0`; persisted browser/JSON state remains schema version `11`.
 
 ## Release Evidence
 

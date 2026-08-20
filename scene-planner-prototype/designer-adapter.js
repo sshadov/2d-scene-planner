@@ -842,6 +842,7 @@ skipped = []
 pending = []
 processed = set()
 detached_ids = set()
+cleanup_phases = []
 class_collections = {"LedScreen": "ledScreens", "DmxScreen": "dmxScreens", "Screen2": "surfaces", "FixtureGroup": "dmxLights", "Camera": "cameras", "Projector": "projectors"}
 collection_names = ${quote(collections)}
 def uid_of(candidate):
@@ -921,29 +922,43 @@ for candidate_id, resource_path, candidate, owned_paths, blockers, collection_na
         collection = getattr(stage, collection_name)
         collection.remove(candidate)
         detached_ids.add(candidate_id)
+        cleanup_phases.append({"id": candidate_id, "phase": "stage-detach", "status": "ok", "path": resource_path})
     except Exception as error:
-        skipped.append("detach " + candidate_id + ": " + str(error))
+        message = str(error)
+        skipped.append("detach " + candidate_id + ": " + message)
+        cleanup_phases.append({"id": candidate_id, "phase": "stage-detach", "status": "failed", "path": resource_path, "error": message})
 stage_saved = True
 try:
     stage.save()
+    for candidate_id, resource_path, candidate, owned_paths, blockers, collection_name, remove_resource, allowed_paths in pending:
+        cleanup_phases.append({"id": candidate_id, "phase": "stage-save", "status": "ok", "path": "state.stage"})
 except Exception as error:
     stage_saved = False
-    skipped.append("stage save: " + str(error))
+    message = str(error)
+    skipped.append("stage save: " + message)
+    for candidate_id, resource_path, candidate, owned_paths, blockers, collection_name, remove_resource, allowed_paths in pending:
+        cleanup_phases.append({"id": candidate_id, "phase": "stage-save", "status": "failed", "path": "state.stage", "error": message})
 def stage_contains(target_id, collection_name):
     for candidate in getattr(stage, collection_name, []):
         if uid_of(candidate) == target_id: return True
     return False
 def resource_exists(path):
+    verification_failures = []
+    verification_succeeded = False
     try:
+        verification_succeeded = True
         if resourceManager.exists(Path(path)): return True
-    except Exception:
-        pass
+    except Exception as error:
+        verification_failures.append("resourceManager.exists: " + str(error))
     try:
         folder = path.rsplit("/", 1)[0] + "/"
         for candidate_path in resourceManager.package.findAllBeginsWith(folder):
             if str(candidate_path).lower() == path.lower(): return True
-    except Exception:
-        pass
+        verification_succeeded = True
+    except Exception as error:
+        verification_failures.append("package enumeration: " + str(error))
+    if not verification_succeeded:
+        raise RuntimeError("cannot verify resource absence: " + "; ".join(verification_failures))
     return False
 deleted = []
 resources_deleted = []
@@ -952,14 +967,19 @@ resource_path_failures = []
 for candidate_id, resource_path, candidate, owned_paths, blockers, collection_name, remove_resource, allowed_paths in pending:
     if not stage_saved or candidate_id not in detached_ids or stage_contains(candidate_id, collection_name):
         skipped.append("stage still contains " + candidate_id)
+        cleanup_phases.append({"id": candidate_id, "phase": "stage-readback", "status": "failed", "path": resource_path, "error": "Stage still contains the resource or Stage save failed"})
         continue
+    cleanup_phases.append({"id": candidate_id, "phase": "stage-readback", "status": "ok", "path": resource_path})
     deleted.append(candidate_id)
     if remove_resource:
         dependency_failed = False
         for blocker in blockers:
             skipped.append("resource delete " + candidate_id + ": " + blocker)
             resource_path_failures.append({"id": candidate_id, "path": resource_path, "error": blocker})
+            cleanup_phases.append({"id": candidate_id, "phase": "dependency-inspection", "status": "failed", "path": resource_path, "error": blocker})
             dependency_failed = True
+        if not blockers:
+            cleanup_phases.append({"id": candidate_id, "phase": "dependency-inspection", "status": "ok", "path": resource_path})
         dependency_paths = [path for path in owned_paths if path != resource_path and (not allowed_paths or path in allowed_paths)]
         for path in dependency_paths:
             if dependency_failed: break
@@ -967,10 +987,12 @@ for candidate_id, resource_path, candidate, owned_paths, blockers, collection_na
                 resourceManager.remove(Path(path))
                 if resource_exists(path): raise RuntimeError("resource still exists after remove")
                 resources_deleted.append(path)
+                cleanup_phases.append({"id": candidate_id, "phase": "dependency-remove", "status": "ok", "path": path})
             except Exception as error:
                 message = str(error)
                 skipped.append("resource delete " + candidate_id + " " + path + ": " + message)
                 resource_path_failures.append({"id": candidate_id, "path": path, "error": message})
+                cleanup_phases.append({"id": candidate_id, "phase": "dependency-remove", "status": "failed", "path": path, "error": message})
                 dependency_failed = True
         if dependency_failed:
             resource_delete_failed.append(candidate_id)
@@ -979,12 +1001,14 @@ for candidate_id, resource_path, candidate, owned_paths, blockers, collection_na
             resourceManager.remove(Path(resource_path))
             if resource_exists(resource_path): raise RuntimeError("resource still exists after remove")
             resources_deleted.append(resource_path)
+            cleanup_phases.append({"id": candidate_id, "phase": "main-resource-remove", "status": "ok", "path": resource_path})
         except Exception as error:
             message = str(error)
             skipped.append("resource delete " + candidate_id + " " + resource_path + ": " + message)
             resource_path_failures.append({"id": candidate_id, "path": resource_path, "error": message})
             resource_delete_failed.append(candidate_id)
-return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "resourceDeleteFailed": resource_delete_failed, "resourcePathFailures": resource_path_failures, "skipped": skipped})`;
+            cleanup_phases.append({"id": candidate_id, "phase": "main-resource-remove", "status": "failed", "path": resource_path, "error": message})
+return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "resourceDeleteFailed": resource_delete_failed, "resourcePathFailures": resource_path_failures, "cleanupPhases": cleanup_phases, "skipped": skipped})`;
   }
   function deleteScript(designerIds) { return stageDeleteScript(designerIds, false); }
   function deleteManagedScript(designerIds) { return stageDeleteScript(designerIds, true); }

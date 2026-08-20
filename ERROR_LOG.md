@@ -307,7 +307,7 @@
 - Date: 2026-08-18
 - Symptom: deleting a standard object removed it from a Stage collection but could leave its `.apx` resource in the project.
 - Cause: the adapter called `collection.remove(candidate)` without using the ResourceManager lifecycle.
-- Fix: call `candidate.saveOnDelete()` followed by `resourceManager.remove(candidate.path)`, then detach any remaining collection reference.
+- Historical fix: call `candidate.saveOnDelete()` followed by `resourceManager.remove(candidate.path)`, then detach any remaining collection reference. This ordering is superseded by ERR-054/ERR-058.
 - Regression test: delete script contains both lifecycle calls.
 
 ## ERR-030: Camera readback used a legacy alternative contract
@@ -461,7 +461,7 @@
 - Date: 2026-08-19
 - Symptom: a planner rename could mutate the in-memory `path` field without invoking Designer's resource lifecycle.
 - Cause: the adapter assigned `path` directly instead of using the official resource rename operation.
-- Fix: import `Path`, call `obj.rename(Path(desired_path))`, then save and persist the returned path. Deletion remains `saveOnDelete()` followed by `resourceManager.remove(path)`.
+- Fix: import `Path`, call `obj.rename(Path(desired_path))`, then save and persist the returned path. The deletion note from this investigation is superseded by ERR-054/ERR-058.
 - Regression test: `tests/lifecycle-release.test.cjs` checks generated update/delete scripts and the release package command.
 
 ## ERR-049: Float32 readback caused false LIVE errors and repeated writes
@@ -517,7 +517,7 @@
 - Symptom: an object disappeared from the 3D view, then returned after the next Planner action; Designer marked the Stage entry as bad and later creates produced duplicate names.
 - Cause: `Object.remove()` alone does not persistently remove top-level equipment from Designer's typed Stage list in the installed build. The old generic collection assignment also triggered the `ArrayBox` editor error.
 - Superseded fixes: assigning a filtered list through an explicit typed property caused ERR-057, while `candidate.remove()` only detached hierarchy state and the object returned on the next import. The current path resolves the exact Stage instance, calls `collection.remove(candidate)` on its owning typed collection, saves Stage, and confirms the UID is absent from that same owning collection. A stale hierarchy reference in `stage.children` is not top-level Stage membership and cannot fail the deletion.
-- Resource policy: normal Delete leaves the Device/Resource list entry. The confirmation dialog has one optional `Delete from Device list` checkbox; only when checked are `saveOnDelete()` and `resourceManager.remove()` executed for owned resources.
+- Resource policy: normal Delete leaves the Device/Resource list entry. The confirmation dialog has one optional `Delete from Device list` checkbox; only when checked are validated owned dependencies and the main resource removed with `resourceManager.remove(Path(...))`. `saveOnDelete()` is not a prerequisite for deleting a named resource according to the official Resources guide.
 - Name policy: creation checks names in the matching typed Stage list. `Projector 1` and `Screen 1` are independent; a duplicate projector becomes `Projector 2` before resource creation.
 - Import policy: successful deletes store a UID/path tombstone so startup and LIVE scene imports do not restore the removed object. LIVE itself never creates resources.
 
@@ -541,3 +541,11 @@
 - Symptom: deleting LED screens or projectors produced `Access to object of type 'ArrayBox' is not allowed` in `ProjectorEditor.handleStageDisplaysChanged`, with `SetField:ledScreens` or `SetField:projectors` and `set_stage_collection` in the trace.
 - Cause: assigning a normal Python list through `stage.ledScreens = retained` or another typed setter still replaces the value observed by Designer's GUI callback. Avoiding generic `setattr` was not sufficient.
 - Fix: never assign typed Stage collections during deletion. Resolve the exact object by UID/path, invoke `remove(object)` on its owning typed collection, save Stage, and confirm the UID is absent before reporting success or touching Device-list resources. `Object.remove()` is insufficient for top-level Stage membership.
+
+## ERR-058: DMX Device-list deletion failed without a useful phase
+
+- Date: 2026-08-20
+- Symptom: Stage removal could succeed while optional FixtureGroup package cleanup failed, leaving one red indicator with no clear failing resource or operation.
+- Cause: the generated delete script returned coarse `skipped` strings and Planner stored a single global `deviceList` error. A later unrelated success could hide the original failure.
+- Fix: return structured `stage-detach`, `stage-save`, `stage-readback`, `dependency-inspection`, `dependency-remove`, and `main-resource-remove` results. Diagnostics records each result with the object and path. Active cleanup errors are scoped by resource path. Dependency ambiguity or failure blocks main-resource deletion.
+- Regression test: lifecycle contracts require every phase and exact `DirectProjection` validation; Planner tests require severity-coloured phase rows and per-path active errors.
