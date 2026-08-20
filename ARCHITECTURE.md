@@ -42,7 +42,7 @@ Numeric inputs accept comma or dot decimals. Right-click restores the field defa
 
 Startup inspection reads supported typed collections and the technical Designer `stage.children` collection, deduplicates by UID, and ignores internal/non-physical helpers. `stage.children` is an API identifier, not a user-facing model.
 
-Creation, adoption, rename, and deletion are explicit Python Execution API operations. The ResourceManager package is checked for name/path collisions before creation or rename. Mutations call `markDirty`, successful resources call `save`, rename uses `Resource.rename(Path(...))`, and confirmed deletion first detaches the Stage object with `Object.remove()` and saves the Stage, then uses `saveOnDelete()` plus `resourceManager.remove(path)`. Reconciliation resolves resources by UID, stored path, or legacy managed path and must not recreate a mapped object deleted in Designer.
+Creation, adoption, and rename are explicit Python Execution API operations. The matching typed Stage list is checked for same-type name collisions before creation, while the ResourceManager package is checked for path collisions. Mutations call `markDirty`, successful resources call `save`, and rename uses `Resource.rename(Path(...))`. Confirmed deletion first removes the exact UID from its explicit typed Stage property, calls `Object.remove()` for the 3D hierarchy, saves and verifies Stage, and leaves the Device/Resource list entry unless the single confirmation's `removeResource` option is enabled. Reconciliation resolves resources by UID, stored path, or legacy managed path and must not recreate a mapped object deleted in Designer.
 
 ## LIVE State Machine
 

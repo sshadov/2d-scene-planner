@@ -6,6 +6,8 @@
 - Persist a successful create response before readback validation so retries cannot create duplicate devices.
 - Restore mouse-first Projector Look At placement, followed by Projector height focus.
 - Allow explicitly confirmed deletion of an imported object by exact Designer UID/path with Stage-first dependency cleanup.
+- Make Delete remove the exact object from the typed Stage list and 3D hierarchy; Device/Resource cleanup is optional through one checkbox in the same confirmation.
+- Allocate same-type names from the matching Stage object list before creation (`Projector 2` and `Screen 2` may coexist).
 
 ## 0.19.1 - 2026-08-20
 

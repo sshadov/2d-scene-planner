@@ -26,7 +26,7 @@ Verified/used conclusions for this project:
 - `stage.floor_pos` is a `Vec`; this project uses `stage.floor_pos.y` as the floor vertical reference.
 - Python execution errors are offset by 10 wrapper lines; Designer line 24 refers to approximately line 14 of the submitted script.
 - Official Live Update is a WebSocket at `ws://<director>/api/session/liveupdate` using `subscribe`, `valuesChanged`, and `set`; repeated Python HTTP calls are not Live Update and are disabled in the planner until a dedicated adapter exists.
-- Resource deletion is two-step: detach the object with `Object.remove()` and save the Stage, then use `saveOnDelete()` plus `resourceManager.remove(resource.path)`. Detaching only a Stage collection or removing only the package resource leaves stale state.
+- Stage deletion and package deletion are separate. Remove the exact UID from the explicit typed Stage property, call `Object.remove()` for its 3D hierarchy, save Stage, and verify the UID is gone. Keep the Device/Resource list entry by default; only an explicit `removeResource` confirmation may call `saveOnDelete()` and `resourceManager.remove(resource.path)` for owned resources.
 - Resource names live in the `ResourceManager` package list; Stage only holds scene references. Check both `resourceManager.exists(Path(...))` and package paths before creation and rename, and report conflicts instead of passing a wrong-class resource to `loadOrCreate`.
 - Resources are marked with `markDirty(resource)` before mutation and saved with `resource.save()` afterwards.
 - Resource folders follow lower-case Python class names: `ledscreen`, `screen2`, `camera`, `projector`, and `light`.

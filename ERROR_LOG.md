@@ -502,3 +502,13 @@
 - Fix: remove the exact object with `candidate.remove()`, save the Stage, and only then remove owned package resources. The adapter no longer assigns filtered Python lists to Stage collections.
 - Diagnostics: the `LIVE log` panel merges Planner actions, Python API requests/responses/errors, and WebSocket events by timestamp. Every API operation has an `opId` plus object UID/path/type, so a Designer console timestamp can be matched to the preceding operation.
 - Regression test: `tests/lifecycle-release.test.cjs` rejects collection replacement and requires `candidate.remove()` before `resourceManager.remove(path)`; `tests/scene-planner.test.cjs` requires Planner action logging.
+
+## ERR-054: Delete detached the 3D object but left a bad Stage entry
+
+- Date: 2026-08-20
+- Symptom: an object disappeared from the 3D view, then returned after the next Planner action; Designer marked the Stage entry as bad and later creates produced duplicate names.
+- Cause: `Object.remove()` alone does not persistently remove top-level equipment from Designer's typed Stage list in the installed build. The old generic collection assignment also triggered the `ArrayBox` editor error.
+- Fix: collect the exact UID, assign the filtered list through the explicit typed property (`stage.projectors`, `stage.cameras`, `stage.dmxLights`, etc.), call `candidate.remove()`, save Stage, and read back all typed collections plus `stage.children`. Planner confirms deletion only when the UID is absent.
+- Resource policy: normal Delete leaves the Device/Resource list entry. The confirmation dialog has one optional `Also delete from Device list` checkbox; only when checked are `saveOnDelete()` and `resourceManager.remove()` executed for owned resources.
+- Name policy: creation checks names in the matching typed Stage list. `Projector 1` and `Screen 1` are independent; a duplicate projector becomes `Projector 2` before resource creation.
+- Reconciliation: successful deletes store a UID/path tombstone so startup and LIVE scene imports do not recreate the removed object.

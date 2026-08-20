@@ -30,7 +30,8 @@
   const state = {
     stage: { ...defaults.stage }, objects: [], selectedId: null, selectedIds: new Set(), highlightObjectId: null, showSurfaceLabels: false, zoom: 1, liveEnabled: false,
     history: [], future: [], dragging: null, guides: [], pan: { x: 0, y: 0 },
-    sync: { objects: {}, lastSyncAt: null, errors: {} },
+    sync: { objects: {}, deleted: {}, lastSyncAt: null, errors: {} },
+    preferences: { suppressImportedDeleteWarning: false },
     lastHeights: {}
   };
   let nextId = 1;
@@ -46,6 +47,7 @@
   let clipboardObjects = [];
   let pendingFocusPath = null;
   let projectorTargetPlacement = null;
+  let pendingDesignerDeletes = new Set();
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -70,7 +72,7 @@
     const yaw = finite(rotation?.y); return { x: position.x + Math.sin(yaw * Math.PI / 180), y: position.y, z: position.z + Math.cos(yaw * Math.PI / 180) };
   }
   function formatValue(value, step = .1) { let numeric = finite(value); if (Math.abs(numeric) < .0000005) numeric = 0; if (Number.isInteger(numeric)) return String(numeric); const digits = step >= 1 ? 0 : step >= .1 ? 1 : 2; return numeric.toFixed(digits).replace(".", ","); }
-  function modelSnapshot() { return { version: VERSION, stage: state.stage, objects: state.objects, sync: state.sync, liveEnabled: state.liveEnabled, lastHeights: state.lastHeights }; }
+  function modelSnapshot() { return { version: VERSION, stage: state.stage, objects: state.objects, sync: state.sync, preferences: state.preferences, liveEnabled: state.liveEnabled, lastHeights: state.lastHeights }; }
   function snapshot() { return JSON.stringify(modelSnapshot()); }
   function persist(schedule = true) { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...modelSnapshot(), nextId })); if (schedule) scheduleLiveSync(); }
   function saveHistory() { state.history.push(snapshot()); if (state.history.length > 40) state.history.shift(); state.future = []; }
@@ -134,7 +136,7 @@
       const sourceVersion = Number(saved.version) || (saved.objects?.some(object => object.position) ? 3 : 2);
       state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion);
       state.objects = Array.isArray(saved.objects) ? saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)) : [];
-      state.sync = { objects: {}, lastSyncAt: null, errors: {}, ...(saved.sync || {}) }; state.liveEnabled = Boolean(saved.liveEnabled);
+      state.sync = { objects: {}, deleted: {}, lastSyncAt: null, errors: {}, ...(saved.sync || {}) }; state.sync.deleted = state.sync.deleted || {}; state.preferences = { suppressImportedDeleteWarning: false, ...(saved.preferences || {}) }; state.liveEnabled = Boolean(saved.liveEnabled);
       state.lastHeights = { ...(saved.lastHeights || {}) };
       nextId = Math.max(Number(saved.nextId) || 1, ...state.objects.map(object => (Number(object.id) || 0) + 1), 1);
       state.selectedId = state.objects[0]?.id ?? null; state.selectedIds = new Set(state.selectedId ? [state.selectedId] : []); persist(); return true;
@@ -142,7 +144,7 @@
   }
   function restore(json) {
     const saved = JSON.parse(json); const sourceVersion = Number(saved.version) || VERSION;
-    state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion); state.objects = saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)); state.sync = { objects: {}, lastSyncAt: null, errors: {}, ...(saved.sync || {}) }; state.liveEnabled = Boolean(saved.liveEnabled); state.lastHeights = { ...(saved.lastHeights || {}) }; state.selectedId = null; state.selectedIds = new Set();
+    state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion); state.objects = saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)); state.sync = { objects: {}, deleted: {}, lastSyncAt: null, errors: {}, ...(saved.sync || {}) }; state.sync.deleted = state.sync.deleted || {}; state.preferences = { suppressImportedDeleteWarning: false, ...(saved.preferences || {}) }; state.liveEnabled = Boolean(saved.liveEnabled); state.lastHeights = { ...(saved.lastHeights || {}) }; state.selectedId = null; state.selectedIds = new Set();
     syncStaticInputs(); persist(); render();
   }
   function applyHistory(direction) { const source = direction === "undo" ? state.history : state.future; if (!source.length) return; const target = direction === "undo" ? state.future : state.history; target.push(snapshot()); restore(source.pop()); }
@@ -435,31 +437,37 @@
   async function deleteObject(id, options = {}) {
     const index = state.objects.findIndex(object => object.id === id); if (index < 0) return;
     saveHistory(); const removed = state.objects[index]; const record = state.sync.objects?.[removed.pluginId];
-    logPlannerAction("delete", removed, { phase: "requested", owned: Boolean(record?.owned), deleteImportedFromDesigner: Boolean(options.deleteImportedFromDesigner) });
+    const deleteFromDesigner = Boolean(options.deleteFromDesigner);
+    const deleteFromDeviceList = Boolean(options.deleteFromDeviceList);
+    const adapter = record?.designerId && deleteFromDesigner ? getAdapter() : null;
+    if (record?.designerId && deleteFromDesigner) {
+      if (!adapter || record.owned && !adapter.deleteManagedObjects || !record.owned && !adapter.deleteDesignerObjects) { state.sync.errors[removed.pluginId] = "Designer delete API is unavailable"; persist(false); renderObjectGroups(); return; }
+    }
+    logPlannerAction("delete", removed, { phase: "requested", owned: Boolean(record?.owned), deleteFromDesigner, deleteFromDeviceList });
     const detachedTargets = new Map(state.objects.filter(item => item.type === "projector" && item.targetSurfacePluginId === removed.pluginId).map(projector => [projector.id, { target: effectiveLookAt(projector), surfacePluginId: projector.targetSurfacePluginId }]));
     state.objects.splice(index, 1); state.selectedIds.delete(id); detachedTargets.forEach((target, projectorId) => { const projector = state.objects.find(item => item.id === projectorId); if (projector) { projector.lookAt = target; delete projector.targetSurfacePluginId; } }); if (state.selectedId === id) selectObject(state.objects[index] || state.objects[index - 1] || null);
     persist(); render();
-    if (!record?.designerId) return;
-    const adapter = getAdapter();
-    if (!record.owned && !options.deleteImportedFromDesigner) { delete state.sync.objects[removed.pluginId]; persist(false); renderStatus(); return; }
-    if (record.owned && !adapter?.deleteManagedObjects) return;
-    if (!record.owned && !adapter?.deleteDesignerObjects) return;
+    if (!record?.designerId || !deleteFromDesigner) return;
+    if (record.owned && !adapter?.deleteManagedObjects) throw new Error("Designer delete API is unavailable");
+    if (!record.owned && !adapter?.deleteDesignerObjects) throw new Error("Designer delete API is unavailable");
+    pendingDesignerDeletes.add(String(record.designerId));
     try {
       let result;
       if (record.owned) {
         if (!Array.isArray(record.ownedPaths) || !record.ownedPaths.length) throw new Error("Designer ownership metadata is incomplete; refusing physical deletion");
-        result = await adapter.deleteManagedObjects([{ id: record.designerId, path: record.path, owned: true, ownedPaths: record.ownedPaths }]);
+        result = await adapter.deleteManagedObjects([{ id: record.designerId, path: record.path, owned: true, ownedPaths: record.ownedPaths, removeResource: deleteFromDeviceList }]);
       } else {
-        result = await adapter.deleteDesignerObjects([{ id: record.designerId, path: record.path }]);
+        result = await adapter.deleteDesignerObjects([{ id: record.designerId, path: record.path, removeResource: deleteFromDeviceList }]);
       }
       if (!result?.deleted?.map(String).includes(String(record.designerId))) throw new Error(result?.skipped?.join("; ") || "Designer did not confirm deletion");
+      state.sync.deleted[removed.pluginId] = { pluginId: removed.pluginId, designerId: record.designerId, path: record.path, type: removed.type, name: removed.name, deletedAt: new Date().toISOString(), resourcesDeleted: result.resourcesDeleted || [] };
       delete state.sync.objects[removed.pluginId]; persist(false); renderStatus();
     } catch (error) {
       state.objects.splice(Math.min(index, state.objects.length), 0, removed);
       detachedTargets.forEach((binding, projectorId) => { const projector = state.objects.find(item => item.id === projectorId); if (projector) { projector.lookAt = binding.target; projector.targetSurfacePluginId = binding.surfacePluginId; } });
       selectObject(removed);
       state.sync.errors[removed.pluginId] = `Delete failed: ${error.message || error}`; persist(false); renderObjectGroups();
-    }
+    } finally { pendingDesignerDeletes.delete(String(record.designerId)); }
   }
 
   function canonical(value) { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }
@@ -669,7 +677,8 @@
     const inspection = await adapter.inspectScene();
     adapter.configureLiveScene?.(inspection.stageId);
     if (inspection.stageFootprint) { state.stage.width = Math.max(2, finite(inspection.stageFootprint.width, state.stage.width)); state.stage.depth = Math.max(2, finite(inspection.stageFootprint.depth, state.stage.depth)); }
-    const imported = (inspection.objects || []).map(importedObject);
+    const deletedRecords = Object.values(state.sync.deleted || {});
+    const imported = (inspection.objects || []).filter(item => { const designerId = String(item.id || item.uid || ""); const path = String(item.path || ""); return !pendingDesignerDeletes.has(designerId) && !deletedRecords.some(record => String(record.designerId || "") === designerId || String(record.path || "") === path); }).map(importedObject);
     const importedPluginIds = new Set(imported.map(object => object.pluginId));
     const localOnly = options.preserveLocal ? state.objects.filter(object => !state.sync.objects?.[object.pluginId]?.designerId && !importedPluginIds.has(object.pluginId)) : [];
     // Designer is authoritative at startup. Local storage supplies mappings and UI preferences only.
@@ -785,7 +794,7 @@
   canvas.addEventListener("wheel", event => { event.preventDefault(); state.zoom = clamp(state.zoom + (event.deltaY < 0 ? .1 : -.1), ZOOM_MIN, ZOOM_MAX); drawScene(); }, { passive: false });
   canvas.addEventListener("contextmenu", event => { event.preventDefault(); const object = hitTestProjectorTarget(event.clientX, event.clientY) || hitTest(event.clientX, event.clientY); if (object) openCanvasContextMenu(event, object); else { const rect = canvas.getBoundingClientRect(); openCanvasCreateMenu(event, toWorld(event.clientX - rect.left, event.clientY - rect.top, sizing(false))); } });
   document.querySelectorAll("[data-create-type]").forEach(button => button.addEventListener("click", () => { const point = contextWorldPoint; const type = button.dataset.createType; closeCanvasContextMenu(); if (point) addObjectAt(type, point.x, point.z, true); }));
-  document.querySelectorAll("#canvas-context-menu [data-action]").forEach(button => button.addEventListener("click", () => { const id = contextObjectId; const action = button.dataset.action; if (!id) return; if (action === "bind-surface") { const list = document.querySelector("#surface-context-list"); list.hidden = !list.hidden; return; } if (action === "delete") { const object = state.objects.find(item => item.id === id); const record = object ? state.sync.objects?.[object.pluginId] : null; document.querySelector("#context-delete-confirm span").textContent = record?.designerId ? "Delete from Designer?" : "Delete object?"; document.querySelector("#context-delete-confirm").hidden = false; return; } closeCanvasContextMenu(); if (action === "rotate-90") rotateObject90(id); else duplicateObject(id, action === "mirror-x" ? "x" : action === "mirror-z" ? "z" : null); })); document.querySelector("#context-delete-yes").addEventListener("click", () => { const id = contextObjectId; const object = state.objects.find(item => item.id === id); const record = object ? state.sync.objects?.[object.pluginId] : null; closeCanvasContextMenu(); if (id) deleteObject(id, { deleteImportedFromDesigner: Boolean(record?.designerId && !record.owned) }); }); document.querySelector("#context-delete-no").addEventListener("click", () => { document.querySelector("#context-delete-confirm").hidden = true; });
+  document.querySelectorAll("#canvas-context-menu [data-action]").forEach(button => button.addEventListener("click", () => { const id = contextObjectId; const action = button.dataset.action; if (!id) return; if (action === "bind-surface") { const list = document.querySelector("#surface-context-list"); list.hidden = !list.hidden; return; } if (action === "delete") { const object = state.objects.find(item => item.id === id); const record = object ? state.sync.objects?.[object.pluginId] : null; const hasDesignerObject = Boolean(record?.designerId); const imported = Boolean(hasDesignerObject && !record.owned); const message = document.querySelector("#context-delete-message"); const deviceCheckbox = document.querySelector("#confirm-delete-device-list"); const warning = document.querySelector("#delete-imported-warning"); const warningCheckbox = document.querySelector("#delete-imported-warning-dismiss"); if (message) message.textContent = hasDesignerObject ? (imported ? "Delete imported object from Designer?" : "Delete from Designer?") : "Delete object?"; if (deviceCheckbox) { deviceCheckbox.checked = false; deviceCheckbox.hidden = !hasDesignerObject; deviceCheckbox.parentElement.hidden = !hasDesignerObject; } if (warning) warning.hidden = !imported || state.preferences.suppressImportedDeleteWarning; if (warningCheckbox) warningCheckbox.checked = false; document.querySelector("#context-delete-confirm").hidden = false; return; } closeCanvasContextMenu(); if (action === "rotate-90") rotateObject90(id); else duplicateObject(id, action === "mirror-x" ? "x" : action === "mirror-z" ? "z" : null); })); document.querySelector("#context-delete-yes").addEventListener("click", () => { const id = contextObjectId; const object = state.objects.find(item => item.id === id); const record = object ? state.sync.objects?.[object.pluginId] : null; const deviceCheckbox = document.querySelector("#confirm-delete-device-list"); const warningCheckbox = document.querySelector("#delete-imported-warning-dismiss"); if (warningCheckbox?.checked) { state.preferences.suppressImportedDeleteWarning = true; persist(false); } const deleteFromDesigner = Boolean(record?.designerId); const deleteFromDeviceList = Boolean(deviceCheckbox?.checked); closeCanvasContextMenu(); if (id) deleteObject(id, { deleteFromDesigner, deleteFromDeviceList }); }); document.querySelector("#context-delete-no").addEventListener("click", () => { document.querySelector("#context-delete-confirm").hidden = true; });
   window.addEventListener("pointerdown", event => { if (!canvasContextMenu?.hidden && !canvasContextMenu.contains?.(event.target)) closeCanvasContextMenu(); });
 
   setupStaticInputs(); if (!loadPersisted()) { syncStaticInputs(); render(); } else { syncStaticInputs(); render(); }

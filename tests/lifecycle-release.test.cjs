@@ -84,10 +84,11 @@ const manualRemove = scripts.deleteManagedScript([{ id: "manual-uid", path: "obj
 assert.match(manualRemove, /requested = json\.loads\("\[\]"\)/);
 
 const importedRemove = scripts.deleteScript([{ id: "imported-uid", path: "objects/projector/imported.apx" }]);
-assert.match(importedRemove, /candidate_id in target_ids/);
+assert.match(importedRemove, /candidate_id not in target_ids/);
 assert.match(importedRemove, /path not in target_paths/);
 assert.match(importedRemove, /owned_resource_paths\(candidate\)/);
-assert.ok(importedRemove.indexOf("stage.save()") < importedRemove.indexOf("resourceManager.remove(resource_path)"));
+assert.match(importedRemove, /remove_resources/);
+assert.ok(importedRemove.indexOf("stage.save()") < importedRemove.indexOf("resourceManager.remove(path)"));
 
 const remove = scripts.deleteManagedScript([{ id: "uid-1", path: "objects/projector/projector-1.apx", owned: true, ownedPaths: ["objects/projector/projector-1.apx", "objects/projectorconfig/projector-1_config0.apx"] }]);
 assert.doesNotMatch(remove, /requested = json\.loads\("\[\]"\)/);
@@ -105,15 +106,24 @@ assert.ok(remove.indexOf("candidate.remove()") < remove.indexOf("resourceManager
 assert.match(remove, /DirectProjection/);
 assert.match(remove, /findResourcesPointingToThis/);
 assert.match(remove, /allowed_owned_paths/);
-assert.match(remove, /config_path in allowed_owned_paths/);
+assert.match(remove, /paths_to_remove = \[path for path in owned_paths if path in allowed_owned_paths\]/);
 assert.ok(remove.indexOf("stage.save()") < remove.indexOf("resourceManager.remove(path)"));
 assert.match(remove, /candidate\.remove\(\)/);
 assert.doesNotMatch(remove, /setattr\(stage, collection_name, \[/);
+assert.match(remove, /def set_stage_collection/);
+assert.match(remove, /stage\.projectors = value/);
+assert.match(remove, /stage\.cameras = value/);
+assert.match(remove, /stage\.dmxLights = value/);
+assert.match(remove, /removeResource/);
+assert.match(remove, /stage_contains/);
+assert.ok(remove.indexOf("stage.save()") < remove.indexOf("stage_contains"));
 assert.match(adapterSource, /operationLogEntries/);
 assert.match(adapterSource, /operationLog\("request"/);
 assert.match(adapterSource, /operationLog\("response"/);
 assert.match(adapterSource, /operationLog\("error"/);
 assert.match(adapterSource, /getOperationLogs/);
 assert.match(adapterSource, /action: meta\.action/);
+assert.match(adapterSource, /stage_name_taken/);
+assert.match(adapterSource, /resolved_name = allocate_name/);
 
 console.log("lifecycle release contract test: ok");

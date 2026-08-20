@@ -25,7 +25,7 @@ Existing v2 browser data is migrated once: old plan `x - width/2 -> X`, old plan
 
 An object is managed only when its `dsg-*` path or stored Designer UID proves ownership. Known default objects such as `surface 1` and `projector 1` may be adopted in update mode. Everything else is manual and protected.
 
-Objects removed from the planner are not removed from Designer. Standard objects can be deleted only from a checklist, through a separate button and a second confirmation. The adapter repeats the ownership/default check before removal.
+Objects removed from the planner can be removed from Designer's current Stage when the user confirms `Delete from Designer?`. The same dialog optionally removes the owned Device/Resource package; no separate second confirmation is used. Standard objects and imported objects follow the same exact-UID Stage deletion path.
 
 ## ADR-003: Local API origin
 
@@ -197,7 +197,7 @@ The adapter never writes `stage.floor_size` because Free Designer Starter dispat
 
 The planner will not label debounced Python HTTP calls as LIVE. Official Live Update is the WebSocket endpoint `/api/session/liveupdate`, whose protocol uses `subscribe`, `valuesChanged`, and `set`. Supported object properties are subscribed by Designer UID; Stage collection subscriptions detect additions and deletions, while Python HTTP handles resource creation and confirmed removal.
 
-Confirmed default deletion uses the ResourceManager lifecycle: `resource.saveOnDelete()` followed by `resourceManager.remove(resource.path)`. Removing an item from a Stage collection alone is not considered deletion.
+Confirmed default deletion removes the exact object from its typed Stage property and 3D hierarchy, saves Stage, and verifies the UID is absent. The Device/Resource list is not modified by default. A single Delete confirmation may opt into `resource.saveOnDelete()` followed by `resourceManager.remove(resource.path)` for owned resources.
 
 ## ADR-024: Pointer gesture threshold and dimension focus
 
@@ -245,7 +245,7 @@ Ctrl-drag duplication is removed because modifier state is not reliable in the e
 - Date: 2026-08-19
 - Status: accepted
 
-Designer Stage collections are API-backed `ArrayBox` values, not ordinary Python lists. Delete scripts iterate the typed collections directly, collect matching resources in a native list, detach each object with the documented `Object.remove()`, save the Stage, and only then call `saveOnDelete()` followed by `resourceManager.remove(path)`. They do not call `list(collection)` or mutate the collection after removal. If Stage save or resource deletion is rejected, the planner reports the error and does not claim a confirmed delete.
+Designer Stage collections are API-backed `ArrayBox` values, not ordinary Python lists. Delete scripts iterate the typed collections directly, build a retained native list, assign it through an explicit typed setter (`stage.projectors`, `stage.cameras`, `stage.dmxLights`, etc.), detach each exact object with `Object.remove()`, save the Stage, and verify the UID is absent. They do not use generic `setattr` or mutate a collection while iterating. Only the explicit Device list option calls `saveOnDelete()` followed by `resourceManager.remove(path)`; if Stage save or readback is rejected, the planner does not claim a confirmed delete.
 
 LIVE reconnects preserve the user's enabled intent until explicitly switched off. A Designer collection update preserves the selected plugin object and the currently focused inspector field while rebuilding the object list, so an incoming object cannot steal focus from a dimension entry.
 
@@ -256,11 +256,11 @@ LIVE reconnects preserve the user's enabled intent until explicitly switched off
 
 Planner names are labels, not unique resource identities. Before `loadOrCreate`, creation checks the requested package path. An existing resource of the expected class is reused; an existing resource of another class is never passed to `loadOrCreate` with a conflicting expected type. The planner derives a deterministic managed suffix from `pluginId` and creates the requested class at that alternate path, persisting the returned path in the mapping.
 
-Deletion receives both the Designer UID and the mapped resource path. It detaches the exact Stage reference first, then removes the package resource, preventing a deleted `Projector 2` or other device from being silently reused with stale coordinates or duplicated under the same visible name.
+Deletion receives both the Designer UID and the mapped resource path. It removes the exact Stage reference first and keeps a local UID/path tombstone so LIVE reconciliation cannot resurrect the object. Package removal is a separate explicit option, preventing a deleted `Projector 2` or other device from being silently reused with stale coordinates or duplicated under the same visible name.
 
 ## ADR-031: Resource-list name uniqueness
 
 - Date: 2026-08-19
 - Status: accepted
 
-The relevant Designer collection is the Resource list managed by `ResourceManager` and its package, while Stage stores the scene references. Before creating equipment, the adapter checks the resource folder in the package; an occupied name receives the next numeric suffix and the resolved name/path are returned to the Planner. Before renaming, the adapter checks the same Resource list and rejects a conflicting name with an explicit `Resource name already exists in Designer Resource list` error. The local Planner name is rolled back when that rename fails.
+The relevant Designer collections are the typed Stage lists for object names and the ResourceManager package for paths. Before creating equipment, the adapter checks the matching typed Stage list; an occupied same-type name receives the next numeric suffix (`Projector 2` can coexist with `Screen 2`). The package path is checked separately, and the resolved name/path are returned to the Planner. Before renaming, the adapter checks the Resource list and rejects a conflicting name with an explicit `Resource name already exists in Designer Resource list` error. The local Planner name is rolled back when that rename fails.

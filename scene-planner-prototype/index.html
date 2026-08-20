@@ -82,7 +82,12 @@
          <button type="button" data-action="mirror-z">Mirror copy on Z</button>
         <div class="menu-separator"></div>
          <button class="danger-menu-item" type="button" data-action="delete">Delete</button>
-         <div class="context-delete-confirm" id="context-delete-confirm" hidden><span>Delete object?</span><button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button></div>
+         <div class="context-delete-confirm" id="context-delete-confirm" hidden>
+           <span id="context-delete-message">Delete object?</span>
+           <label class="context-delete-option"><input id="confirm-delete-device-list" type="checkbox" /> Also delete from Device list</label>
+           <label class="context-delete-option" id="delete-imported-warning" hidden><input id="delete-imported-warning-dismiss" type="checkbox" /> Don't show this imported-object warning again</label>
+           <button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button>
+         </div>
       </div>
     </menu>
     <script src="./designer-adapter.js?v=11.5.11"></script>

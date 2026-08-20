@@ -280,6 +280,48 @@ return json.dumps({"objects": objects, "stageId": str(getattr(stage, "uid", ""))
     return `${helper}${body}`
       .replace('from d3 import Path, Resource', 'from d3 import Path, Resource, DirectProjection, LedScreen, DmxScreen, Screen2, FixtureGroup, Camera, Projector, ProjectorConfig, PerspectiveProjection, PerspectiveProjectionObject')
       .replace('import re\nfrom d3', 'import json\nimport re\nfrom d3')
+      .replace('def allocate_path(folder, base_name, expected_class):', `def normalized_name(value):
+    return re.sub(r"\\s+", " ", str(value or "").strip()).lower()
+
+def stage_object_name(candidate):
+    description = str(getattr(candidate, "description", "") or "").strip()
+    if description:
+        return description
+    path = str(getattr(candidate, "path", "") or "").replace("\\\\", "/")
+    return path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+
+def stage_name_taken(collection, name):
+    wanted = normalized_name(name)
+    for candidate in collection:
+        try:
+            if normalized_name(stage_object_name(candidate)) == wanted:
+                return True
+        except Exception:
+            pass
+    return False
+
+def allocate_name(collection, base_name):
+    safe = re.sub(r'[\\\\/:*?"<>|]', "-", str(base_name)).strip() or "object"
+    resolved = safe
+    suffix = 2
+    while stage_name_taken(collection, resolved):
+        resolved = safe + " " + str(suffix)
+        suffix += 1
+    return resolved
+
+def allocate_path(folder, base_name, expected_class):`)
+      .replace(`    folder = "objects/${typeResourceFolders[payload.type]}"
+    resolved_name, object_path = allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type)
+    created_paths = []
+    obj = None
+    collection = getattr(stage, ${quote(typeCollections[payload.type])})`, `    folder = "objects/${typeResourceFolders[payload.type]}"
+    created_paths = []
+    obj = None
+    collection = getattr(stage, ${quote(typeCollections[payload.type])})
+    resolved_name = allocate_name(collection, payload.get("name") or payload.get("pluginId"))
+    resolved_name, object_path = allocate_path(folder, resolved_name, expected_type)`)
+      .replace('    resolved_name, object_path = allocate_path("objects/camera", payload.get("name") or payload.get("pluginId"), "Camera")', '    resolved_name = allocate_name(collection, payload.get("name") or payload.get("pluginId"))\n    resolved_name, object_path = allocate_path("objects/camera", resolved_name, "Camera")')
+      .replace('    resolved_name, object_path = allocate_path("objects/projector", payload.get("name") or payload.get("pluginId"), "Projector")', '    resolved_name = allocate_name(collection, payload.get("name") or payload.get("pluginId"))\n    resolved_name, object_path = allocate_path("objects/projector", resolved_name, "Projector")')
       .replace(`def assert_healthy(resource, label):
     for flag in ["isBad", "isIncomplete", "isInError"]:
         try:
@@ -523,7 +565,8 @@ for candidate in state.stage.projectors:
     })
 return json.dumps({"contract": "Projector.configPosition/configLookAt", "projectors": matches})`;
   }
-  function deleteScript(designerIds) {
+  // Kept only as historical reference; deleteScript below is the sole active path.
+  function legacyDeleteScript(designerIds) {
     const deleteCollectionNames = [...new Set(Object.values(typeCollections).filter(collection => collection !== "displays"))];
     return `import json
 import re
@@ -614,7 +657,7 @@ for candidate_id, resource_path, candidate, owned_paths, collection_name in (det
         skipped.append(warnings)
 return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
-  function deleteManagedScript(designerIds) {
+  function legacyDeleteManagedScript(designerIds) {
     const deleteCollectionNames = [...new Set(Object.values(typeCollections).filter(collection => collection !== "displays"))];
     const ownedDesignerIds = designerIds.filter(item => item && typeof item === "object" && item.owned === true);
     return `import json
@@ -698,6 +741,125 @@ for candidate_id, path, candidate, owned_paths, collection_name in (detached if 
         skipped.append(candidate_id + ": " + str(error))
 return json.dumps({"deleted": deleted, "skipped": skipped})`;
   }
+
+  function stageDeleteScript(designerIds, managed) {
+    const requested = managed ? designerIds.filter(item => item && typeof item === "object" && item.owned === true) : designerIds;
+    const allowed = managed ? [...new Set(requested.flatMap(item => Array.isArray(item.ownedPaths) ? item.ownedPaths : []).map(String))] : [];
+    const collections = [...new Set(Object.values(typeCollections).filter(collection => collection !== "displays"))];
+    return `import json
+from d3 import Path, Resource, DirectProjection
+requested = json.loads(${payloadText(requested)})
+target_ids = set(str(item.get("id", item)) if isinstance(item, dict) else str(item) for item in requested)
+target_paths = set(str(item.get("path", "")) for item in requested if isinstance(item, dict) and item.get("path"))
+allowed_owned_paths = set(${quote(allowed)})
+remove_resources = any(bool(item.get("removeResource")) for item in requested if isinstance(item, dict))
+stage = state.stage
+skipped = []
+pending = []
+processed = set()
+detached_ids = set()
+class_collections = {"LedScreen": "ledScreens", "DmxScreen": "dmxScreens", "Screen2": "surfaces", "FixtureGroup": "dmxLights", "Camera": "cameras", "Projector": "projectors"}
+collection_names = ${quote(collections)}
+def uid_of(candidate):
+    return str(getattr(candidate, "uid", ""))
+def path_of(candidate):
+    return str(getattr(candidate, "path", ""))
+def set_stage_collection(name, value):
+    if name == "ledScreens": stage.ledScreens = value
+    elif name == "dmxScreens": stage.dmxScreens = value
+    elif name == "surfaces": stage.surfaces = value
+    elif name == "dmxLights": stage.dmxLights = value
+    elif name == "cameras": stage.cameras = value
+    elif name == "projectors": stage.projectors = value
+def owned_resource_paths(candidate):
+    paths = []
+    config_path = path_of(getattr(candidate, "config", None))
+    if config_path: paths.append(config_path)
+    for child in getattr(candidate, "children", []):
+        child_path = path_of(child)
+        if child_path: paths.append(child_path)
+        projection_path = path_of(getattr(child, "projection", None))
+        if projection_path: paths.append(projection_path)
+    try:
+        for projection in candidate.findResourcesPointingToThis(DirectProjection):
+            screens = getattr(projection, "screens", [])
+            if len(screens) == 1 and uid_of(screens[0]) == uid_of(candidate):
+                projection_path = path_of(projection)
+                if projection_path: paths.append(projection_path)
+    except Exception:
+        pass
+    return list(dict.fromkeys(paths))
+def matches(candidate):
+    candidate_id = uid_of(candidate)
+    candidate_path = path_of(candidate)
+    if candidate_path == "objects/object/dsg-scene-cube.apx": return False
+    if candidate_id not in target_ids: return False
+    if target_paths and candidate_path not in target_paths: return False
+    if allowed_owned_paths and candidate_path not in allowed_owned_paths: return False
+    return candidate_id not in processed
+for collection_name in collection_names:
+    collection = getattr(stage, collection_name, [])
+    retained = []
+    selected = []
+    for candidate in collection:
+        if matches(candidate):
+            candidate_id = uid_of(candidate)
+            processed.add(candidate_id)
+            selected.append(candidate)
+            pending.append((candidate_id, path_of(candidate), candidate, owned_resource_paths(candidate), collection_name))
+        else:
+            retained.append(candidate)
+    if selected:
+        set_stage_collection(collection_name, retained)
+for resource_path in target_paths:
+    try:
+        candidate = resourceManager.load(Path(resource_path), Resource)
+        if matches(candidate):
+            candidate_id = uid_of(candidate)
+            processed.add(candidate_id)
+            pending.append((candidate_id, resource_path, candidate, owned_resource_paths(candidate), class_collections.get(type(candidate).__name__, "children")))
+    except Exception:
+        pass
+for candidate_id, resource_path, candidate, owned_paths, collection_name in pending:
+    try:
+        candidate.remove()
+        detached_ids.add(candidate_id)
+    except Exception as error:
+        skipped.append("detach " + candidate_id + ": " + str(error))
+stage_saved = True
+try:
+    stage.save()
+except Exception as error:
+    stage_saved = False
+    skipped.append("stage save: " + str(error))
+def stage_contains(target_id):
+    for collection_name in collection_names + ["children"]:
+        for candidate in getattr(stage, collection_name, []):
+            if uid_of(candidate) == target_id: return True
+    return False
+deleted = []
+resources_deleted = []
+for candidate_id, resource_path, candidate, owned_paths, collection_name in pending:
+    if not stage_saved or candidate_id not in detached_ids or stage_contains(candidate_id):
+        skipped.append("stage still contains " + candidate_id)
+        continue
+    deleted.append(candidate_id)
+    if remove_resources:
+        paths_to_remove = owned_paths
+        if allowed_owned_paths:
+            paths_to_remove = [path for path in owned_paths if path in allowed_owned_paths]
+        paths_to_remove = list(dict.fromkeys(paths_to_remove + ([resource_path] if resource_path else [])))
+        try:
+            candidate.saveOnDelete()
+            for path in paths_to_remove:
+                resourceManager.remove(path)
+                resources_deleted.append(path)
+        except Exception as error:
+            skipped.append("resource delete " + candidate_id + ": " + str(error))
+return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "skipped": skipped})`;
+  }
+  function deleteScript(designerIds) { return stageDeleteScript(designerIds, false); }
+  function deleteManagedScript(designerIds) { return stageDeleteScript(designerIds, true); }
 
   function liveDescriptorKey(pluginId, field) { return `${pluginId}:${field}`; }
   function liveUidExpression(designerId) {
