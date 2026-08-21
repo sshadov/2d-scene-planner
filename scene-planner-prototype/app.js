@@ -143,7 +143,7 @@
   }
   function loadPersisted() {
     try {
-      if (getAdapter()) return false;
+      if (getAdapter() && !STANDALONE_PREVIEW) return false;
       // Legacy v2-v10 saves may contain `room`; v11 persists only Stage.
       const keys = [STORAGE_KEY, "disguise-scene-generator-state-v10", "disguise-scene-generator-state-v9", "disguise-scene-generator-state-v8", "disguise-scene-generator-state-v7", "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
       const saved = JSON.parse(keys.map(key => localStorage.getItem(key)).find(Boolean) || "null"); if (!saved) return false;
@@ -464,7 +464,7 @@
   }
   function renderActiveInspector() { activeFieldRefs = new Map(); activeObjectStrip.replaceChildren(); const object = selectedObject(); if (!object) { activeObjectStrip.append(element("div", "active-empty", "No object selected")); queueFieldFocus(null, null); return; } const identity = element("div", "active-identity"); identity.append(element("span", "", typeConfig[object.type]?.label || "Designer Object")); const name = document.createElement("strong"); name.className = "editable-object-name"; name.textContent = object.name; name.title = "Click to rename"; name.addEventListener("click", () => { const input = document.createElement("input"); input.className = "object-name-input"; input.value = object.name; input.select?.(); input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); commitObjectName(object, input); } if (event.key === "Escape") render(); }); input.addEventListener("blur", () => commitObjectName(object, input)); identity.replaceChildren(identity.children[0], input); input.focus?.(); input.select?.(); }); identity.append(name); activeObjectStrip.append(identity); fieldSections(object).forEach(definition => activeObjectStrip.append(makePropertySection(object, definition))); const focusPath = pendingFocusPath; if (focusPath) setTimeout(() => focusActiveField(focusPath), 0); }
   function refreshActiveValues() { const object = selectedObject(); if (!object) return; document.querySelectorAll("#active-object-strip input[data-field]").forEach(input => { if (document.activeElement === input) return; const step = finite(input.dataset.step, .1); input.value = formatValue(getFieldValue(object, input.dataset.field), step); }); }
-  function renderStatus() { const statuses = state.objects.map(objectSyncStatus); const synced = statuses.filter(status => status === "synced").length; const changed = statuses.filter(status => status === "changed").length; const errorMessages = Object.values(state.sync.errors || {}).map(message => String(message)); const errors = errorMessages.length; const errorChip = document.querySelector("#status-error-chip"); document.querySelector("#status-synced").textContent = synced; document.querySelector("#status-changed").textContent = changed; document.querySelector("#status-errors").textContent = errors; errorChip.hidden = errors === 0; errorChip.textContent = errors ? "!" : ""; errorChip.title = errorMessages.join("\n"); document.querySelector("#live-toggle").checked = Boolean(state.liveEnabled); }
+  function renderStatus() { const statuses = state.objects.map(objectSyncStatus); const synced = statuses.filter(status => status === "synced").length; const changed = statuses.filter(status => status === "changed").length; const errorMessages = Object.values(state.sync.errors || {}).map(message => String(message)); const errors = errorMessages.length; const errorChip = document.querySelector("#status-error-chip"); document.querySelector("#status-synced").textContent = synced; document.querySelector("#status-changed").textContent = changed; document.querySelector("#status-errors").textContent = errors; errorChip.hidden = errors === 0; errorChip.textContent = errors ? "!" : ""; errorChip.title = errorMessages.join("\n"); }
   function render() { const focusedField = document.activeElement?.dataset?.field; const focusedPluginId = document.activeElement?.dataset?.pluginId; const object = selectedObject(); if (!pendingFocusPath && focusedField && object?.pluginId === focusedPluginId) queueFieldFocus(object, focusedField); syncStaticInputs(); drawScene(); renderObjectGroups(); renderActiveInspector(); renderStatus(); }
   function updateProjectorTargetPlacement(point) {
     if (!projectorTargetPlacement || !point) return false;
@@ -626,6 +626,7 @@
   }
   async function createDesignerObject(object) {
     if (!object || object.type === "designer") return null;
+    if (!STANDALONE_PREVIEW && !appReady) return null;
     const existing = state.sync.objects?.[object.pluginId];
     if (existing?.designerId) return existing;
     if (pendingDesignerCreates.has(object.pluginId)) return pendingDesignerCreates.get(object.pluginId);
@@ -985,6 +986,13 @@
     adapter.configureLiveScene?.(inspection.stageId);
     if (inspection.stageFootprint) { state.stage.width = Math.max(2, finite(inspection.stageFootprint.width, state.stage.width)); state.stage.depth = Math.max(2, finite(inspection.stageFootprint.depth, state.stage.depth)); }
     const imported = (inspection.objects || []).map(importedObject);
+    const pendingObjects = state.objects.filter(object => pendingDesignerCreates.has(object.pluginId));
+    imported.forEach(object => {
+      const pending = pendingObjects.find(candidate => candidate.type === object.type && String(candidate.name || "").trim().toLocaleLowerCase() === String(object.name || "").trim().toLocaleLowerCase());
+      if (!pending) return;
+      object.id = pending.id;
+      object.pluginId = pending.pluginId;
+    });
     const importedSurfaces = imported.filter(object => object.type === "surface");
     imported.filter(object => object.type === "projector").forEach(projector => { const screen = projector.designer?.screens?.[0]; if (!screen) { delete projector.targetSurfacePluginId; return; } const surface = importedSurfaces.find(candidate => String(candidate.designer?.designerId || "") === String(screen.designerId || screen.id || screen.uid || "") || String(candidate.designer?.path || "") === String(screen.path || "")); if (surface) projector.targetSurfacePluginId = surface.pluginId; else delete projector.targetSurfacePluginId; });
     const importedPluginIds = new Set(imported.map(object => object.pluginId));
@@ -1106,27 +1114,41 @@
   if (typeof ResizeObserver === "function") new ResizeObserver(() => drawScene()).observe(document.querySelector("#canvas-wrap"));
   const adapterStatus = document.querySelector("#adapter-status");
   let startupCompleted = false;
+  let startupFinishing = false;
+  function blockStartup(adapter, message) {
+    appReady = false;
+    const warning = document.querySelector("#startup-warning");
+    const warningMessage = document.querySelector("#startup-warning-message");
+    warning.hidden = false;
+    if (warningMessage && message) warningMessage.textContent = message;
+    document.querySelector("#startup-accept").onclick = () => { warning.hidden = true; void finishStartup(adapter); };
+    document.querySelector("#startup-close").onclick = () => { warning.hidden = false; globalThis.close?.(); };
+    return warning;
+  }
   async function finishStartup(adapter) {
     if (!adapter) { state.liveEnabled = false; adapterStatus.textContent = "Designer API unavailable · JSON available"; appReady = true; renderStatus(); return; }
-    if (startupCompleted) return;
-    startupCompleted = true;
+    if (startupCompleted || startupFinishing) return;
+    startupFinishing = true;
     try { await adapter?.saveAllResources?.(); }
     catch (error) { plannerLog("warn", "Startup", `Resource save failed: ${error.message || error}`, { phase: "save-all" }); }
-    if (adapter) { try { await importDesignerScene(adapter); adapterStatus.textContent = "Designer scene imported"; } catch (error) { adapterStatus.textContent = `Designer import failed · ${error.message || error}`; } }
-    if (STANDALONE_PREVIEW) { state.liveEnabled = false; adapterStatus.textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; persist(false); }
-    else if (!adapter?.capabilities?.liveUpdate && !adapter?.liveStart) { state.liveEnabled = false; adapterStatus.textContent = adapter ? "LIVE unavailable · WebSocket adapter is not available" : "Designer API unavailable · JSON available"; persist(false); }
+    try { await importDesignerScene(adapter); adapterStatus.textContent = "Designer scene imported"; }
+    catch (error) {
+      startupFinishing = false;
+      adapterStatus.textContent = `Designer import failed · ${error.message || error}`;
+      blockStartup(adapter, "Designer scene could not be imported. LIVE remains disabled. Retry only when it is safe to prepare the project.");
+      return { blocked: true, error };
+    }
+    if (!adapter?.capabilities?.liveUpdate && !adapter?.liveStart) { state.liveEnabled = false; adapterStatus.textContent = "LIVE unavailable · WebSocket adapter is not available"; persist(false); }
     else { try { await startLive(); } catch (error) { state.liveEnabled = false; adapterStatus.textContent = `LIVE unavailable · ${error.message || error}`; persist(false); } }
-    appReady = true; renderStatus();
+    startupCompleted = true; startupFinishing = false; appReady = true; renderStatus();
   }
   async function runStartupGate() {
     const adapter = getAdapter();
+    if (STANDALONE_PREVIEW) { state.liveEnabled = false; appReady = true; adapterStatus.textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; persist(false); renderStatus(); return { standalone: true }; }
     if (!adapter) return finishStartup(null);
     const transport = await adapter.activeTransportStatus?.() || { known: false, running: false, transports: [] };
     if (transport.running || !transport.known) {
-      const warning = document.querySelector("#startup-warning");
-      warning.hidden = false;
-      document.querySelector("#startup-accept").onclick = () => { warning.hidden = true; void finishStartup(adapter); };
-      document.querySelector("#startup-close").onclick = () => { warning.hidden = true; };
+      blockStartup(adapter, "Designer transport is running or could not be verified. Importing and LIVE updates may change the active session.");
       return { blocked: true, transport };
     }
     return finishStartup(adapter);

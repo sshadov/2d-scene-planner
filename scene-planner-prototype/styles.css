@@ -51,13 +51,6 @@ h2 { font-size: 13px; }
 .icon-button { width: 30px; height: 30px; padding: 0; border-radius: 3px; display: inline-grid; place-items: center; font-size: 18px; line-height: 1; }
 .text-button { min-height: auto; padding: 0; border: 0; background: transparent; color: var(--cyan); font-size: 11px; }
 .text-button.danger-text { color: #ff9f96; }
-.live-toggle { height: 30px; display: flex; align-items: center; gap: 6px; color: #b9c3cd; font-size: 10px; font-weight: 750; cursor: pointer; }
-.live-toggle input { position: absolute; opacity: 0; pointer-events: none; }
-.live-toggle i { position: relative; width: 30px; height: 16px; border: 1px solid #44515f; border-radius: 8px; background: #0e141a; }
-.live-toggle i::after { content: ""; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: #778492; transition: transform .12s ease, background .12s ease; }
-.live-toggle input:checked + i { border-color: var(--cyan); }
-.live-toggle input:checked + i::after { transform: translateX(14px); background: var(--cyan); }
-.live-toggle:has(input:disabled) { cursor: not-allowed; opacity: .58; }
 .startup-warning { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgba(4, 8, 12, .78); }
 .startup-warning[hidden] { display: none; }
 .startup-warning-dialog { width: min(440px, 100%); border: 1px solid #8b4944; border-radius: 4px; background: #17202a; box-shadow: 0 18px 48px rgba(0, 0, 0, .55); padding: 18px; }
