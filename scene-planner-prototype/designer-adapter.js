@@ -1121,7 +1121,7 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       // These coupled vectors must not pass through transient mixed states.
       add("transform.position", "object.configPosition");
       add("lookAt", "object.configLookAt");
-      add("optics.throwRatio", "object.configThrowRatio", value => { const numeric = Number(value); return Number.isFinite(numeric) ? Math.max(.1, numeric) : 1.5; }, value => Number(value), false);
+      add("optics.throwRatio", "object.configThrowRatio", value => { const numeric = Number(value); return Number.isFinite(numeric) ? Math.max(.1, numeric) : 1.5; }, value => Number(value));
       add("optics.fieldOfView", "object.fieldOfView", value => Number(value), value => Number(value), false);
       add("optics.lookDistance", "object.configLookDistance", value => { const numeric = Number(value); if (Number.isFinite(numeric)) return Math.max(.1, numeric); const position = payload.transform?.position || {}; const lookAt = payload.lookAt || position; return Math.max(.1, Math.hypot(Number(lookAt.x || 0) - Number(position.x || 0), Number(lookAt.y || 0) - Number(position.y || 0), Number(lookAt.z || 0) - Number(position.z || 0))); }, value => Number(value), false);
       add("projectorRoll", "object.configRotation.z", value => Number(value), value => Number(value), false);
@@ -1322,6 +1322,11 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
   function liveSetProjectorGeometry(pluginId, position, lookAt) {
     return liveSetProjectorFields(pluginId, { "transform.position": position, lookAt });
   }
+  function liveSetProjectorProjection(pluginId, position, lookAt, throwRatio) {
+    const values = { "transform.position": position, lookAt };
+    if (Number.isFinite(Number(throwRatio))) values["optics.throwRatio"] = Number(throwRatio);
+    return liveSetProjectorFields(pluginId, values);
+  }
   function liveSetProjectorThrowRatio(pluginId, throwRatio) {
     return liveSetProjectorFields(pluginId, { "optics.throwRatio": throwRatio });
   }
@@ -1395,6 +1400,7 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
     liveStop,
     liveSync,
     liveSetProjectorGeometry,
+    liveSetProjectorProjection,
     liveSetProjectorThrowRatio,
     getLiveState: () => ({
       wanted: liveWanted,

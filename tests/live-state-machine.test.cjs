@@ -100,6 +100,14 @@ function valuesForSubscriptions(socket) {
   assert.ok(geometrySet.every(change => geometryBindingIds.has(change.id)));
   assert.deepEqual(JSON.parse(JSON.stringify(geometrySet.map(change => change.value))), [{ x: 5, y: 3, z: -7 }, { x: 1, y: 2, z: 4 }]);
   first.message({ valuesChanged: geometrySet.map(change => ({ id: change.id, value: change.value })) });
+  const setsBeforeProjection = first.sent.filter(item => item.set).length;
+  assert.equal(adapter.liveSetProjectorProjection("projector-1", { x: 3, y: 3, z: -12 }, { x: 0, y: 1, z: 0 }, 1.568), true);
+  const projectionSet = first.sent.filter(item => item.set).slice(setsBeforeProjection).flatMap(item => item.set);
+  const projectionBindingIds = new Set(adapter.getLiveState().bindings.filter(binding => ["transform.position", "lookAt", "optics.throwRatio"].includes(binding.field)).map(binding => binding.id));
+  assert.equal(projectionSet.length, 3);
+  assert.ok(projectionSet.every(change => projectionBindingIds.has(change.id)));
+  assert.deepEqual(JSON.parse(JSON.stringify(projectionSet.map(change => change.value))), [{ x: 3, y: 3, z: -12 }, { x: 0, y: 1, z: 0 }, 1.568]);
+  first.message({ valuesChanged: projectionSet.map(change => ({ id: change.id, value: change.value })) });
   first.throwOnSend = true;
   assert.equal(adapter.liveSetProjectorGeometry("projector-1", { x: 6, y: 3, z: -7 }, { x: 1, y: 2, z: 5 }), false);
   const failedGeometry = adapter.getLiveState().bindings.filter(binding => ["transform.position", "lookAt"].includes(binding.field));
