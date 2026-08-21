@@ -5,7 +5,7 @@
   "description": "Disguise Designer Scene Planner plugin",
   "scripts": {
     "check": "node --check scene-planner-prototype/app.js && node --check scene-planner-prototype/designer-adapter.js",
-    "test": "node tests/scene-planner.test.cjs && node tests/projector-contract.test.cjs && node tests/live-state-machine.test.cjs && node tests/lifecycle-release.test.cjs && node tests/diagnose-composite-devices.test.cjs",
+    "test": "node tests/scene-planner.test.cjs && node tests/projector-contract.test.cjs && node tests/live-state-machine.test.cjs && node tests/delete-semantics.test.cjs && node tests/lifecycle-release.test.cjs && node tests/diagnose-composite-devices.test.cjs",
     "deploy": "pwsh -NoProfile -File scripts/deploy-plugin.ps1 -ProjectPath D:\\Disguise\\Projects\\start",
     "release-check": "npm run check && npm test && git diff --check"
   }

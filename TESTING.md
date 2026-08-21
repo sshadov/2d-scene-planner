@@ -22,7 +22,7 @@ Verify:
 
 1. The left panel stays fixed-width and contains Scene width/depth, grouped objects, and selected-object properties.
 2. Resizing the window changes only the 2D area. No Objects toggle, Clear Plan, X/Z centre buttons, logo strip, or bottom status strip appears.
-3. Undo/redo overlay top-left; Magnet and zoom overlay top-right. Zoom stays within `10-300%`; clicking its value restores `100%` and the initial pan.
+3. There are no Undo/Redo controls. Magnet and zoom overlay top-right. Zoom stays within `10-300%`; clicking its value restores `100%` and the initial pan.
 4. Left-drag on empty canvas pans. Right-click on an input restores its defined default.
 5. Right-click empty canvas and create all six supported types at the clicked X/Z coordinate.
 6. New planar objects focus Width; Camera and DMX Light focus Height. A new Projector first moves its Look At point with the cursor, commits it on primary click, and then focuses Height. Initial heights are Camera `1.5`, DMX Light `5`, Projector `3`, and planar types `0`; a second object of the same type reuses that type's last edited height.
@@ -93,14 +93,23 @@ Use disposable resources only.
 
 1. Repeat create/update with the same planner object and verify no duplicate Designer resource appears after retry/timeout.
 2. Rename through Planner and confirm the adapter calls `Resource.rename(Path(...))`, updates the stored path, and does not write `Resource.description`.
-3. Delete a selected managed/default resource and confirm the Stage reference disappears first while the Device/Resource list entry remains by default. Repeat with `Delete from Device list` checked and confirm `resourceManager.remove(Path(path))` removes only verified owned dependencies and then the main resource. Diagnostics must show each cleanup phase and exact path.
+3. Delete a selected managed/default resource and confirm the Stage reference disappears first while the Device/Resource list entry remains by default. Repeat with `Delete from Device list` checked and confirm `resourceManager.remove(Path(path))` removes the exact main Resource for owned and imported objects, plus only validated Planner auxiliary paths. Diagnostics must show each cleanup phase and exact path.
 4. Create an object whose requested name already exists in the Resource list; confirm the next numeric name is used and shown in the Planner.
 5. Rename an object to an existing Resource list name; confirm the rename is rejected, the Planner name is restored, and the error identifies the Designer Resource list.
 6. A deleted mapped object must not be recreated automatically by the next inspection or LIVE event.
 7. Imported/manual Designer objects are physically removed only through the explicit `Delete from Designer?` confirmation. Confirm the request uses the exact selected UID/path and removes the typed Stage reference before discovered dependencies.
 8. Startup inspection deduplicates typed collections and technical `stage.children` entries by UID and ignores internal helpers, MR Sets, and Skeletons.
 9. Delete an imported object once, wait for LIVE reconciliation, and confirm its UID is absent from every typed Stage collection and does not reappear in Planner. The Delete dialog shows a separate `Imported from Designer` line above the unchanged `Delete object?` prompt.
-10. Delete a Planner-owned object, press Planner Undo, and confirm only the local Planner object returns; LIVE must not inspect or recreate it in Designer.
+
+## Manual checks for morning
+
+- [ ] Planner-created and imported objects x Stage-only and Device List delete for LED Screen, DMX Screen, Surface, Projector, Camera, and DMX Light.
+- [ ] FixtureGroup/DMX Light DirectProjection: sole target is removable; shared and unrelated targets remain.
+- [ ] Resolution property/type round-trip for LED Screen, DMX Screen, and Surface; projector resolution control remains hidden.
+- [ ] LIVE initial socket failure -> reconnect -> object and Stage subscriptions.
+- [ ] Startup transport gate and best-effort `saveAll` before authoritative import.
+- [ ] Incomplete inspection during startup and LIVE leaves the last complete Planner scene untouched.
+- [ ] Create -> immediate Delete resolves one exact UID/path and leaves no orphan.
 
 ### Composite Device Smoke
 
@@ -116,8 +125,8 @@ The live command uses `debugScripts.createScript` and `debugScripts.deleteManage
 1. DMX Light is a healthy `FixtureGroup` in `stage.dmxLights`.
 2. Camera is healthy and owns one healthy `PerspectiveProjectionObject` linked to a named `PerspectiveProjection`.
 3. Projector and its named `ProjectorConfig` are healthy; Designer returns derived field of view and look distance.
-4. Cleanup calls `remove(instance)` on the owning typed Stage collection before the main, child/config, and `DirectProjection` package resources. It never calls `Object.remove()` for top-level Stage membership and never assigns a Python list to a typed Stage property.
-5. Cleanup is restricted to the explicit `ownedPaths` returned by creation; imported/manual resources are never accepted by managed deletion.
+4. Cleanup calls `remove(instance)` on the owning typed Stage collection before the main Resource. It never calls `Object.remove()` for top-level Stage membership and never assigns a Python list to a typed Stage property.
+5. Optional auxiliary cleanup is restricted to validated Planner-created paths; imported/manual resources are physically deletable only through the explicit confirmation and never trigger dependency traversal.
 6. No `dsg-smoke-*` typed Stage entry, `stage.children` entry, or package resource reappears during the cleanup stability window, and the UIDs/classes of manual `1`, `2`, `3`, `cam1`, `projector 1`, and `surface 1` resources are unchanged.
 
 Run one kind at a time with `--kind dmxLight`, `--kind camera`, or `--kind projector` when isolating a Designer failure. Do not run this against a production project.

@@ -29,8 +29,8 @@
   const canvasContextMenu = document.querySelector("#canvas-context-menu");
   const state = {
     stage: { ...defaults.stage }, objects: [], selectedId: null, selectedIds: new Set(), highlightObjectId: null, showSurfaceLabels: false, zoom: 1, liveEnabled: false,
-    history: [], future: [], dragging: null, guides: [], pan: { x: 0, y: 0 },
-    sync: { objects: {}, deleted: {}, lastSyncAt: null },
+    dragging: null, guides: [], pan: { x: 0, y: 0 },
+    sync: { objects: {}, lastSyncAt: null },
     lastHeights: {}
   };
   let nextId = 1;
@@ -47,7 +47,6 @@
   let pendingFocusPath = null;
   let pendingFocusPluginId = null;
   let projectorTargetPlacement = null;
-  let pendingDesignerDeletes = new Set();
   let pendingDesignerCreates = new Map();
   const configurationCommitQueues = new Map();
   const configurationCommitVersions = new Map();
@@ -86,9 +85,7 @@
   function modelSnapshot() {
     return { version: VERSION, stage: state.stage, objects: state.objects, sync: state.sync, liveEnabled: state.liveEnabled, lastHeights: state.lastHeights };
   }
-  function snapshot() { return JSON.stringify(modelSnapshot()); }
   function persist(schedule = true) { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...modelSnapshot(), nextId })); if (schedule) scheduleLiveSync(); }
-  function saveHistory() { state.history.push(snapshot()); if (state.history.length > 40) state.history.shift(); state.future = []; }
 
   function normalizedStage(saved = {}, legacyRoom = {}, sourceVersion = VERSION) {
     const hasSavedStage = saved && typeof saved === "object" && Object.keys(saved).length > 0;
@@ -151,19 +148,12 @@
       const sourceVersion = Number(saved.version) || (saved.objects?.some(object => object.position) ? 3 : 2);
       state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion);
       state.objects = Array.isArray(saved.objects) ? saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)) : [];
-      state.sync = { objects: {}, deleted: {}, lastSyncAt: null, ...(saved.sync || {}) }; delete state.sync.errors; state.sync.deleted = state.sync.deleted || {}; state.liveEnabled = Boolean(saved.liveEnabled);
+      state.sync = { objects: {}, lastSyncAt: null, ...(saved.sync || {}) }; delete state.sync.errors; delete state.sync.deleted; state.liveEnabled = Boolean(saved.liveEnabled);
       state.lastHeights = { ...(saved.lastHeights || {}) };
       nextId = Math.max(Number(saved.nextId) || 1, ...state.objects.map(object => (Number(object.id) || 0) + 1), 1);
       state.selectedId = state.objects[0]?.id ?? null; state.selectedIds = new Set(state.selectedId ? [state.selectedId] : []); persist(); return true;
     } catch (error) { console.warn("Не удалось загрузить локальный план", error); return false; }
   }
-  function restore(json) {
-    const saved = JSON.parse(json); const sourceVersion = Number(saved.version) || VERSION;
-    state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion); state.objects = saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)); state.sync = { objects: {}, deleted: {}, lastSyncAt: null, ...(saved.sync || {}) }; delete state.sync.errors; state.sync.deleted = state.sync.deleted || {}; state.liveEnabled = Boolean(saved.liveEnabled); state.lastHeights = { ...(saved.lastHeights || {}) }; state.selectedId = null; state.selectedIds = new Set();
-    syncStaticInputs(); persist(); render();
-  }
-  function applyHistory(direction) { const source = direction === "undo" ? state.history : state.future; if (!source.length) return; const target = direction === "undo" ? state.future : state.history; target.push(snapshot()); restore(source.pop()); }
-
   function nextObjectName(type) {
     const label = typeConfig[type].label; const numbers = state.objects.filter(object => object.type === type).map(object => Number(String(object.name).match(/(\d+)$/)?.[1] || 0));
     return `${label} ${Math.max(0, ...numbers) + 1}`;
@@ -206,21 +196,21 @@
     input.dataset.step = step; input.classList.add("wheel-input"); selectInputText(input);
     input.addEventListener("keydown", event => {
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-      event.preventDefault(); saveHistory(); const direction = event.key === "ArrowUp" ? 1 : -1; const multiplier = event.shiftKey ? 10 : 1;
+      event.preventDefault(); const direction = event.key === "ArrowUp" ? 1 : -1; const multiplier = event.shiftKey ? 10 : 1;
       setter(Number((getter() + direction * step * multiplier).toFixed(3))); input.value = formatValue(getter(), step); persist(); render(); onCommit?.();
     });
     input.addEventListener("input", () => {
       const parsed = finite(input.value, Number.NaN); if (!Number.isFinite(parsed)) return;
       setter(parsed); persist(); drawScene();
     });
-    input.addEventListener("change", () => { saveHistory(); setter(finite(input.value, getter())); input.value = formatValue(getter(), step); persist(); render(); onCommit?.(); });
+    input.addEventListener("change", () => { setter(finite(input.value, getter())); input.value = formatValue(getter(), step); persist(); render(); onCommit?.(); });
     input.addEventListener("contextmenu", event => {
       const fallback = typeof defaultValue === "function" ? defaultValue() : defaultValue;
       if (!Number.isFinite(Number(fallback))) return;
-      event.preventDefault(); saveHistory(); setter(Number(fallback)); input.value = formatValue(getter(), step); persist(); render(); onCommit?.();
+      event.preventDefault(); setter(Number(fallback)); input.value = formatValue(getter(), step); persist(); render(); onCommit?.();
     });
     input.addEventListener("wheel", event => {
-      event.preventDefault(); saveHistory(); const direction = event.deltaY < 0 ? 1 : -1; const multiplier = event.shiftKey ? 10 : 1;
+      event.preventDefault(); const direction = event.deltaY < 0 ? 1 : -1; const multiplier = event.shiftKey ? 10 : 1;
       setter(Number((getter() + direction * step * multiplier).toFixed(3))); input.value = formatValue(getter(), step); persist(); render(); onCommit?.();
     }, { passive: false });
   }
@@ -426,7 +416,7 @@
     const position = [["X", "transform.position.x", object.transform.position.x, .1, "m"], ["Z", "transform.position.z", object.transform.position.z, .1, "m"], ["Position Y", "transform.position.y", objectHeightValue(object), .1, "m"]];
     if (object.type === "screen") { const mode = object.media.inputMode || "resolution"; const mediaFields = mode === "resolution" ? [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] : mode === "ppi" ? [["PPI", "media.pixelsPerInch", object.media.pixelsPerInch, .1, "ppi"]] : [["Pixel pitch", "media.pixelPitchMm", object.media.pixelPitchMm, .1, "mm"]]; return [{ title: "Size", fields: [["Width", "geometry.width", object.geometry.width, .1, "m"], ["Height", "geometry.height", object.geometry.height, .1, "m"]] }, { title: "Position", fields: [...position, ["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }, { title: "LED data", mediaMode: true, fields: mediaFields }]; }
     if (["dmxScreen", "surface"].includes(object.type)) return [{ title: "Size", fields: [["Width", "geometry.width", object.geometry.width, .1, "m"], ["Height", "geometry.height", object.geometry.height, .1, "m"]] }, { title: "Position", fields: [...position, ["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }, { title: "Resolution", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] }];
-    if (object.type === "projector") return [{ title: "Lens position", fields: position }, { title: "Direction", targetSurface: true, fields: [] }, { title: "Optics", fields: [["Throw ratio", "optics.throwRatio", object.optics.throwRatio, .01, "x", { readOnly: true }], ["Field of view", "optics.fieldOfView", object.optics.fieldOfView, .1, "°", { readOnly: true }], ["Look distance", "optics.lookDistance", object.optics.lookDistance, .1, "m", { readOnly: true }]] }, { title: "Resolution", fields: [["X", "media.resolutionX", object.media.resolutionX, 1, "px"], ["Y", "media.resolutionY", object.media.resolutionY, 1, "px"]] }];
+    if (object.type === "projector") return [{ title: "Lens position", fields: position }, { title: "Direction", targetSurface: true, fields: [] }, { title: "Optics", fields: [["Throw ratio", "optics.throwRatio", object.optics.throwRatio, .01, "x", { readOnly: true }], ["Field of view", "optics.fieldOfView", object.optics.fieldOfView, .1, "°", { readOnly: true }], ["Look distance", "optics.lookDistance", object.optics.lookDistance, .1, "m", { readOnly: true }]] }];
     return [{ title: "Position", fields: position }, { title: object.type === "camera" ? "Camera direction" : object.type === "dmxLight" ? "DMX light direction" : "Rotation", fields: [["Yaw", "transform.rotation.y", object.transform.rotation.y, 1, "°"]] }];
   }
   function getPath(object, path) { return path.split(".").reduce((value, key) => value[key], object); }
@@ -449,8 +439,8 @@
   function initialObjectFocusPath(object) { return PLANAR_TYPES.has(object.type) ? "geometry.width" : "transform.position.y"; }
   function makeObjectField(object, definition) { const [labelText, path, value, step, unit, options = {}] = definition; const label = element("label", "object-field"); label.append(element("span", "object-field-label", labelText)); const shell = element("span", "input-shell"); const input = document.createElement("input"); input.type = "text"; input.inputMode = "decimal"; input.value = formatValue(value, step); input.dataset.field = path; input.dataset.pluginId = object.pluginId; input.setAttribute("aria-label", `${object.name}: ${labelText}`); if (options.readOnly) { input.readOnly = true; input.classList.add("readonly"); } activeFieldRefs.set(path, input); shell.append(input, element("i", "", unit)); label.append(shell); if (options.readOnly) return label; bindNumericInput(input, () => getFieldValue(object, path), next => setPath(object, path, next), step, () => defaultFieldValue(object, path), () => { void commitFieldChange(object, path); }); input.addEventListener("keydown", event => { if (event.key !== "Enter") return; event.preventDefault(); event.stopPropagation(); setPath(object, path, finite(input.value, getFieldValue(object, path))); persist(); const nextPath = nextDimensionField(object, path); if (nextPath) { queueFieldFocus(object, nextPath); refreshActiveValues(); requestAnimationFrame(() => focusActiveField(nextPath)); setTimeout(() => focusActiveField(nextPath), 20); } else { input.value = formatValue(getFieldValue(object, path), step); input.blur?.(); } }); return label; }
   function previewTargetSurface(pluginId) { state.highlightObjectId = pluginId ? state.objects.find(item => item.type === "surface" && item.pluginId === pluginId)?.id || null : null; drawScene(); renderObjectGroups(); }
-  function makeTargetSurfaceField(object) { const label = element("label", "object-field object-select-field wide"); label.append(element("span", "object-field-label", "Direction")); const select = document.createElement("select"); select.setAttribute("aria-label", `${object.name}: Direction`); const target = effectiveLookAt(object); const manual = document.createElement("option"); manual.value = ""; manual.textContent = `Point (${formatValue(target.x)}, ${formatValue(target.y)}, ${formatValue(target.z)})`; select.append(manual); state.objects.filter(item => item.type === "surface").forEach(surface => { const option = document.createElement("option"); option.value = surface.pluginId; option.textContent = surface.name; select.append(option); }); const committedTarget = () => targetSurface(object)?.pluginId || ""; select.value = committedTarget(); const showLabels = () => { state.showSurfaceLabels = true; drawScene(); }; select.addEventListener("focus", showLabels); select.addEventListener("pointerdown", showLabels); select.addEventListener("input", () => previewTargetSurface(select.value)); select.addEventListener("change", () => { saveHistory(); const currentTarget = effectiveLookAt(object); if (select.value) { object.targetSurfacePluginId = select.value; object.lookAt = effectiveLookAt(object); } else { delete object.targetSurfacePluginId; object.lookAt = currentTarget; } previewTargetSurface(select.value); persist(); render(); void commitProjectorBinding(object); }); select.addEventListener("blur", () => { state.showSurfaceLabels = false; previewTargetSurface(committedTarget()); }); label.append(select); return label; }
-  function makeMediaModeControl(object) { const control = element("div", "media-mode"); [["resolution", "Resolution"], ["ppi", "PPI"], ["pitch", "Pixel pitch"]].forEach(([mode, label]) => { const button = element("button", object.media.inputMode === mode ? "active" : "", label); button.type = "button"; button.addEventListener("click", () => { if (object.media.inputMode === mode) return; saveHistory(); setScreenInputMode(object, mode); persist(); render(); }); control.append(button); }); return control; }
+  function makeTargetSurfaceField(object) { const label = element("label", "object-field object-select-field wide"); label.append(element("span", "object-field-label", "Direction")); const select = document.createElement("select"); select.setAttribute("aria-label", `${object.name}: Direction`); const target = effectiveLookAt(object); const manual = document.createElement("option"); manual.value = ""; manual.textContent = `Point (${formatValue(target.x)}, ${formatValue(target.y)}, ${formatValue(target.z)})`; select.append(manual); state.objects.filter(item => item.type === "surface").forEach(surface => { const option = document.createElement("option"); option.value = surface.pluginId; option.textContent = surface.name; select.append(option); }); const committedTarget = () => targetSurface(object)?.pluginId || ""; select.value = committedTarget(); const showLabels = () => { state.showSurfaceLabels = true; drawScene(); }; select.addEventListener("focus", showLabels); select.addEventListener("pointerdown", showLabels); select.addEventListener("input", () => previewTargetSurface(select.value)); select.addEventListener("change", () => { const currentTarget = effectiveLookAt(object); if (select.value) { object.targetSurfacePluginId = select.value; object.lookAt = effectiveLookAt(object); } else { delete object.targetSurfacePluginId; object.lookAt = currentTarget; } previewTargetSurface(select.value); persist(); render(); void commitProjectorBinding(object); }); select.addEventListener("blur", () => { state.showSurfaceLabels = false; previewTargetSurface(committedTarget()); }); label.append(select); return label; }
+  function makeMediaModeControl(object) { const control = element("div", "media-mode"); [["resolution", "Resolution"], ["ppi", "PPI"], ["pitch", "Pixel pitch"]].forEach(([mode, label]) => { const button = element("button", object.media.inputMode === mode ? "active" : "", label); button.type = "button"; button.addEventListener("click", () => { if (object.media.inputMode === mode) return; setScreenInputMode(object, mode); persist(); render(); }); control.append(button); }); return control; }
   function makePropertySection(object, definition) { const section = element("section", "active-property-section"); section.append(element("h3", "active-property-title", definition.title)); const grid = element("div", "active-property-grid"); if (definition.mediaMode) grid.append(makeMediaModeControl(object)); if (definition.targetSurface) grid.append(makeTargetSurfaceField(object)); else definition.fields.forEach(field => grid.append(makeObjectField(object, field))); section.append(grid); return section; }
   function objectSyncStatus(object) { const record = state.sync.objects?.[object.pluginId]; return record?.lastExported === canonical(objectPayload(object)) ? "synced" : "changed"; }
   function renderObjectGroups() { objectGroups.replaceChildren(); document.querySelector("#object-count").textContent = String(state.objects.length); GROUP_ORDER.forEach(type => { const config = typeConfig[type]; const objects = state.objects.filter(object => object.type === type); if (!objects.length) return; const group = element("section", "object-group"); const heading = element("div", "object-group-heading"); const swatch = element("span", "group-swatch"); swatch.style.background = config.color; heading.append(swatch, document.createTextNode(config.group), element("b", "group-count", String(objects.length))); group.append(heading); const list = element("div", "object-list"); objects.forEach(object => { const entry = element("button", `object-entry${state.selectedIds.has(object.id) || object.id === state.selectedId ? " selected" : ""}`); entry.type = "button"; entry.setAttribute("aria-label", `Select ${object.name}`); entry.append(element("i", `object-status ${objectSyncStatus(object)}`), element("i", `object-icon icon-${object.type.toLowerCase()}`), element("span", "object-name", object.name)); entry.addEventListener("click", event => { if (event.shiftKey || event.ctrlKey || event.metaKey) toggleObjectSelection(object); else selectObject(object); persist(); render(); }); entry.addEventListener("contextmenu", event => { event.preventDefault(); openCanvasContextMenu(event, object); }); list.append(entry); }); group.append(list); objectGroups.append(group); }); }
@@ -458,7 +448,7 @@
     const nextName = input.value.trim();
     if (!nextName || nextName === object.name) { render(); return; }
     const previousName = object.name;
-    saveHistory(); object.name = nextName; persist(false); render();
+    object.name = nextName; persist(false); render();
     const record = state.sync.objects?.[object.pluginId];
     const adapter = getAdapter();
     if (!record?.designerId || !adapter?.updateObject) return;
@@ -525,16 +515,16 @@
       ...details
     });
   }
-  function addObjectAt(type, x = 0, z = 0, focusDimensions = false) { syncModelsFromInputs(); saveHistory(); const object = newObject(type, x, z); state.objects.push(object); logPlannerAction("create", object, { phase: "local", x: object.transform.position.x, z: object.transform.position.z }); selectObject(object); if (type === "projector") { projectorTargetPlacement = { objectId: object.id }; queueFieldFocus(null, null); persist(false); } else { queueFieldFocus(object, initialObjectFocusPath(object)); persist(); } render(); if (type !== "projector") void createDesignerObject(object); return object; }
+  function addObjectAt(type, x = 0, z = 0, focusDimensions = false) { syncModelsFromInputs(); const object = newObject(type, x, z); state.objects.push(object); logPlannerAction("create", object, { phase: "local", x: object.transform.position.x, z: object.transform.position.z }); selectObject(object); if (type === "projector") { projectorTargetPlacement = { objectId: object.id }; queueFieldFocus(null, null); persist(false); } else { queueFieldFocus(object, initialObjectFocusPath(object)); persist(); } render(); if (type !== "projector") void createDesignerObject(object); return object; }
   function addObject(type) { return addObjectAt(type); }
-  function duplicateObject(id, mirrorAxis = null, options = {}) { const source = state.objects.find(object => object.id === id); if (!source) return null; if (options.history !== false) saveHistory(); const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(source.type); delete copy.designer; if (mirrorAxis === "x") { copy.transform.position.x = Number((-source.transform.position.x).toFixed(3)); copy.transform.rotation.y = normalizeYaw(-source.transform.rotation.y); } else if (mirrorAxis === "z") { copy.transform.position.z = Number((-source.transform.position.z).toFixed(3)); copy.transform.rotation.y = normalizeYaw(180 - source.transform.rotation.y); } else if (options.offset !== false) copy.transform.position.x = Number((source.transform.position.x + .5).toFixed(3)); if (source.type === "projector" && mirrorAxis) { const target = effectiveLookAt(source); copy.lookAt = { ...target, [mirrorAxis]: Number((-target[mirrorAxis]).toFixed(3)) }; } state.objects.push(copy); logPlannerAction("duplicate", copy, { phase: "local", sourcePluginId: source.pluginId, mirrorAxis }); selectObject(copy); if (options.persist !== false) persist(); if (options.render !== false) render(); void createDesignerObject(copy); return copy; }
+  function duplicateObject(id, mirrorAxis = null, options = {}) { const source = state.objects.find(object => object.id === id); if (!source) return null; const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(source.type); delete copy.designer; if (mirrorAxis === "x") { copy.transform.position.x = Number((-source.transform.position.x).toFixed(3)); copy.transform.rotation.y = normalizeYaw(-source.transform.rotation.y); } else if (mirrorAxis === "z") { copy.transform.position.z = Number((-source.transform.position.z).toFixed(3)); copy.transform.rotation.y = normalizeYaw(180 - source.transform.rotation.y); } else if (options.offset !== false) copy.transform.position.x = Number((source.transform.position.x + .5).toFixed(3)); if (source.type === "projector" && mirrorAxis) { const target = effectiveLookAt(source); copy.lookAt = { ...target, [mirrorAxis]: Number((-target[mirrorAxis]).toFixed(3)) }; } state.objects.push(copy); logPlannerAction("duplicate", copy, { phase: "local", sourcePluginId: source.pluginId, mirrorAxis }); selectObject(copy); if (options.persist !== false) persist(); if (options.render !== false) render(); void createDesignerObject(copy); return copy; }
   function copySelectedObjects() { const selected = state.objects.filter(object => state.selectedIds.has(object.id) || object.id === state.selectedId); if (!selected.length) return false; clipboardObjects = selected.map(object => clone(object)); return true; }
-  function pasteCopiedObjects() { if (!clipboardObjects.length) return false; saveHistory(); const pasted = clipboardObjects.map(source => { const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(copy.type); delete copy.designer; copy.transform.position.x = Number((copy.transform.position.x + .5).toFixed(3)); logPlannerAction("duplicate", copy, { phase: "local", method: "paste", sourcePluginId: source.pluginId }); return copy; }); state.objects.push(...pasted); selectObject(pasted[pasted.length - 1]); persist(); render(); pasted.forEach(object => { void createDesignerObject(object); }); return true; }
-  function rotateObject90(id) { const object = state.objects.find(item => item.id === id); if (!object || object.type === "projector") return; saveHistory(); object.transform.rotation.y = normalizeYaw(object.transform.rotation.y + 90); persist(); render(); }
+  function pasteCopiedObjects() { if (!clipboardObjects.length) return false; const pasted = clipboardObjects.map(source => { const copy = clone(source); copy.id = nextId++; copy.pluginId = makeId(); copy.name = nextObjectName(copy.type); delete copy.designer; copy.transform.position.x = Number((copy.transform.position.x + .5).toFixed(3)); logPlannerAction("duplicate", copy, { phase: "local", method: "paste", sourcePluginId: source.pluginId }); return copy; }); state.objects.push(...pasted); selectObject(pasted[pasted.length - 1]); persist(); render(); pasted.forEach(object => { void createDesignerObject(object); }); return true; }
+  function rotateObject90(id) { const object = state.objects.find(item => item.id === id); if (!object || object.type === "projector") return; object.transform.rotation.y = normalizeYaw(object.transform.rotation.y + 90); persist(); render(); }
   function positionContextMenu(event, height = 300) { const width = 220; canvasContextMenu.style.left = `${Math.max(6, Math.min(event.clientX, (window.innerWidth || 1280) - width - 6))}px`; canvasContextMenu.style.top = `${Math.max(6, Math.min(event.clientY, (window.innerHeight || 720) - height - 6))}px`; canvasContextMenu.hidden = false; }
   function closeCanvasContextMenu() { if (!canvasContextMenu) return; canvasContextMenu.hidden = true; document.querySelector("#surface-context-list").hidden = true; document.querySelector("#context-delete-confirm").hidden = true; state.showSurfaceLabels = false; contextObjectId = null; contextWorldPoint = null; }
   function openCanvasCreateMenu(event, point) { contextObjectId = null; contextWorldPoint = point; document.querySelector("#empty-context-actions").hidden = false; document.querySelector("#object-context-actions").hidden = true; positionContextMenu(event, 190); }
-  function openCanvasContextMenu(event, object) { if (!canvasContextMenu || !object) return; contextObjectId = object.id; contextWorldPoint = null; selectObject(object); render(); document.querySelector("#empty-context-actions").hidden = true; document.querySelector("#object-context-actions").hidden = false; const bindButton = document.querySelector("#context-bind-surface"); const rotateButton = document.querySelector('#object-context-actions [data-action="rotate-90"]'); const surfaceList = document.querySelector("#surface-context-list"); const surfaces = state.objects.filter(item => item.type === "surface"); bindButton.hidden = object.type !== "projector" || !surfaces.length; if (rotateButton) rotateButton.hidden = object.type === "projector"; surfaceList.hidden = true; surfaceList.replaceChildren(); if (object.type === "projector") { state.showSurfaceLabels = true; drawScene(); } surfaces.forEach(surface => { const button = element("button", "", surface.name); button.type = "button"; button.addEventListener("pointerenter", () => previewTargetSurface(surface.pluginId)); button.addEventListener("pointerleave", () => previewTargetSurface(targetSurface(object)?.pluginId || null)); button.addEventListener("click", () => { saveHistory(); object.targetSurfacePluginId = surface.pluginId; object.lookAt = effectiveLookAt(object); persist(); render(); closeCanvasContextMenu(); void commitProjectorBinding(object); }); surfaceList.append(button); }); document.querySelector("#context-delete-confirm").hidden = true; positionContextMenu(event); }
+  function openCanvasContextMenu(event, object) { if (!canvasContextMenu || !object) return; contextObjectId = object.id; contextWorldPoint = null; selectObject(object); render(); document.querySelector("#empty-context-actions").hidden = true; document.querySelector("#object-context-actions").hidden = false; const bindButton = document.querySelector("#context-bind-surface"); const rotateButton = document.querySelector('#object-context-actions [data-action="rotate-90"]'); const surfaceList = document.querySelector("#surface-context-list"); const surfaces = state.objects.filter(item => item.type === "surface"); bindButton.hidden = object.type !== "projector" || !surfaces.length; if (rotateButton) rotateButton.hidden = object.type === "projector"; surfaceList.hidden = true; surfaceList.replaceChildren(); if (object.type === "projector") { state.showSurfaceLabels = true; drawScene(); } surfaces.forEach(surface => { const button = element("button", "", surface.name); button.type = "button"; button.addEventListener("pointerenter", () => previewTargetSurface(surface.pluginId)); button.addEventListener("pointerleave", () => previewTargetSurface(targetSurface(object)?.pluginId || null)); button.addEventListener("click", () => { object.targetSurfacePluginId = surface.pluginId; object.lookAt = effectiveLookAt(object); persist(); render(); closeCanvasContextMenu(); void commitProjectorBinding(object); }); surfaceList.append(button); }); document.querySelector("#context-delete-confirm").hidden = true; positionContextMenu(event); }
   function logCleanupPhases(object, result) {
     const subsystem = object.type === "dmxLight" ? "DMX Light" : "Designer delete";
     for (const item of result?.cleanupPhases || []) {
@@ -546,27 +536,27 @@
   }
   async function deleteObject(id, options = {}) {
     const index = state.objects.findIndex(object => object.id === id); if (index < 0) return;
-    saveHistory(); const removed = state.objects[index]; const record = state.sync.objects?.[removed.pluginId];
+    const removed = state.objects[index]; let record = state.sync.objects?.[removed.pluginId];
     if (removed.type === "projector") cancelProjectorWork(removed.pluginId);
     const deleteFromDesigner = Boolean(options.deleteFromDesigner);
     const deleteFromDeviceList = Boolean(options.deleteFromDeviceList);
-    const adapter = record?.designerId && deleteFromDesigner ? getAdapter() : null;
-    if (record?.designerId && deleteFromDesigner) {
-      if (!adapter || record.owned && !adapter.deleteManagedObjects || !record.owned && !adapter.deleteDesignerObjects) { plannerLog("error", "Designer delete", "Designer delete API is unavailable", { objectName: removed.name, phase: "delete" }); persist(false); renderObjectGroups(); return; }
-    }
     logPlannerAction("delete", removed, { phase: "requested", owned: Boolean(record?.owned), deleteFromDesigner, deleteFromDeviceList });
     const detachedTargets = new Map(state.objects.filter(item => item.type === "projector" && item.targetSurfacePluginId === removed.pluginId).map(projector => [projector.id, { target: effectiveLookAt(projector), surfacePluginId: projector.targetSurfacePluginId }]));
     state.objects.splice(index, 1); state.selectedIds.delete(id); detachedTargets.forEach((target, projectorId) => { const projector = state.objects.find(item => item.id === projectorId); if (projector) { cancelProjectorWork(projector.pluginId); projector.lookAt = target; delete projector.targetSurfacePluginId; projector.manualLookAtPendingUnbind = true; recalculateProjectorGeometry(projector); void commitProjectorBinding(projector); } }); if (state.selectedId === id) selectObject(state.objects[index] || state.objects[index - 1] || null);
     persist(); render();
-    if (!record?.designerId || !deleteFromDesigner) return;
-    if (record.owned && !adapter?.deleteManagedObjects) throw new Error("Designer delete API is unavailable");
-    if (!record.owned && !adapter?.deleteDesignerObjects) throw new Error("Designer delete API is unavailable");
-    pendingDesignerDeletes.add(String(record.designerId));
+    if (!deleteFromDesigner) return;
+    if (!record?.designerId && pendingDesignerCreates.has(removed.pluginId)) {
+      await pendingDesignerCreates.get(removed.pluginId);
+      record = state.sync.objects?.[removed.pluginId];
+    }
+    if (!record?.designerId) return;
+    const adapter = getAdapter();
     try {
+      if (record.owned && !adapter?.deleteManagedObjects) throw new Error("Designer delete API is unavailable");
+      if (!record.owned && !adapter?.deleteDesignerObjects) throw new Error("Designer delete API is unavailable");
       let result;
       if (record.owned) {
-        if (!Array.isArray(record.ownedPaths) || !record.ownedPaths.length) throw new Error("Designer ownership metadata is incomplete; refusing physical deletion");
-        result = await adapter.deleteManagedObjects([{ id: record.designerId, path: record.path, owned: true, ownedPaths: record.ownedPaths, removeResource: deleteFromDeviceList }]);
+        result = await adapter.deleteManagedObjects([{ id: record.designerId, path: record.path, owned: true, ownedPaths: Array.isArray(record.ownedPaths) ? record.ownedPaths : [], removeResource: deleteFromDeviceList }]);
       } else {
         result = await adapter.deleteDesignerObjects([{ id: record.designerId, path: record.path, removeResource: deleteFromDeviceList }]);
       }
@@ -574,7 +564,6 @@
       if (!result?.deleted?.map(String).includes(String(record.designerId))) throw new Error(result?.skipped?.join("; ") || "Designer did not confirm deletion");
       const deviceListFailed = deleteFromDeviceList && result?.resourceDeleteFailed?.map(String).includes(String(record.designerId));
       const deviceListError = deviceListFailed ? result?.skipped?.find(message => String(message).includes(String(record.designerId))) || "Designer did not remove the Device list resource" : null;
-      state.sync.deleted[removed.pluginId] = { pluginId: removed.pluginId, designerId: record.designerId, path: record.path, type: removed.type, name: removed.name, deletedAt: new Date().toISOString(), resourcesDeleted: result.resourcesDeleted || [], ...(deviceListError ? { deviceListError } : {}) };
       if (deviceListError) plannerLog("error", removed.type === "dmxLight" ? "DMX Light" : "Designer delete", `Device list cleanup failed: ${deviceListError}`, { objectName: removed.name, phase: "device-list" });
       delete state.sync.objects[removed.pluginId]; persist(false); renderStatus();
       if (deviceListError) document.querySelector("#adapter-status").textContent = `Device list cleanup failed · ${deviceListError}`;
@@ -583,19 +572,19 @@
       detachedTargets.forEach((binding, projectorId) => { const projector = state.objects.find(item => item.id === projectorId); if (projector) { projector.lookAt = binding.target; projector.targetSurfacePluginId = binding.surfacePluginId; } });
       selectObject(removed);
       plannerLog("error", "Designer delete", `Delete failed: ${error.message || error}`, { objectName: removed.name, phase: "delete" }); persist(false); renderObjectGroups();
-    } finally { pendingDesignerDeletes.delete(String(record.designerId)); }
+    }
   }
 
   function canonical(value) { if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`; if (value && typeof value === "object") return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(",")}}`; return JSON.stringify(value); }
   function changedValue(previous, current) { if (previous && current && typeof previous === "object" && typeof current === "object" && !Array.isArray(previous) && !Array.isArray(current)) { const result = {}; Object.keys(current).forEach(key => { const change = changedValue(previous[key], current[key]); if (change !== undefined) result[key] = change; }); return Object.keys(result).length ? result : undefined; } return canonical(previous) === canonical(current) ? undefined : current; }
-  function objectPayload(object) { const payload = { pluginId: object.pluginId, type: object.type, name: object.name, transform: clone(object.transform) }; if (object.lookAt) payload.lookAt = clone(effectiveLookAt(object)); if (object.geometry) payload.geometry = clone(object.geometry); if (object.media) payload.media = clone(object.media); if (object.optics) payload.optics = { throwRatio: object.optics.throwRatio, fieldOfView: object.optics.fieldOfView, lookDistance: object.optics.lookDistance }; if (object.type === "projector") { const surface = targetSurface(object); const record = surface ? state.sync.objects?.[surface.pluginId] : null; payload.targetSurface = surface ? { pluginId: surface.pluginId, designerId: record?.designerId || null, path: record?.path || null, name: surface.name } : null; payload.projectorRoll = finite(object.projectorRoll, 0); } return payload; }
+  function objectPayload(object) { const payload = { pluginId: object.pluginId, type: object.type, name: object.name, transform: clone(object.transform) }; if (object.lookAt) payload.lookAt = clone(effectiveLookAt(object)); if (object.geometry) payload.geometry = clone(object.geometry); if (["screen", "dmxScreen", "surface"].includes(object.type) && object.media) payload.media = clone(object.media); if (object.optics) payload.optics = { throwRatio: object.optics.throwRatio, fieldOfView: object.optics.fieldOfView, lookDistance: object.optics.lookDistance }; if (object.type === "projector") { const surface = targetSurface(object); const record = surface ? state.sync.objects?.[surface.pluginId] : null; payload.targetSurface = surface ? { pluginId: surface.pluginId, designerId: record?.designerId || null, path: record?.path || null, name: surface.name } : null; payload.projectorRoll = finite(object.projectorRoll, 0); } return payload; }
   // Designer stores numeric fields as float32 and derives projector values.
   // One millimetre accepts harmless readback drift without hiding layout errors.
   function validateReadback(expected, result, tolerance = 0.001) {
     const actual = result?.readback; if (!actual) throw new Error("Designer не вернул координаты объекта для проверки"); const mismatches = [];
     const compare = (path, wanted, got) => { if (!Number.isFinite(Number(got)) || Math.abs(Number(wanted) - Number(got)) > tolerance) mismatches.push(`${path}: ожидалось ${wanted}, получено ${got}`); };
     const compareAngle = (path, wanted, got) => { const difference = Math.abs((((Number(wanted) - Number(got)) % 360) + 540) % 360 - 180); if (!Number.isFinite(Number(got)) || difference > tolerance) mismatches.push(`${path}: ожидалось ${wanted}, получено ${got}`); };
-    ["x", "y", "z"].forEach(axis => compare(`position.${axis}`, expected.transform.position[axis], actual.transform?.position?.[axis])); if (expected.type !== "projector") ["x", "y", "z"].forEach(axis => compareAngle(`rotation.${axis}`, expected.transform.rotation[axis], actual.transform?.rotation?.[axis])); if (expected.lookAt) ["x", "y", "z"].forEach(axis => compare(`lookAt.${axis}`, expected.lookAt[axis], actual.lookAt?.[axis])); if (expected.geometry) { compare("geometry.width", expected.geometry.width, actual.geometry?.width); compare("geometry.height", expected.geometry.height, actual.geometry?.height); } if (expected.optics?.throwRatio !== undefined && actual.optics?.throwRatio !== undefined) compare("optics.throwRatio", expected.optics.throwRatio, actual.optics.throwRatio);
+    ["x", "y", "z"].forEach(axis => compare(`position.${axis}`, expected.transform.position[axis], actual.transform?.position?.[axis])); if (expected.type !== "projector") ["x", "y", "z"].forEach(axis => compareAngle(`rotation.${axis}`, expected.transform.rotation[axis], actual.transform?.rotation?.[axis])); if (expected.lookAt) ["x", "y", "z"].forEach(axis => compare(`lookAt.${axis}`, expected.lookAt[axis], actual.lookAt?.[axis])); if (expected.geometry) { compare("geometry.width", expected.geometry.width, actual.geometry?.width); compare("geometry.height", expected.geometry.height, actual.geometry?.height); } if (expected.media && actual.media && ["screen", "dmxScreen", "surface"].includes(expected.type)) { compare("media.resolutionX", expected.media.resolutionX, actual.media?.resolutionX); compare("media.resolutionY", expected.media.resolutionY, actual.media?.resolutionY); } if (expected.optics?.throwRatio !== undefined && actual.optics?.throwRatio !== undefined) compare("optics.throwRatio", expected.optics.throwRatio, actual.optics.throwRatio);
     if (mismatches.length) throw new Error(`Проверка координат Designer не пройдена: ${mismatches.join("; ")}`); return true;
   }
   function getAdapter() { const adapter = globalThis.disguiseSceneAdapter; return adapter && ["inspectScene", "createObject", "updateObject"].every(method => typeof adapter[method] === "function") ? adapter : null; }
@@ -628,15 +617,15 @@
       try { ownedPaths = validatedOwnedPaths(result, object.type); }
       catch (error) { ownershipError = error; }
     }
+    const degradedReasons = ownershipError ? [`Ownership metadata: ${ownershipError.message || ownershipError}`] : [];
     const record = {
       pluginId: object.pluginId, designerId, path, type: object.type, name: object.name,
       lastExported: canonical(payload), payload, readbackValid: options.readbackValid ?? null, adopted: Boolean(options.adopted),
-      owned: Boolean(options.owned && !ownershipError), ownedPaths
+      owned: Boolean(options.owned), ownedPaths, creationState: degradedReasons.length ? "degraded" : "created", degradedReasons
     };
     records[object.pluginId] = record;
     state.sync.objects = records;
     persist(false);
-    if (ownershipError) throw ownershipError;
     return record;
   }
   function removeInspectedCreateDuplicate(object, result) {
@@ -675,7 +664,11 @@
         removeInspectedCreateDuplicate(object, result);
         const record = persistCreatedRecord(state.sync.objects || {}, object, payload, result, { owned: true });
         try { validateReadback(payload, result); record.readbackValid = true; }
-        catch (validationError) { record.readbackValid = false; record.lastExported = null; throw validationError; }
+        catch (validationError) {
+          record.readbackValid = false; record.lastExported = null; record.creationState = "degraded";
+          record.degradedReasons.push(`Readback: ${validationError.message || validationError}`);
+        }
+        if (record.creationState === "degraded") plannerLog("warn", "Designer create", `Created with degraded metadata: ${record.degradedReasons.join("; ")}`, { objectName: object.name, phase: "create-degraded" });
         state.sync.lastSyncAt = new Date().toISOString();
         persist(false); render();
         return record;
@@ -814,7 +807,7 @@
     return queueConfigurationCommit(object, async isLatest => {
       const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
       if (!record?.designerId || !adapter?.updateObject) return null;
-      const changed = { transform: payload.transform, geometry: payload.geometry };
+      const changed = { transform: payload.transform, geometry: payload.geometry, media: payload.media };
       try {
         const result = await adapter.updateObject(record.designerId, changed, record.path, "surface");
         validateReadback(payload, result);
@@ -843,10 +836,24 @@
     if (!object || !path) return Promise.resolve([]);
     if (object.type === "projector" && (path.startsWith("transform.") || path.startsWith("lookAt.") || path.startsWith("media."))) { queueProjectorProjection(object, "numeric"); return Promise.resolve([]); }
     if (object.type === "projector" && path.startsWith("optics.")) return Promise.resolve([]);
-    if (object.type === "surface" && (path.startsWith("transform.") || path.startsWith("geometry."))) {
+    if (object.type === "surface" && (path.startsWith("transform.") || path.startsWith("geometry.") || path.startsWith("media."))) {
       const result = await commitSurfaceConfiguration(object);
       if (result) projectorsAffectedBy([object]).forEach(projector => queueProjectorProjection(projector, "surface"));
       return [];
+    }
+    if (["screen", "dmxScreen"].includes(object.type) && (path.startsWith("media.") || path.startsWith("transform.") || path.startsWith("geometry."))) {
+      const record = state.sync.objects?.[object.pluginId]; const adapter = getAdapter();
+      if (!record?.designerId || !adapter?.updateObject) return [];
+      const changed = path.startsWith("media.") ? { media: clone(object.media) } : { transform: clone(object.transform), geometry: clone(object.geometry), ...(object.media ? { media: clone(object.media) } : {}) };
+      try {
+        const result = await adapter.updateObject(record.designerId, changed, record.path, object.type);
+        record.payload = objectPayload(object); record.lastExported = canonical(record.payload); record.readbackValid = true;
+        if (result?.path) record.path = result.path;
+        persist(false); renderStatus(); return result;
+      } catch (error) {
+        plannerLog("error", object.type === "dmxScreen" ? "DMX Screen" : "LED Screen", `Screen update failed: ${error.message || error}`, { objectName: object.name, phase: "screen-update" });
+        persist(false); renderStatus(); return null;
+      }
     }
     return Promise.resolve([]);
   }
@@ -867,7 +874,7 @@
         item.designerPath = record.path;
         item.serialized = record.lastExported;
         try { validateReadback(item.payload, result); record.readbackValid = true; persist(false); }
-        catch (validationError) { record.readbackValid = false; record.lastExported = null; persist(false); throw validationError; }
+        catch (validationError) { record.readbackValid = false; record.lastExported = null; record.creationState = "degraded"; record.degradedReasons = [...(record.degradedReasons || []), `Readback: ${validationError.message || validationError}`]; persist(false); plannerLog("warn", "Designer create", `Created with degraded readback: ${validationError.message || validationError}`, { objectName: item.object.name, phase: "create-degraded" }); }
       } catch (error) {
         throw new Error(`${operation} "${item.object.name}": ${error.message || error}`);
       }
@@ -948,7 +955,7 @@
       liveSceneImportTimer = null;
       const adapter = getAdapter();
       if (!adapter) return;
-      try { await importDesignerScene(adapter, { preserveLocal: true }); document.querySelector("#adapter-status").textContent = "LIVE: Designer object list updated"; }
+      try { const inspection = await importDesignerScene(adapter, { preserveLocal: true }); if (inspection?.complete !== false) document.querySelector("#adapter-status").textContent = "LIVE: Designer object list updated"; }
       catch (error) { plannerLog("error", "LIVE", error.message || String(error), { phase: "scene-import" }); persist(false); liveStatus({ status: "error", detail: error.message || String(error) }); }
     }, 120);
   }
@@ -979,7 +986,7 @@
     await adapter.liveStart({ onStatus: liveStatus, onValuesChanged: applyLiveValue, onSceneChanged: scheduleLiveSceneImport });
     if (intent !== liveIntent) { adapter.liveStop?.(); return; }
     const liveState = adapter.getLiveState?.();
-    if (liveState && liveState.socket !== "open") throw new Error("Live Update WebSocket did not open");
+    if (liveState && liveState.socket !== "open" && !liveState.wanted) throw new Error("Live Update WebSocket did not open");
     state.liveEnabled = true; persist(false); renderStatus(); scheduleLiveSync(0);
   }
   function stopLive() { liveIntent += 1; state.liveEnabled = false; clearTimeout(liveSyncTimer); liveSyncTimer = null; clearTimeout(liveSceneImportTimer); liveSceneImportTimer = null; persist(false); getAdapter()?.liveStop?.(); renderStatus(); }
@@ -1009,6 +1016,12 @@
     const previousSelectedPluginIds = new Set(state.objects.filter(object => state.selectedIds.has(object.id)).map(object => object.pluginId));
     const activeFieldPath = document.activeElement?.dataset?.field || null;
     const inspection = await adapter.inspectScene();
+    if (inspection?.complete === false) {
+      const messages = (inspection.errors || []).map(error => error?.message || String(error));
+      plannerLog("error", "Designer import", `Incomplete scene inspection${messages.length ? `: ${messages.join("; ")}` : ""}`, { phase: options.preserveLocal ? "live-inspection" : "startup-inspection" });
+      persist(false); renderStatus();
+      return inspection;
+    }
     adapter.configureLiveScene?.(inspection.stageId);
     if (inspection.stageFootprint) { state.stage.width = Math.max(2, finite(inspection.stageFootprint.width, state.stage.width)); state.stage.depth = Math.max(2, finite(inspection.stageFootprint.depth, state.stage.depth)); }
     const imported = (inspection.objects || []).map(importedObject);
@@ -1028,11 +1041,12 @@
     const importedRecords = Object.fromEntries(imported.map(object => { const previous = state.sync.objects?.[object.pluginId]; const sameResource = previous && (String(previous.designerId || "") === String(object.designer?.designerId || "") || String(previous.path || "") === String(object.designer?.path || "")); const hasOwnership = Array.isArray(previous?.ownedPaths) && previous.ownedPaths.length > 0; const owned = Boolean(sameResource && previous.owned && hasOwnership); return [object.pluginId, { pluginId: object.pluginId, designerId: object.designer?.designerId, path: object.designer?.path, type: object.type, name: object.name, lastExported: canonical(objectPayload(object)), payload: objectPayload(object), imported: true, owned, ownedPaths: owned ? previous.ownedPaths : [] }]; }));
     state.sync.objects = importedRecords;
     state.sync.environment = environmentKey(); state.sync.lastSyncAt = new Date().toISOString(); persist(false); render();
+    return { ...inspection, complete: true };
   }
   async function copySceneJson() { const output = { version: VERSION, units: "metres", coordinateSystem: "Designer world XYZ; top view X/Z; Stage centred at world origin", stage: state.stage, objects: state.objects.map(({ id, ...object }) => object.type === "projector" ? { ...object, lookAt: effectiveLookAt(object) } : object) }; const button = document.querySelector("#json-button"); try { await copyText(JSON.stringify(output, null, 2)); if (button) button.textContent = "Copied"; } catch (error) { if (button) button.textContent = "Copy failed"; console.error("Scene JSON copy failed", error); } finally { setTimeout(() => { if (button) button.textContent = "Copy JSON"; }, 1200); } }
 
   document.querySelector("#json-button")?.addEventListener("click", copySceneJson); document.querySelector("#diagnostics-export-button")?.addEventListener("click", copyDiagnostics);
-  document.querySelector("#undo-button")?.addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button")?.addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in")?.addEventListener("click", () => { state.zoom = clamp(state.zoom + .1, ZOOM_MIN, ZOOM_MAX); drawScene(); }); document.querySelector("#zoom-out")?.addEventListener("click", () => { state.zoom = clamp(state.zoom - .1, ZOOM_MIN, ZOOM_MAX); drawScene(); });
+  document.querySelector("#zoom-in")?.addEventListener("click", () => { state.zoom = clamp(state.zoom + .1, ZOOM_MIN, ZOOM_MAX); drawScene(); }); document.querySelector("#zoom-out")?.addEventListener("click", () => { state.zoom = clamp(state.zoom - .1, ZOOM_MIN, ZOOM_MAX); drawScene(); });
   const resetView = () => { state.zoom = 1; state.pan = { x: 0, y: 0 }; drawScene(); };
   document.querySelector("#zoom-reset").addEventListener("click", resetView); document.querySelector("#zoom-reset").addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); resetView(); } });
   window.addEventListener("keydown", event => {
@@ -1087,7 +1101,6 @@
       const distance = Math.hypot(event.clientX - state.dragging.startClientX, event.clientY - state.dragging.startClientY);
       if (distance < 4) return;
       state.dragging.pending = false;
-      if (state.dragging.kind !== "pan") saveHistory();
     }
     if (state.dragging.kind === "pan") {
       state.pan.x = state.dragging.startPanX + event.clientX - state.dragging.startClientX;
@@ -1150,7 +1163,7 @@
     startupFinishing = true;
     try { await adapter?.saveAllResources?.(); }
     catch (error) { plannerLog("warn", "Startup", `Resource save failed: ${error.message || error}`, { phase: "save-all" }); }
-    try { await importDesignerScene(adapter); adapterStatus.textContent = "Designer scene imported"; }
+    try { const inspection = await importDesignerScene(adapter); if (inspection?.complete === false) throw new Error("Designer scene inspection was incomplete"); adapterStatus.textContent = "Designer scene imported"; }
     catch (error) {
       startupFinishing = false;
       adapterStatus.textContent = `Designer import failed · ${error.message || error}`;
@@ -1159,7 +1172,7 @@
     }
     if (!adapter?.capabilities?.liveUpdate && !adapter?.liveStart) { state.liveEnabled = false; adapterStatus.textContent = "LIVE unavailable · WebSocket adapter is not available"; persist(false); }
     else { try { await startLive(); } catch (error) { state.liveEnabled = false; adapterStatus.textContent = `LIVE unavailable · ${error.message || error}`; persist(false); } }
-    startupCompleted = true; startupFinishing = false; appReady = true; renderStatus();
+    startupCompleted = true; startupFinishing = false; appReady = true; if (state.liveEnabled) scheduleLiveSync(0); renderStatus();
   }
   async function runStartupGate() {
     const adapter = getAdapter();

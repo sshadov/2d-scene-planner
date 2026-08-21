@@ -230,7 +230,6 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .stage-panel { min-width: 0; min-height: 0; display: block; background: var(--canvas); }
 .canvas-wrap { height: 100%; min-height: 0; }
 .canvas-overlay { position: absolute; z-index: 4; top: 12px; display: flex; align-items: center; gap: 5px; padding: 4px; border: 1px solid rgba(61,74,86,.75); border-radius: 4px; background: rgba(16,23,30,.88); box-shadow: 0 6px 18px rgba(0,0,0,.22); }
-.overlay-left { left: 12px; }
 .overlay-right { right: 12px; gap: 10px; }
 .canvas-overlay .icon-button { width: 27px; height: 27px; }
 .magnet-control { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 9px; }

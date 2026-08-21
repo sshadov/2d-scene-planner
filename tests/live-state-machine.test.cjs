@@ -11,6 +11,7 @@ class MockWebSocket {
   constructor(url) { this.url = url; this.readyState = 0; this.sent = []; MockWebSocket.instances.push(this); }
   send(raw) { if (this.throwOnSend) { this.throwOnSend = false; throw new Error("mock send failure"); } this.sent.push(JSON.parse(raw)); }
   open() { this.readyState = 1; this.onopen?.(); }
+  error() { this.onerror?.(new Error("mock connection failure")); }
   message(value) { this.onmessage?.({ data: JSON.stringify(value) }); }
   close() { this.readyState = 3; this.onclose?.({ code: 1000, reason: "mock close" }); }
 }
@@ -148,5 +149,27 @@ function valuesForSubscriptions(socket) {
   assert.ok(second.sent.some(item => item.subscribe));
   adapter.liveStop();
   assert.equal(adapter.getLiveState().wanted, false);
+
+  MockWebSocket.instances = [];
+  const retryContext = { ...context };
+  retryContext.window = retryContext; retryContext.globalThis = retryContext;
+  vm.createContext(retryContext); vm.runInContext(adapterSource, retryContext, { filename: "designer-adapter-retry.js" });
+  const retryAdapter = retryContext.disguiseSceneAdapter;
+  retryAdapter.configureLiveScene("32");
+  const retryStatuses = [];
+  const retryStart = retryAdapter.liveStart({ onStatus(status) { retryStatuses.push(status); }, onValuesChanged() {}, onSceneChanged() {} });
+  const failedInitialSocket = MockWebSocket.instances[0];
+  failedInitialSocket.error();
+  await retryStart;
+  assert.equal(retryAdapter.getLiveState().wanted, true);
+  retryAdapter.liveSync([{ payload, record: { designerId: "16", path: "objects/ledscreen/screen.apx" } }]);
+  failedInitialSocket.close();
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const reconnectedSocket = MockWebSocket.instances[1];
+  reconnectedSocket.open();
+  assert.ok(reconnectedSocket.sent.some(message => message.subscribe?.object === "getByUID(0x10)"), "Object subscriptions must survive initial failure and be sent on reconnect");
+  assert.ok(retryStatuses.some(status => status.status === "reconnecting"));
+  assert.ok(retryStatuses.some(status => status.status === "open"));
+  retryAdapter.liveStop();
   console.log("live state machine protocol test: ok");
 })().catch(error => { console.error(error); process.exitCode = 1; });
