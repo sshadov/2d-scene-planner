@@ -1,5 +1,27 @@
 # Roadmap and Technical Debt
 
+## Current backlog - 2026-08-22
+
+### P0 Designer regressions
+
+- Remove the startup-wide `resourceManager.saveAll()` call. It attempts to write `internal/gui/stickymanager.json` while the Planner `Widget` is open and produces `Access to object of type 'Widget' is not allowed`. Startup must remain read-only until the user performs an explicit scene operation; object and Stage operations keep their scoped saves.
+- Fix numeric wheel rollback for every object type. Rapid wheel edits must preserve the latest local value, serialize or supersede older remote commits, and ignore stale HTTP/LIVE readback. Add deterministic deferred-response tests where responses arrive out of order, plus one final settled-value write.
+- Investigate and eliminate the r34.0.3 Display creation error `ProjectorEditor.handleStageDisplaysChanged -> Access to object of type 'ArrayBox' is not allowed`. Reproduce LED Screen, DMX Screen, and Surface separately in a disposable project; correlate the Planner operation ID with Designer console time; verify the official Stage creation contract or an exact-version probe before changing `loadOrCreate`/typed-collection behavior. Successful creation must not leave a Designer console exception.
+
+### P1 Interaction
+
+- Restore the rotation handle on the 2D scene for the selected object. Screens/surfaces rotate around Designer Y; cameras and DMX lights update yaw; Projector rotation must move Look At around Position rather than write unrelated body rotation.
+- Add one compact row of six icon-only alignment commands to the right-click context menu: plan-horizontal left/centre/right and plan-vertical top/centre/bottom. The plan vertical axis is Designer Z. Edge alignment must account for the rotated object's visible bounds; centre alignment uses the Stage centre. Use clear alignment icons and tooltips, with no text buttons.
+
+### P1 Projector model
+
+- Restore Projector resolution X/Y in the inspector and in create/update/readback/import. This is a supported public contract: `Projector` inherits `Display.resolution`, and official documentation explicitly uses `projector.resolution = Vec2(3840, 2160)`. Projector resolution must feed aspect-ratio and throw-ratio calculations.
+- Fix portrait-surface calculations. For a bound surface, use the requested orientation-aware projector aspect and projected-width formula, rotate the Projector roll to 90 degrees only for portrait, and validate throw ratio, FOV, and the 2D beam against landscape and portrait fixtures. Do not calculate when no surface is bound.
+
+### P1 Deletion policy
+
+- Remove `Delete from Device list` for DMX Light. DMX Light deletion from Planner must detach the exact `FixtureGroup` from `stage.dmxLights` only; neither owned nor imported DMX Lights may invoke main-resource or auxiliary Device List removal from this UI.
+
 ## v10.4 completed
 
 - Stage checkbox and managed Designer cube are implemented through `d3.Object` mesh geometry copied from a supported Designer helper topology.
