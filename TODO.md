@@ -6,7 +6,9 @@
 
 - Remove the startup-wide `resourceManager.saveAll()` call. It attempts to write `internal/gui/stickymanager.json` while the Planner `Widget` is open and produces `Access to object of type 'Widget' is not allowed`. Startup must remain read-only until the user performs an explicit scene operation; object and Stage operations keep their scoped saves.
 - Fix numeric wheel rollback for every object type. Rapid wheel edits must preserve the latest local value, serialize or supersede older remote commits, and ignore stale HTTP/LIVE readback. Add deterministic deferred-response tests where responses arrive out of order, plus one final settled-value write.
+- Investigate screen-height coupling during mouse-wheel edits. Changing height currently makes both the screen size and its vertical position jump. Planner models screen Y at the bottom edge while Designer stores `offset.y` at the centre (`bottomY + height / 2`), so geometry updates and stale asynchronous readbacks may be recomputing bottom Y from different height revisions. Confirm the actual cause, add deferred/out-of-order response tests, and keep both the requested height and bottom-edge Y stable throughout rapid input.
 - Investigate and eliminate the r34.0.3 Display creation error `ProjectorEditor.handleStageDisplaysChanged -> Access to object of type 'ArrayBox' is not allowed`. Reproduce LED Screen, DMX Screen, and Surface separately in a disposable project; correlate the Planner operation ID with Designer console time; verify the official Stage creation contract or an exact-version probe before changing `loadOrCreate`/typed-collection behavior. Successful creation must not leave a Designer console exception.
+- Synchronize Designer-side resolution changes back into Planner for LED Screen, DMX Screen, and Surface. Changing `Display.resolution.x/y` in Designer must update the corresponding Planner fields without a restart. Confirm the exact LIVE property subscription/readback contract with an exact-version probe before implementation if the installed API does not expose it clearly.
 
 ### P1 Interaction
 
@@ -16,7 +18,9 @@
 ### P1 Projector model
 
 - Restore Projector resolution X/Y in the inspector and in create/update/readback/import. This is a supported public contract: `Projector` inherits `Display.resolution`, and official documentation explicitly uses `projector.resolution = Vec2(3840, 2160)`. Projector resolution must feed aspect-ratio and throw-ratio calculations.
-- Fix portrait-surface calculations. For a bound surface, use the requested orientation-aware projector aspect and projected-width formula, rotate the Projector roll to 90 degrees only for portrait, and validate throw ratio, FOV, and the 2D beam against landscape and portrait fixtures. Do not calculate when no surface is bound.
+- Fix FOV calculation for portrait/vertical bound screens. Validate it independently from throw ratio and verify the resulting Designer value and 2D beam against equivalent landscape and portrait fixtures. Do not calculate when no surface is bound.
+- Fix throw-ratio calculation for portrait/vertical bound screens. Validate the exact orientation-aware projected-width and projector-aspect formula independently from FOV. Do not calculate when no surface is bound.
+- Rotate Projector roll to 90 degrees only for portrait bound screens and validate the final orientation separately from the FOV and throw-ratio fixes.
 
 ### P1 Deletion policy
 
