@@ -1324,7 +1324,7 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
   }
   function liveSetProjectorProjection(pluginId, position, lookAt, throwRatio) {
     const values = { "transform.position": position, lookAt };
-    if (Number.isFinite(Number(throwRatio))) values["optics.throwRatio"] = Number(throwRatio);
+    if (throwRatio !== null && throwRatio !== undefined && Number.isFinite(Number(throwRatio))) values["optics.throwRatio"] = Number(throwRatio);
     return liveSetProjectorFields(pluginId, values);
   }
   function liveSetProjectorThrowRatio(pluginId, throwRatio) {

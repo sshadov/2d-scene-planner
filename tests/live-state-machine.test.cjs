@@ -108,6 +108,12 @@ function valuesForSubscriptions(socket) {
   assert.ok(projectionSet.every(change => projectionBindingIds.has(change.id)));
   assert.deepEqual(JSON.parse(JSON.stringify(projectionSet.map(change => change.value))), [{ x: 3, y: 3, z: -12 }, { x: 0, y: 1, z: 0 }, 1.568]);
   first.message({ valuesChanged: projectionSet.map(change => ({ id: change.id, value: change.value })) });
+  const setsBeforeUnboundProjection = first.sent.filter(item => item.set).length;
+  assert.equal(adapter.liveSetProjectorProjection("projector-1", { x: 4, y: 3, z: -12 }, { x: 0, y: 1, z: 0 }, null), true);
+  const unboundProjectionSet = first.sent.filter(item => item.set).slice(setsBeforeUnboundProjection).flatMap(item => item.set);
+  assert.equal(unboundProjectionSet.length, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(unboundProjectionSet.map(change => change.value))), [{ x: 4, y: 3, z: -12 }, { x: 0, y: 1, z: 0 }]);
+  first.message({ valuesChanged: unboundProjectionSet.map(change => ({ id: change.id, value: change.value })) });
   first.throwOnSend = true;
   assert.equal(adapter.liveSetProjectorGeometry("projector-1", { x: 6, y: 3, z: -7 }, { x: 1, y: 2, z: 5 }), false);
   const failedGeometry = adapter.getLiveState().bindings.filter(binding => ["transform.position", "lookAt"].includes(binding.field));

@@ -133,10 +133,8 @@
       normalized.optics = {
         throwRatio: Math.max(.1, finite(object.optics?.throwRatio, 1.5)),
         fieldOfView: Math.max(.1, finite(object.optics?.fieldOfView, 40)),
-        lookDistance: Math.max(.1, finite(object.optics?.lookDistance, Math.hypot(normalized.lookAt.x - position.x, normalized.lookAt.y - position.y, normalized.lookAt.z - position.z))),
-        throwRatioAuto: object.optics?.throwRatioAuto !== false
+        lookDistance: Math.max(.1, finite(object.optics?.lookDistance, Math.hypot(normalized.lookAt.x - position.x, normalized.lookAt.y - position.y, normalized.lookAt.z - position.z)))
       };
-      normalized.rotationZMode = ["designer", "rounded", "0", "90", "180", "270"].includes(String(object.rotationZMode)) ? String(object.rotationZMode) : "rounded";
       normalized.projectorRoll = finite(object.projectorRoll, 0);
       if (object.targetSurfacePluginId) normalized.targetSurfacePluginId = String(object.targetSurfacePluginId);
     }
@@ -179,8 +177,7 @@
     if (config.geometry) object.geometry = clone(config.geometry); if (config.media) object.media = clone(config.media);
     if (type === "projector") {
       object.lookAt = { x: 0, y: stageFloorY(), z: 0 };
-      object.optics = { throwRatio: 1.5, fieldOfView: 40, lookDistance: Math.hypot(x, stageFloorY() - object.transform.position.y, z) || 1.5, throwRatioAuto: true };
-      object.rotationZMode = "rounded";
+      object.optics = { throwRatio: 1.5, fieldOfView: 40, lookDistance: Math.hypot(x, stageFloorY() - object.transform.position.y, z) || 1.5 };
       object.projectorRoll = 0;
     }
     return object;
@@ -687,7 +684,7 @@
     const ratio = projectorAutoThrowRatio(current);
     if (ratio !== null) recalculateProjectorGeometry(current);
     const adapter = getAdapter();
-    const sent = adapter?.liveSetProjectorProjection?.(pluginId, position, lookAt, ratio) ?? adapter?.liveSetProjectorGeometry?.(pluginId, position, lookAt);
+    const sent = adapter?.liveSetProjectorProjection?.(pluginId, position, lookAt, ratio);
     pending.lastSentAt = Date.now(); pending.cadenceTimer = null;
     plannerLog(sent ? "info" : "warn", "Projector", sent ? "Projection sent" : "Projection waiting for LIVE", { objectName: current.name, phase: final ? "final" : "cadence", source, generation });
     if (final) {
@@ -882,11 +879,11 @@
     if (change.field === "name") object.name = String(change.value || object.name);
     else if (change.field === "transform.position" && change.value && typeof change.value === "object") {
       object.transform.position = vector(change.value);
-      if (!change.initial && object.type === "projector") queueProjectorProjection(object, "designer-position");
+      if (!change.initial && !change.echoed && object.type === "projector") queueProjectorProjection(object, "designer-position");
     }
     else if (change.field === "lookAt" && change.value && typeof change.value === "object") {
       object.lookAt = vector(change.value);
-      if (!change.initial && object.type === "projector") queueProjectorProjection(object, "designer-look-at");
+      if (!change.initial && !change.echoed && object.type === "projector") queueProjectorProjection(object, "designer-look-at");
     }
     else if (change.field === "optics.lookDistance") handleProjectorLookDistance(object, change.value, change);
     else if (change.field === "optics.fieldOfView") handleProjectorFieldOfView(object, change.value, change);
@@ -972,8 +969,8 @@
     if (knownType === "projector") {
       object.lookAt = item.lookAt || lookAtFromRotation(object.transform.position, object.transform.rotation);
       object.transform.rotation = { x: 0, y: 0, z: 0 };
-      object.optics = { throwRatio: Math.max(.1, finite(item.optics?.throwRatio, existing?.optics?.throwRatio || 1.5)), fieldOfView: Math.max(.1, finite(item.optics?.fieldOfView, existing?.optics?.fieldOfView || 40)), lookDistance: Math.max(.1, finite(item.optics?.lookDistance, existing?.optics?.lookDistance || Math.hypot(object.lookAt.x - object.transform.position.x, object.lookAt.y - object.transform.position.y, object.lookAt.z - object.transform.position.z))), throwRatioAuto: existing?.optics?.throwRatioAuto !== false };
-      object.rotationZMode = existing?.rotationZMode || "rounded"; object.projectorRoll = finite(item.projectorRoll, existing?.projectorRoll || 0);
+      object.optics = { throwRatio: Math.max(.1, finite(item.optics?.throwRatio, existing?.optics?.throwRatio || 1.5)), fieldOfView: Math.max(.1, finite(item.optics?.fieldOfView, existing?.optics?.fieldOfView || 40)), lookDistance: Math.max(.1, finite(item.optics?.lookDistance, existing?.optics?.lookDistance || Math.hypot(object.lookAt.x - object.transform.position.x, object.lookAt.y - object.transform.position.y, object.lookAt.z - object.transform.position.z))) };
+      object.projectorRoll = finite(item.projectorRoll, existing?.projectorRoll || 0);
       if (existing?.targetSurfacePluginId) object.targetSurfacePluginId = existing.targetSurfacePluginId;
     }
     object.designer = { designerId: String(item.id || item.uid || ""), path: item.path, className: item.className, collection: item.collection, screens: item.screens || [] };
