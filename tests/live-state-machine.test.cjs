@@ -47,6 +47,10 @@ function valuesForSubscriptions(socket) {
   vm.createContext(context);
   vm.runInContext(adapterSource, context, { filename: "designer-adapter.js" });
   const adapter = context.disguiseSceneAdapter;
+  let diagnosticsNotifications = 0;
+  adapter.setDiagnosticsListener(() => { diagnosticsNotifications += 1; });
+  adapter.recordOperation("test-operation", { message: "api event" });
+  assert.equal(diagnosticsNotifications, 1, "adapter operation logs must notify diagnostics immediately");
   assert.equal(adapter.capabilities.liveUrl, "ws://director.example/api/session/liveupdate");
   adapter.configureLiveScene("32");
   const payload = { pluginId: "screen-1", type: "screen", name: "screen", transform: { position: { x: 1, y: 0, z: 2 }, rotation: { x: 0, y: 0, z: 0 } }, geometry: { width: 4, height: 2 } };
@@ -58,6 +62,7 @@ function valuesForSubscriptions(socket) {
   assert.equal(first.url, "ws://director.example/api/session/liveupdate");
   first.open();
   await startPromise;
+  assert.ok(diagnosticsNotifications > 1, "adapter LIVE logs must notify diagnostics immediately");
   const initialValues = valuesForSubscriptions(first);
   first.message({ valuesChanged: initialValues });
   const stateAfterInitial = adapter.getLiveState();

@@ -36,6 +36,7 @@
   const LIVE_LOG_LIMIT = 300;
   const operationLogEntries = [];
   const OPERATION_LOG_LIMIT = 500;
+  let diagnosticsListener = null;
   // Live Update returns Designer float32 values; this absorbs representation
   // noise without hiding a real measurement change.
   const LIVE_FLOAT_EPSILON = 1e-5;
@@ -45,6 +46,7 @@
     liveLogEntries.push(entry); if (liveLogEntries.length > LIVE_LOG_LIMIT) liveLogEntries.shift();
     if (event === "error" || event === "close") console.error("[ScenePlanner LIVE]", entry);
     else console.info("[ScenePlanner LIVE]", entry);
+    diagnosticsListener?.({ source: "live", entry });
   }
 
   function operationLog(event, details = {}) {
@@ -52,6 +54,7 @@
     operationLogEntries.push(entry);
     if (operationLogEntries.length > OPERATION_LOG_LIMIT) operationLogEntries.shift();
     if (event === "error") console.error("[ScenePlanner API]", entry);
+    diagnosticsListener?.({ source: "api", entry });
   }
 
   function makeOperationId(action, payload = {}) {
@@ -1441,6 +1444,7 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
         writable: binding.writable !== false
       }))
     }),
+    setDiagnosticsListener: listener => { diagnosticsListener = typeof listener === "function" ? listener : null; },
     getLiveLogs: () => liveLogEntries.slice(),
     clearLiveLogs: () => { liveLogEntries.length = 0; },
     getOperationLogs: () => operationLogEntries.slice(),

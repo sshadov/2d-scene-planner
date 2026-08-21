@@ -14,7 +14,7 @@
       <section class="workspace" aria-label="Scene editor">
         <aside class="object-rail designer-panel" id="object-rail">
           <section class="scene-config" aria-label="Scene dimensions">
-            <div class="panel-heading"><h1>Scene</h1><div class="panel-heading-meta"><span id="status-error-chip" class="status-error-chip" aria-label="Planner error" hidden></span><span id="object-count">0</span></div></div>
+            <div class="panel-heading"><h1>Scene</h1><div class="panel-heading-meta"><span id="object-count">0</span></div></div>
             <div class="scene-dimensions">
               <label>Width <span class="input-shell"><input id="scene-width" type="text" inputmode="decimal" value="20" /><i>m</i></span></label>
               <label>Depth <span class="input-shell"><input id="scene-depth" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
@@ -22,7 +22,6 @@
             <div class="panel-actions">
               <span class="live-status" id="adapter-status">LIVE off</span>
               <button class="text-button" id="json-button" type="button">Copy JSON</button>
-              <button class="text-button live-log-button" id="live-log-button" type="button">LIVE log</button>
             </div>
           </section>
           <section class="object-list-panel" aria-label="Scene objects">
@@ -33,7 +32,7 @@
             <div class="inspector-heading">Properties</div>
             <div class="active-object-strip" id="active-object-strip" aria-live="polite"></div>
           </section>
-          <span id="status-synced" hidden>0</span><span id="status-changed" hidden>0</span><span id="status-errors" hidden>0</span><span id="scene-summary" hidden>Scene</span>
+          <span id="status-synced" hidden>0</span><span id="status-changed" hidden>0</span><span id="scene-summary" hidden>Scene</span>
         </aside>
 
         <section class="stage-panel">
@@ -62,14 +61,8 @@
     </section>
 
     <details class="diagnostics-panel" id="diagnostics-panel" open>
-      <summary>Diagnostics</summary>
+      <summary><span>Diagnostics</span><button class="text-button" id="diagnostics-export-button" type="button">Copy diagnostics</button></summary>
       <div id="diagnostics-output" class="diagnostics-output">No events in this session.</div>
-    </details>
-
-    <details class="live-log-panel" id="live-log-panel">
-      <summary>LIVE diagnostics</summary>
-      <button class="text-button" id="diagnostics-export-button" type="button">Copy diagnostics</button>
-      <pre id="live-log-output">No LIVE events yet.</pre>
     </details>
 
     <menu class="canvas-context-menu" id="canvas-context-menu" hidden>

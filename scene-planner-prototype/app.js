@@ -30,7 +30,7 @@
   const state = {
     stage: { ...defaults.stage }, objects: [], selectedId: null, selectedIds: new Set(), highlightObjectId: null, showSurfaceLabels: false, zoom: 1, liveEnabled: false,
     history: [], future: [], dragging: null, guides: [], pan: { x: 0, y: 0 },
-    sync: { objects: {}, deleted: {}, lastSyncAt: null, errors: {} },
+    sync: { objects: {}, deleted: {}, lastSyncAt: null },
     lastHeights: {}
   };
   let nextId = 1;
@@ -82,8 +82,7 @@
   }
   function formatValue(value, step = .1) { let numeric = finite(value); if (Math.abs(numeric) < .0000005) numeric = 0; if (Number.isInteger(numeric)) return String(numeric); const digits = step >= 1 ? 0 : step >= .1 ? 1 : 2; return numeric.toFixed(digits).replace(".", ","); }
   function modelSnapshot() {
-    const sync = { ...state.sync, errors: {} };
-    return { version: VERSION, stage: state.stage, objects: state.objects, sync, liveEnabled: state.liveEnabled, lastHeights: state.lastHeights };
+    return { version: VERSION, stage: state.stage, objects: state.objects, sync: state.sync, liveEnabled: state.liveEnabled, lastHeights: state.lastHeights };
   }
   function snapshot() { return JSON.stringify(modelSnapshot()); }
   function persist(schedule = true) { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...modelSnapshot(), nextId })); if (schedule) scheduleLiveSync(); }
@@ -150,7 +149,7 @@
       const sourceVersion = Number(saved.version) || (saved.objects?.some(object => object.position) ? 3 : 2);
       state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion);
       state.objects = Array.isArray(saved.objects) ? saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)) : [];
-      state.sync = { objects: {}, deleted: {}, lastSyncAt: null, ...(saved.sync || {}), errors: {} }; state.sync.deleted = state.sync.deleted || {}; state.liveEnabled = Boolean(saved.liveEnabled);
+      state.sync = { objects: {}, deleted: {}, lastSyncAt: null, ...(saved.sync || {}) }; delete state.sync.errors; state.sync.deleted = state.sync.deleted || {}; state.liveEnabled = Boolean(saved.liveEnabled);
       state.lastHeights = { ...(saved.lastHeights || {}) };
       nextId = Math.max(Number(saved.nextId) || 1, ...state.objects.map(object => (Number(object.id) || 0) + 1), 1);
       state.selectedId = state.objects[0]?.id ?? null; state.selectedIds = new Set(state.selectedId ? [state.selectedId] : []); persist(); return true;
@@ -158,7 +157,7 @@
   }
   function restore(json) {
     const saved = JSON.parse(json); const sourceVersion = Number(saved.version) || VERSION;
-    state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion); state.objects = saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)); state.sync = { objects: {}, deleted: {}, lastSyncAt: null, ...(saved.sync || {}), errors: {} }; state.sync.deleted = state.sync.deleted || {}; state.liveEnabled = Boolean(saved.liveEnabled); state.lastHeights = { ...(saved.lastHeights || {}) }; state.selectedId = null; state.selectedIds = new Set();
+    state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion); state.objects = saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)); state.sync = { objects: {}, deleted: {}, lastSyncAt: null, ...(saved.sync || {}) }; delete state.sync.errors; state.sync.deleted = state.sync.deleted || {}; state.liveEnabled = Boolean(saved.liveEnabled); state.lastHeights = { ...(saved.lastHeights || {}) }; state.selectedId = null; state.selectedIds = new Set();
     syncStaticInputs(); persist(); render();
   }
   function applyHistory(direction) { const source = direction === "undo" ? state.history : state.future; if (!source.length) return; const target = direction === "undo" ? state.future : state.history; target.push(snapshot()); restore(source.pop()); }
@@ -363,10 +362,26 @@
   }
 
   function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
+  function normalizeDiagnostic(source, entry) {
+    const raw = entry && typeof entry === "object" ? entry : { message: String(entry || "") };
+    const event = String(raw.event || "");
+    const level = ["info", "warn", "error"].includes(raw.level) ? raw.level : /error|failed|stale/i.test(event) ? "error" : /warn|retry|reconnect|recover/i.test(event) ? "warn" : "info";
+    const subsystem = String(raw.subsystem || (source === "api" ? "Designer API" : source === "live" ? "LIVE" : "Planner"));
+    const message = String(raw.message || raw.detail || event || "event");
+    return { at: String(raw.at || ""), source, level, subsystem, message, objectName: raw.objectName || null, phase: raw.phase || event || null, raw };
+  }
+  function diagnosticsLogs() {
+    const adapter = getAdapter();
+    return [
+      ...plannerLogEntries.map(entry => normalizeDiagnostic("planner", entry)),
+      ...(adapter?.getOperationLogs?.() || []).map(entry => normalizeDiagnostic("api", entry)),
+      ...(adapter?.getLiveLogs?.() || []).map(entry => normalizeDiagnostic("live", entry))
+    ].sort((left, right) => left.at.localeCompare(right.at));
+  }
   function renderDiagnostics() {
     const output = document.querySelector("#diagnostics-output");
     if (!output) return;
-    const rows = plannerLogEntries.slice(-80).map(entry => {
+    const rows = diagnosticsLogs().slice(-80).map(entry => {
       const time = String(entry.at || "").slice(11, 19);
       const context = [entry.subsystem, entry.objectName, entry.phase].filter(Boolean).join(" · ");
       return element("div", `diagnostic-row diagnostic-${entry.level}`, `${time}  ${String(entry.level).toUpperCase()}  ${context}${context ? " · " : ""}${entry.message}`);
@@ -381,18 +396,13 @@
     renderDiagnostics();
     return entry;
   }
-  function setActiveError(scope, message, details = {}) {
-    state.sync.errors[scope] = String(message || "Unknown error");
-    plannerLog("error", details.subsystem || "Planner", message, details);
-    persist(false);
-    renderStatus();
-  }
-  function resolveActiveError(scope) {
-    if (!(scope in state.sync.errors)) return false;
-    delete state.sync.errors[scope];
-    persist(false);
-    renderStatus();
-    return true;
+  let diagnosticsAdapter = null;
+  function attachDiagnostics(adapter) {
+    if (adapter === diagnosticsAdapter) return;
+    diagnosticsAdapter?.setDiagnosticsListener?.(null);
+    diagnosticsAdapter = adapter || null;
+    diagnosticsAdapter?.setDiagnosticsListener?.(() => renderDiagnostics());
+    renderDiagnostics();
   }
   function objectHeightValue(object) { return object.transform.position.y; }
   function setObjectHeight(object, value) { const height = finite(value, NaN); if (!Number.isFinite(height)) return false; object.transform.position.y = height; if (!PLANAR_TYPES.has(object.type)) state.lastHeights[object.type] = object.transform.position.y; return true; }
@@ -434,7 +444,7 @@
   function makeTargetSurfaceField(object) { const label = element("label", "object-field object-select-field wide"); label.append(element("span", "object-field-label", "Direction")); const select = document.createElement("select"); select.setAttribute("aria-label", `${object.name}: Direction`); const target = effectiveLookAt(object); const manual = document.createElement("option"); manual.value = ""; manual.textContent = `Point (${formatValue(target.x)}, ${formatValue(target.y)}, ${formatValue(target.z)})`; select.append(manual); state.objects.filter(item => item.type === "surface").forEach(surface => { const option = document.createElement("option"); option.value = surface.pluginId; option.textContent = surface.name; select.append(option); }); const committedTarget = () => targetSurface(object)?.pluginId || ""; select.value = committedTarget(); const showLabels = () => { state.showSurfaceLabels = true; drawScene(); }; select.addEventListener("focus", showLabels); select.addEventListener("pointerdown", showLabels); select.addEventListener("input", () => previewTargetSurface(select.value)); select.addEventListener("change", () => { saveHistory(); const currentTarget = effectiveLookAt(object); if (select.value) { object.targetSurfacePluginId = select.value; object.lookAt = effectiveLookAt(object); } else { delete object.targetSurfacePluginId; object.lookAt = currentTarget; } previewTargetSurface(select.value); persist(); render(); void commitProjectorBinding(object); }); select.addEventListener("blur", () => { state.showSurfaceLabels = false; previewTargetSurface(committedTarget()); }); label.append(select); return label; }
   function makeMediaModeControl(object) { const control = element("div", "media-mode"); [["resolution", "Resolution"], ["ppi", "PPI"], ["pitch", "Pixel pitch"]].forEach(([mode, label]) => { const button = element("button", object.media.inputMode === mode ? "active" : "", label); button.type = "button"; button.addEventListener("click", () => { if (object.media.inputMode === mode) return; saveHistory(); setScreenInputMode(object, mode); persist(); render(); }); control.append(button); }); return control; }
   function makePropertySection(object, definition) { const section = element("section", "active-property-section"); section.append(element("h3", "active-property-title", definition.title)); const grid = element("div", "active-property-grid"); if (definition.mediaMode) grid.append(makeMediaModeControl(object)); if (definition.targetSurface) grid.append(makeTargetSurfaceField(object)); else definition.fields.forEach(field => grid.append(makeObjectField(object, field))); section.append(grid); return section; }
-  function objectSyncStatus(object) { if (state.sync.errors?.[object.pluginId]) return "error"; const record = state.sync.objects?.[object.pluginId]; return record?.lastExported === canonical(objectPayload(object)) ? "synced" : "changed"; }
+  function objectSyncStatus(object) { const record = state.sync.objects?.[object.pluginId]; return record?.lastExported === canonical(objectPayload(object)) ? "synced" : "changed"; }
   function renderObjectGroups() { objectGroups.replaceChildren(); document.querySelector("#object-count").textContent = String(state.objects.length); GROUP_ORDER.forEach(type => { const config = typeConfig[type]; const objects = state.objects.filter(object => object.type === type); if (!objects.length) return; const group = element("section", "object-group"); const heading = element("div", "object-group-heading"); const swatch = element("span", "group-swatch"); swatch.style.background = config.color; heading.append(swatch, document.createTextNode(config.group), element("b", "group-count", String(objects.length))); group.append(heading); const list = element("div", "object-list"); objects.forEach(object => { const entry = element("button", `object-entry${state.selectedIds.has(object.id) || object.id === state.selectedId ? " selected" : ""}`); entry.type = "button"; entry.setAttribute("aria-label", `Select ${object.name}`); entry.append(element("i", `object-status ${objectSyncStatus(object)}`), element("i", `object-icon icon-${object.type.toLowerCase()}`), element("span", "object-name", object.name)); entry.addEventListener("click", event => { if (event.shiftKey || event.ctrlKey || event.metaKey) toggleObjectSelection(object); else selectObject(object); persist(); render(); }); entry.addEventListener("contextmenu", event => { event.preventDefault(); openCanvasContextMenu(event, object); }); list.append(entry); }); group.append(list); objectGroups.append(group); }); }
   async function commitObjectName(object, input) {
     const nextName = input.value.trim();
@@ -453,18 +463,17 @@
       record.name = object.name;
       record.payload = objectPayload(object);
       record.lastExported = canonical(record.payload);
-      delete state.sync.errors[object.pluginId];
       persist(false); render();
     } catch (error) {
       object.name = previousName;
-      state.sync.errors[object.pluginId] = `Rename failed: ${error.message || error}`;
+      plannerLog("error", "Rename", `Rename failed: ${error.message || error}`, { objectName: object.name, phase: "rename" });
       persist(false); render();
       document.querySelector("#adapter-status").textContent = `Rename failed · ${error.message || error}`;
     }
   }
   function renderActiveInspector() { activeFieldRefs = new Map(); activeObjectStrip.replaceChildren(); const object = selectedObject(); if (!object) { activeObjectStrip.append(element("div", "active-empty", "No object selected")); queueFieldFocus(null, null); return; } const identity = element("div", "active-identity"); identity.append(element("span", "", typeConfig[object.type]?.label || "Designer Object")); const name = document.createElement("strong"); name.className = "editable-object-name"; name.textContent = object.name; name.title = "Click to rename"; name.addEventListener("click", () => { const input = document.createElement("input"); input.className = "object-name-input"; input.value = object.name; input.select?.(); input.addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); commitObjectName(object, input); } if (event.key === "Escape") render(); }); input.addEventListener("blur", () => commitObjectName(object, input)); identity.replaceChildren(identity.children[0], input); input.focus?.(); input.select?.(); }); identity.append(name); activeObjectStrip.append(identity); fieldSections(object).forEach(definition => activeObjectStrip.append(makePropertySection(object, definition))); const focusPath = pendingFocusPath; if (focusPath) setTimeout(() => focusActiveField(focusPath), 0); }
   function refreshActiveValues() { const object = selectedObject(); if (!object) return; document.querySelectorAll("#active-object-strip input[data-field]").forEach(input => { if (document.activeElement === input) return; const step = finite(input.dataset.step, .1); input.value = formatValue(getFieldValue(object, input.dataset.field), step); }); }
-  function renderStatus() { const statuses = state.objects.map(objectSyncStatus); const synced = statuses.filter(status => status === "synced").length; const changed = statuses.filter(status => status === "changed").length; const errorMessages = Object.values(state.sync.errors || {}).map(message => String(message)); const errors = errorMessages.length; const errorChip = document.querySelector("#status-error-chip"); document.querySelector("#status-synced").textContent = synced; document.querySelector("#status-changed").textContent = changed; document.querySelector("#status-errors").textContent = errors; errorChip.hidden = errors === 0; errorChip.textContent = errors ? "!" : ""; errorChip.title = errorMessages.join("\n"); }
+  function renderStatus() { const statuses = state.objects.map(objectSyncStatus); document.querySelector("#status-synced").textContent = statuses.filter(status => status === "synced").length; document.querySelector("#status-changed").textContent = statuses.filter(status => status === "changed").length; }
   function render() { const focusedField = document.activeElement?.dataset?.field; const focusedPluginId = document.activeElement?.dataset?.pluginId; const object = selectedObject(); if (!pendingFocusPath && focusedField && object?.pluginId === focusedPluginId) queueFieldFocus(object, focusedField); syncStaticInputs(); drawScene(); renderObjectGroups(); renderActiveInspector(); renderStatus(); }
   function updateProjectorTargetPlacement(point) {
     if (!projectorTargetPlacement || !point) return false;
@@ -535,7 +544,7 @@
     const deleteFromDeviceList = Boolean(options.deleteFromDeviceList);
     const adapter = record?.designerId && deleteFromDesigner ? getAdapter() : null;
     if (record?.designerId && deleteFromDesigner) {
-      if (!adapter || record.owned && !adapter.deleteManagedObjects || !record.owned && !adapter.deleteDesignerObjects) { state.sync.errors[removed.pluginId] = "Designer delete API is unavailable"; persist(false); renderObjectGroups(); return; }
+      if (!adapter || record.owned && !adapter.deleteManagedObjects || !record.owned && !adapter.deleteDesignerObjects) { plannerLog("error", "Designer delete", "Designer delete API is unavailable", { objectName: removed.name, phase: "delete" }); persist(false); renderObjectGroups(); return; }
     }
     logPlannerAction("delete", removed, { phase: "requested", owned: Boolean(record?.owned), deleteFromDesigner, deleteFromDeviceList });
     const detachedTargets = new Map(state.objects.filter(item => item.type === "projector" && item.targetSurfacePluginId === removed.pluginId).map(projector => [projector.id, { target: effectiveLookAt(projector), surfacePluginId: projector.targetSurfacePluginId }]));
@@ -557,17 +566,15 @@
       if (!result?.deleted?.map(String).includes(String(record.designerId))) throw new Error(result?.skipped?.join("; ") || "Designer did not confirm deletion");
       const deviceListFailed = deleteFromDeviceList && result?.resourceDeleteFailed?.map(String).includes(String(record.designerId));
       const deviceListError = deviceListFailed ? result?.skipped?.find(message => String(message).includes(String(record.designerId))) || "Designer did not remove the Device list resource" : null;
-      const deviceListScope = `device-list:${record.path || record.designerId}`;
       state.sync.deleted[removed.pluginId] = { pluginId: removed.pluginId, designerId: record.designerId, path: record.path, type: removed.type, name: removed.name, deletedAt: new Date().toISOString(), resourcesDeleted: result.resourcesDeleted || [], ...(deviceListError ? { deviceListError } : {}) };
-      if (deviceListError) setActiveError(deviceListScope, `Device list cleanup failed: ${deviceListError}`, { subsystem: removed.type === "dmxLight" ? "DMX Light" : "Designer delete", objectName: removed.name, phase: "device-list" });
-      else if (deleteFromDeviceList) resolveActiveError(deviceListScope);
+      if (deviceListError) plannerLog("error", removed.type === "dmxLight" ? "DMX Light" : "Designer delete", `Device list cleanup failed: ${deviceListError}`, { objectName: removed.name, phase: "device-list" });
       delete state.sync.objects[removed.pluginId]; persist(false); renderStatus();
       if (deviceListError) document.querySelector("#adapter-status").textContent = `Device list cleanup failed · ${deviceListError}`;
     } catch (error) {
       state.objects.splice(Math.min(index, state.objects.length), 0, removed);
       detachedTargets.forEach((binding, projectorId) => { const projector = state.objects.find(item => item.id === projectorId); if (projector) { projector.lookAt = binding.target; projector.targetSurfacePluginId = binding.surfacePluginId; } });
       selectObject(removed);
-      state.sync.errors[removed.pluginId] = `Delete failed: ${error.message || error}`; persist(false); renderObjectGroups();
+      plannerLog("error", "Designer delete", `Delete failed: ${error.message || error}`, { objectName: removed.name, phase: "delete" }); persist(false); renderObjectGroups();
     } finally { pendingDesignerDeletes.delete(String(record.designerId)); }
   }
 
@@ -647,12 +654,11 @@
         const record = persistCreatedRecord(state.sync.objects || {}, object, payload, result, { owned: true });
         try { validateReadback(payload, result); record.readbackValid = true; }
         catch (validationError) { record.readbackValid = false; record.lastExported = null; throw validationError; }
-        delete state.sync.errors[object.pluginId];
         state.sync.lastSyncAt = new Date().toISOString();
         persist(false); render();
         return record;
       } catch (error) {
-        state.sync.errors[object.pluginId] = `Create failed: ${error.message || error}`;
+        plannerLog("error", "Designer create", `Create failed: ${error.message || error}`, { objectName: object.name, phase: "create" });
         persist(false); renderObjectGroups(); renderStatus();
         document.querySelector("#adapter-status").textContent = `Create failed · ${error.message || error}`;
         return null;
@@ -728,11 +734,11 @@
         if (!isLatest()) return null;
         delete object.manualLookAtPendingUnbind;
         record.payload = objectPayload(object); record.lastExported = canonical(record.payload);
-        resolveActiveError(`projector-binding:${object.pluginId}`); persist(false);
+        persist(false);
         queueProjectorProjection(object, "surface-binding");
         return result;
       } catch (error) {
-        if (isLatest()) setActiveError(`projector-binding:${object.pluginId}`, `Surface binding failed: ${error.message || error}`, { subsystem: "Projector", objectName: object.name, phase: "surface-binding" });
+        if (isLatest()) plannerLog("error", "Projector", `Surface binding failed: ${error.message || error}`, { objectName: object.name, phase: "surface-binding" });
         return null;
       }
     });
@@ -801,10 +807,10 @@
         recalculateSurfaceProjectors(object);
         record.payload = objectPayload(object); record.lastExported = canonical(record.payload); record.readbackValid = true;
         if (result?.path) record.path = result.path;
-        delete state.sync.errors[object.pluginId]; persist(false); renderStatus(); return result;
+        persist(false); renderStatus(); return result;
       } catch (error) {
         if (isLatest()) {
-          state.sync.errors[object.pluginId] = `Surface update failed: ${error.message || error}`; persist(false); renderStatus();
+          plannerLog("error", "Surface", `Surface update failed: ${error.message || error}`, { objectName: object.name, phase: "surface-update" }); persist(false); renderStatus();
           document.querySelector("#adapter-status").textContent = `Surface update failed · ${error.message || error}`;
         }
         return null;
@@ -845,10 +851,8 @@
       }
     }
     for (const item of diff.update) { const previousRecord = records[item.object.pluginId] || {}; try { logPlannerAction("update", item.object, { phase: "designer-sync", designerId: item.designerId, path: item.designerPath || previousRecord.path }); const result = await diff.adapter.updateObject(item.designerId, item.changed, item.designerPath || previousRecord.path, item.object.type); validateReadback(item.payload, result); if (result?.name) { item.object.name = result.name; item.payload.name = result.name; item.serialized = canonical(item.payload); } item.designerPath = result?.path || item.designerPath; } catch (error) { throw new Error(`Update "${item.object.name}": ${error.message || error}`); } const nextPath = item.designerPath || previousRecord.path; records[item.object.pluginId] = { ...previousRecord, pluginId: item.object.pluginId, designerId: item.designerId, path: nextPath, ownedPaths: renamedOwnedPaths(previousRecord, nextPath), type: item.object.type, name: item.object.name, lastExported: item.serialized, payload: item.payload }; state.sync.objects = records; persist(false); }
-    state.sync.lastSyncAt = new Date().toISOString(); delete state.sync.errors.live; persist(false);
+    state.sync.lastSyncAt = new Date().toISOString(); persist(false);
   }
-  function diagnosticsLogs() { const adapter = getAdapter(); return [...plannerLogEntries, ...(adapter?.getOperationLogs?.() || []), ...(adapter?.getLiveLogs?.() || [])].sort((left, right) => String(left.at || "").localeCompare(String(right.at || ""))); }
-  function renderLiveLog() { const output = document.querySelector("#live-log-output"); const logs = diagnosticsLogs(); if (output) output.textContent = logs.length ? logs.map(entry => JSON.stringify(entry)).join("\n") : "No diagnostics events yet."; }
   async function copyText(text) { try { if (globalThis.navigator?.clipboard?.writeText) { await globalThis.navigator.clipboard.writeText(text); return; } } catch {} const input = document.createElement("textarea"); input.value = text; input.style.position = "fixed"; input.style.opacity = "0"; document.body.appendChild(input); input.focus(); input.select(); const copied = document.execCommand("copy"); input.remove(); if (!copied) throw new Error("Clipboard is unavailable"); }
   async function copyDiagnostics() { const button = document.querySelector("#diagnostics-export-button"); try { await copyText(JSON.stringify(diagnosticsLogs(), null, 2)); if (button) button.textContent = "Copied"; } catch (error) { if (button) button.textContent = "Copy failed"; console.error("Diagnostics copy failed", error); } finally { setTimeout(() => { if (button) button.textContent = "Copy diagnostics"; }, 1200); } }
   function liveStatus(update) {
@@ -874,7 +878,7 @@
     }
     if (update.status !== "open" && (update.status !== "error" || !socketOpen)) persist(false);
     renderStatus();
-    renderLiveLog();
+    renderDiagnostics();
   }
   function applyLiveValue(change) {
     const object = state.objects.find(item => item.pluginId === change.pluginId); if (!object) return;
@@ -923,7 +927,7 @@
       const adapter = getAdapter();
       if (!adapter) return;
       try { await importDesignerScene(adapter, { preserveLocal: true }); document.querySelector("#adapter-status").textContent = "LIVE: Designer object list updated"; }
-      catch (error) { state.sync.errors.live = error.message || String(error); persist(false); liveStatus({ status: "error", detail: error.message || String(error) }); }
+      catch (error) { plannerLog("error", "LIVE", error.message || String(error), { phase: "scene-import" }); persist(false); liveStatus({ status: "error", detail: error.message || String(error) }); }
     }, 120);
   }
   async function runLiveSync() {
@@ -936,7 +940,7 @@
       if (sent === false) throw new Error("Live Update WebSocket is not open");
       document.querySelector("#adapter-status").textContent = "LIVE: changes sent over WebSocket";
     } catch (error) {
-      state.sync.errors.live = error.message || String(error); persist(false); liveStatus({ status: "error", detail: error.message || String(error) });
+      plannerLog("error", "LIVE", error.message || String(error), { phase: "send" }); persist(false); liveStatus({ status: "error", detail: error.message || String(error) });
     } finally {
       liveSyncInFlight = false;
       if (liveSyncQueued) scheduleLiveSync();
@@ -1012,7 +1016,7 @@
   }
   async function copySceneJson() { const output = { version: VERSION, units: "metres", coordinateSystem: "Designer world XYZ; top view X/Z; Stage centred at world origin", stage: state.stage, objects: state.objects.map(({ id, ...object }) => object.type === "projector" ? { ...object, lookAt: effectiveLookAt(object) } : object) }; const button = document.querySelector("#json-button"); try { await copyText(JSON.stringify(output, null, 2)); if (button) button.textContent = "Copied"; } catch (error) { if (button) button.textContent = "Copy failed"; console.error("Scene JSON copy failed", error); } finally { setTimeout(() => { if (button) button.textContent = "Copy JSON"; }, 1200); } }
 
-  document.querySelector("#json-button")?.addEventListener("click", copySceneJson); document.querySelector("#live-log-button")?.addEventListener("click", () => { renderLiveLog(); document.querySelector("#live-log-panel").open = true; }); document.querySelector("#diagnostics-export-button")?.addEventListener("click", copyDiagnostics);
+  document.querySelector("#json-button")?.addEventListener("click", copySceneJson); document.querySelector("#diagnostics-export-button")?.addEventListener("click", copyDiagnostics);
   document.querySelector("#undo-button")?.addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button")?.addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in")?.addEventListener("click", () => { state.zoom = clamp(state.zoom + .1, ZOOM_MIN, ZOOM_MAX); drawScene(); }); document.querySelector("#zoom-out")?.addEventListener("click", () => { state.zoom = clamp(state.zoom - .1, ZOOM_MIN, ZOOM_MAX); drawScene(); });
   const resetView = () => { state.zoom = 1; state.pan = { x: 0, y: 0 }; drawScene(); };
   document.querySelector("#zoom-reset").addEventListener("click", resetView); document.querySelector("#zoom-reset").addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); resetView(); } });
@@ -1144,6 +1148,7 @@
   }
   async function runStartupGate() {
     const adapter = getAdapter();
+    attachDiagnostics(adapter);
     if (STANDALONE_PREVIEW) { state.liveEnabled = false; appReady = true; adapterStatus.textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; persist(false); renderStatus(); return { standalone: true }; }
     if (!adapter) return finishStartup(null);
     const transport = await adapter.activeTransportStatus?.() || { known: false, running: false, transports: [] };
@@ -1164,5 +1169,5 @@
     if (type === "camera" && paths.filter(path => path.startsWith("objects/camera/")).length < 2) throw new Error("Designer ownership metadata is incomplete for camera");
     return paths;
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, commitProjectorBinding, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, projectorAutoThrowRatio, projectorRotationZValue, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, cancelProjectorWork, queueProjectorProjection, flushProjectorProjection, scheduleProjectorGeometry, handleProjectorLookDistance, handleProjectorFieldOfView, handleProjectorThrowRatio, finalizeProjectorRotation, applyLiveValue, projectorPending, plannerLog, setActiveError, resolveActiveError, diagnosticsLogs, plannerLogEntries, runStartupGate, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, commitProjectorBinding, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, projectorAutoThrowRatio, projectorRotationZValue, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, cancelProjectorWork, queueProjectorProjection, flushProjectorProjection, scheduleProjectorGeometry, handleProjectorLookDistance, handleProjectorFieldOfView, handleProjectorThrowRatio, finalizeProjectorRotation, applyLiveValue, projectorPending, plannerLog, diagnosticsLogs, plannerLogEntries, attachDiagnostics, copyDiagnostics, runStartupGate, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
 })();
