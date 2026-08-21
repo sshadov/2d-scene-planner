@@ -20,7 +20,6 @@
               <label>Depth <span class="input-shell"><input id="scene-depth" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
             </div>
             <div class="panel-actions">
-              <label class="live-toggle" title="Official WebSocket Live Update"><span>LIVE</span><input id="live-toggle" type="checkbox" /><i aria-hidden="true"></i></label>
               <span class="live-status" id="adapter-status">LIVE off</span>
               <button class="text-button" id="json-button" type="button">Copy JSON</button>
               <button class="text-button live-log-button" id="live-log-button" type="button">LIVE log</button>
@@ -53,6 +52,14 @@
         </section>
       </section>
     </main>
+
+    <section class="startup-warning" id="startup-warning" role="dialog" aria-modal="true" aria-labelledby="startup-warning-title" hidden>
+      <div class="startup-warning-dialog">
+        <h2 id="startup-warning-title">Transport safety check</h2>
+        <p>Designer transport is running or could not be verified. Importing and LIVE updates may change the active session.</p>
+        <div class="startup-warning-actions"><button class="button danger" id="startup-accept" type="button">I accept responsibility</button><button class="button secondary" id="startup-close" type="button">Close</button></div>
+      </div>
+    </section>
 
     <details class="diagnostics-panel" id="diagnostics-panel" open>
       <summary>Diagnostics</summary>

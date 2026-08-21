@@ -58,6 +58,12 @@ h2 { font-size: 13px; }
 .live-toggle input:checked + i { border-color: var(--cyan); }
 .live-toggle input:checked + i::after { transform: translateX(14px); background: var(--cyan); }
 .live-toggle:has(input:disabled) { cursor: not-allowed; opacity: .58; }
+.startup-warning { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgba(4, 8, 12, .78); }
+.startup-warning[hidden] { display: none; }
+.startup-warning-dialog { width: min(440px, 100%); border: 1px solid #8b4944; border-radius: 4px; background: #17202a; box-shadow: 0 18px 48px rgba(0, 0, 0, .55); padding: 18px; }
+.startup-warning-dialog h2 { margin: 0 0 9px; color: #ffd4d0; font-size: 15px; }
+.startup-warning-dialog p { margin: 0; color: #c7d1db; font-size: 12px; line-height: 1.45; }
+.startup-warning-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
 .environment-bar { min-width: 0; padding: 0 16px 0 18px; border-bottom: 1px solid var(--line); background: #151d25; display: flex; align-items: center; gap: 18px; overflow-x: auto; }
 .environment-group { min-width: max-content; display: flex; align-items: center; gap: 7px; }
@@ -210,7 +216,7 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .scene-dimensions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .scene-dimensions label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
 .scene-dimensions .input-shell input { width: 100%; }
-.panel-actions { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; margin-top: 10px; }
+.panel-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; margin-top: 10px; }
 .panel-actions .live-toggle { margin-right: 0; }
 .live-status { min-width: 0; max-width: 118px; overflow: hidden; color: #8493a1; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .object-list-panel { order: 3; grid-row: 3; min-height: 0; display: grid; grid-template-rows: 36px minmax(0, 1fr); border-top: 1px solid #3a4652; }

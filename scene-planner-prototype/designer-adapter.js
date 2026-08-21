@@ -11,6 +11,7 @@
   const API_ORIGIN = window.DISGUISE_API_ORIGIN || directorOrigin();
   const EXECUTE_PATH = "/api/session/python/execute";
   const STATUS_PATH = "/api/session/status/session";
+  const ACTIVE_TRANSPORT_PATH = "/api/session/transport/activetransport";
   const LIVE_PATH = "/api/session/liveupdate";
   const LIVE_URL = `${API_ORIGIN.replace(/^http/i, "ws")}${LIVE_PATH}`;
   const typeCollections = { screen: "ledScreens", dmxScreen: "dmxScreens", surface: "surfaces", dmxLight: "dmxLights", camera: "cameras", projector: "projectors", designer: "displays" };
@@ -116,6 +117,22 @@
     }
   }
   async function sessionStatus() { const response = await fetchWithTimeout(`${API_ORIGIN}${STATUS_PATH}`, {}, 2500); if (!response.ok) throw new Error(`Designer session status: HTTP ${response.status}`); return response.json(); }
+  async function activeTransportStatus() {
+    try {
+      const response = await fetchWithTimeout(`${API_ORIGIN}${ACTIVE_TRANSPORT_PATH}`, {}, 2500);
+      if (!response.ok) throw new Error(`Designer active transport: HTTP ${response.status}`);
+      const body = await response.json();
+      const values = Array.isArray(body) ? body : Array.isArray(body?.transports) ? body.transports : [body?.activeTransport ?? body?.transport ?? body?.status ?? body?.name];
+      const transports = values.map(value => typeof value === "string" ? value : value?.name ?? value?.status).filter(value => typeof value === "string" && value.length);
+      if (!transports.length) throw new Error("Designer active transport response has no transport state");
+      return { known: true, running: transports.some(value => ["Play", "PlaySection", "Loop"].includes(value)), transports };
+    } catch (error) {
+      operationLog("error", { action: "active-transport", message: error.message || String(error) });
+      console.error("[ScenePlanner API] active transport status", error);
+      return { known: false, running: false, transports: [] };
+    }
+  }
+  function saveAllResources() { return execute('import json\nsaved = resourceManager.saveAll()\nreturn json.dumps({"saved": int(saved)})', { action: "save-all-resources", type: "stage", path: "resourceManager" }); }
   function environmentScript(environment) {
     return `import json
 stage = state.stage
@@ -329,12 +346,14 @@ def stage_name_taken(collection, name):
             pass
     return False
 
-def allocate_name(collection, base_name):
+def allocate_name(collection, folder, base_name):
     safe = re.sub(r'[\\\\/:*?"<>|]', "-", str(base_name)).strip() or "object"
+    match = re.match(r"^(.*?)(?:\\s+(\\d+))$", safe)
+    stem = match.group(1).strip() if match else safe
     resolved = safe
-    suffix = 2
-    while stage_name_taken(collection, resolved):
-        resolved = safe + " " + str(suffix)
+    suffix = int(match.group(2)) + 1 if match else 2
+    while stage_name_taken(collection, resolved) or resource_path_taken(folder + "/" + resolved.lower() + ".apx"):
+        resolved = stem + " " + str(suffix)
         suffix += 1
     return resolved
 
@@ -342,6 +361,8 @@ def allocate_path(folder, base_name, expected_class):
     expected_class_name = expected_class if isinstance(expected_class, str) else expected_class.__name__`)
       .replace("actual is not None and actual != expected_class:", "actual is not None and actual != expected_class_name:")
       .replace("actual, expected_class))", "actual, expected_class_name))")
+      .replace('    resolved = safe\n    candidate = folder + "/" + resolved.lower() + ".apx"\n    suffix = 2', '    match = re.match(r"^(.*?)(?:\\s+(\\d+))$", safe)\n    stem = match.group(1).strip() if match else safe\n    resolved = safe\n    candidate = folder + "/" + resolved.lower() + ".apx"\n    suffix = int(match.group(2)) + 1 if match else 2')
+      .replace('        resolved = safe + " " + str(suffix)', '        resolved = stem + " " + str(suffix)')
       .replace(`    folder = "objects/${typeResourceFolders[payload.type]}"
     resolved_name, object_path = allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type)
     created_paths = []
@@ -350,10 +371,10 @@ def allocate_path(folder, base_name, expected_class):
     created_paths = []
     obj = None
     collection = getattr(stage, ${quote(typeCollections[payload.type])})
-    resolved_name = allocate_name(collection, payload.get("name") or payload.get("pluginId"))
+    resolved_name = allocate_name(collection, folder, payload.get("name") or payload.get("pluginId"))
     resolved_name, object_path = allocate_path(folder, resolved_name, expected_type)`)
-      .replace('    resolved_name, object_path = allocate_path("objects/camera", payload.get("name") or payload.get("pluginId"), "Camera")', '    resolved_name = allocate_name(collection, payload.get("name") or payload.get("pluginId"))\n    resolved_name, object_path = allocate_path("objects/camera", resolved_name, "Camera")')
-      .replace('    resolved_name, object_path = allocate_path("objects/projector", payload.get("name") or payload.get("pluginId"), "Projector")', '    resolved_name = allocate_name(collection, payload.get("name") or payload.get("pluginId"))\n    resolved_name, object_path = allocate_path("objects/projector", resolved_name, "Projector")')
+      .replace('    resolved_name, object_path = allocate_path("objects/camera", payload.get("name") or payload.get("pluginId"), "Camera")', '    resolved_name = allocate_name(collection, "objects/camera", payload.get("name") or payload.get("pluginId"))\n    resolved_name, object_path = allocate_path("objects/camera", resolved_name, "Camera")')
+      .replace('    resolved_name, object_path = allocate_path("objects/projector", payload.get("name") or payload.get("pluginId"), "Projector")', '    resolved_name = allocate_name(collection, "objects/projector", payload.get("name") or payload.get("pluginId"))\n    resolved_name, object_path = allocate_path("objects/projector", resolved_name, "Projector")')
       .replace(`def assert_healthy(resource, label):
     for flag in ["isBad", "isIncomplete", "isInError"]:
         try:
@@ -1386,6 +1407,8 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
   window.disguiseSceneAdapter = {
     capabilities: { liveUpdate: true, liveTransport: "websocket", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API + Live Update WebSocket", apiOrigin: API_ORIGIN, liveUrl: LIVE_URL, director: API_ORIGIN },
     sessionStatus,
+    activeTransportStatus,
+    saveAllResources,
     syncEnvironment: environment => execute(environmentScript(environment), { action: "sync-environment", type: "stage", path: "state.stage" }),
     inspectScene: () => execute(inspectScript(), { action: "inspect-scene", type: "stage", path: "state.stage" }),
     createObject: payload => execute(createScript(payload), { action: "create", type: payload.type, pluginId: payload.pluginId, path: resourcePath(payload) }),

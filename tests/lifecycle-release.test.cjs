@@ -10,6 +10,7 @@ const context = {
   console,
   location: { hostname: "127.0.0.1", port: "", search: "", origin: "http://127.0.0.1" },
   crypto: { randomUUID: () => "test-id" },
+  AbortController,
   setTimeout,
   clearTimeout
 };
@@ -186,6 +187,12 @@ assert.match(adapterSource, /getOperationLogs/);
 assert.match(adapterSource, /action: meta\.action/);
 assert.match(adapterSource, /stage_name_taken/);
 assert.match(adapterSource, /resolved_name = allocate_name/);
+assert.match(adapterSource, /activeTransportStatus/);
+assert.match(adapterSource, /saveAllResources/);
+assert.match(adapterSource, /\/api\/session\/transport\/activetransport/);
+assert.match(adapterSource, /resourceManager\.saveAll\(\)/);
+assert.match(adapterSource, /match = re\.match/);
+assert.match(adapterSource, /while stage_name_taken\(collection, resolved\) or resource_path_taken/);
 
 function runFixtureGroupDelete({ ownedPaths, directProjectionPaths = [], inspectionError = null }) {
   const cleanup = scripts.deleteManagedScript([{
@@ -300,4 +307,22 @@ assertFixtureGroupPhysicalCleanupBlocked(runFixtureGroupDelete({
   inspectionError: "inspection unavailable"
 }), "inbound reference inspection");
 
-console.log("lifecycle release contract test: ok");
+async function verifyTransportAndSaveAdapter() {
+  const adapter = context.disguiseSceneAdapter;
+  for (const [transport, running] of [["Stop", false], ["Play", true], ["PlaySection", true], ["Loop", true]]) {
+    context.fetch = async url => ({ ok: true, status: 200, json: async () => ({ activeTransport: transport }), text: async () => "" });
+    assert.deepEqual(JSON.parse(JSON.stringify(await adapter.activeTransportStatus())), { known: true, running, transports: [transport] });
+  }
+  context.console = { error() {}, info() {} };
+  context.fetch = async url => ({ ok: true, status: 200, json: async () => ({}), text: async () => "" });
+  assert.deepEqual(JSON.parse(JSON.stringify(await adapter.activeTransportStatus())), { known: false, running: false, transports: [] });
+  context.fetch = async () => { throw new Error("transport unavailable"); };
+  assert.deepEqual(JSON.parse(JSON.stringify(await adapter.activeTransportStatus())), { known: false, running: false, transports: [] });
+  let saveRequest;
+  context.fetch = async (url, options) => { saveRequest = { url, options }; return { ok: true, status: 200, text: async () => JSON.stringify({ returnValue: JSON.stringify({ saved: 3 }) }) }; };
+  assert.deepEqual(JSON.parse(JSON.stringify(await adapter.saveAllResources())), { saved: 3 });
+  assert.match(saveRequest.url, /\/api\/session\/python\/execute$/);
+  assert.match(JSON.parse(saveRequest.options.body).script, /saved = resourceManager\.saveAll\(\)/);
+}
+
+verifyTransportAndSaveAdapter().then(() => console.log("lifecycle release contract test: ok")).catch(error => { console.error(error); process.exitCode = 1; });

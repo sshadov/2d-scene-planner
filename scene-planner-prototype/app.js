@@ -143,6 +143,7 @@
   }
   function loadPersisted() {
     try {
+      if (getAdapter()) return false;
       // Legacy v2-v10 saves may contain `room`; v11 persists only Stage.
       const keys = [STORAGE_KEY, "disguise-scene-generator-state-v10", "disguise-scene-generator-state-v9", "disguise-scene-generator-state-v8", "disguise-scene-generator-state-v7", "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
       const saved = JSON.parse(keys.map(key => localStorage.getItem(key)).find(Boolean) || "null"); if (!saved) return false;
@@ -983,14 +984,12 @@
     const inspection = await adapter.inspectScene();
     adapter.configureLiveScene?.(inspection.stageId);
     if (inspection.stageFootprint) { state.stage.width = Math.max(2, finite(inspection.stageFootprint.width, state.stage.width)); state.stage.depth = Math.max(2, finite(inspection.stageFootprint.depth, state.stage.depth)); }
-    const deletedRecords = Object.values(state.sync.deleted || {});
-    const imported = (inspection.objects || []).filter(item => { const designerId = String(item.id || item.uid || ""); const path = String(item.path || ""); return !pendingDesignerDeletes.has(designerId) && !deletedRecords.some(record => String(record.designerId || "") === designerId || String(record.path || "") === path); }).map(importedObject);
+    const imported = (inspection.objects || []).map(importedObject);
     const importedSurfaces = imported.filter(object => object.type === "surface");
     imported.filter(object => object.type === "projector").forEach(projector => { const screen = projector.designer?.screens?.[0]; if (!screen) { delete projector.targetSurfacePluginId; return; } const surface = importedSurfaces.find(candidate => String(candidate.designer?.designerId || "") === String(screen.designerId || screen.id || screen.uid || "") || String(candidate.designer?.path || "") === String(screen.path || "")); if (surface) projector.targetSurfacePluginId = surface.pluginId; else delete projector.targetSurfacePluginId; });
     const importedPluginIds = new Set(imported.map(object => object.pluginId));
-    const localOnly = options.preserveLocal ? state.objects.filter(object => !importedPluginIds.has(object.pluginId)) : [];
-    // Designer is authoritative at startup. Local storage supplies mappings and UI preferences only.
-    state.objects = [...imported, ...localOnly];
+    const pendingCreates = state.objects.filter(object => !importedPluginIds.has(object.pluginId) && pendingDesignerCreates.has(object.pluginId));
+    state.objects = [...imported, ...pendingCreates];
     const selected = state.objects.find(object => object.pluginId === previousSelectedPluginId) || state.objects[0] || null;
     state.selectedId = selected?.id ?? null;
     const selectedIds = [...previousSelectedPluginIds].map(pluginId => state.objects.find(object => object.pluginId === pluginId)?.id).filter(Boolean);
@@ -1000,12 +999,12 @@
     // Designer is authoritative at startup, including whether a managed Stage
     // cube exists. Local storage keeps mappings and UI preferences only.
     const importedRecords = Object.fromEntries(imported.map(object => { const previous = state.sync.objects?.[object.pluginId]; const sameResource = previous && (String(previous.designerId || "") === String(object.designer?.designerId || "") || String(previous.path || "") === String(object.designer?.path || "")); const hasOwnership = Array.isArray(previous?.ownedPaths) && previous.ownedPaths.length > 0; const owned = Boolean(sameResource && previous.owned && hasOwnership); return [object.pluginId, { pluginId: object.pluginId, designerId: object.designer?.designerId, path: object.designer?.path, type: object.type, name: object.name, lastExported: canonical(objectPayload(object)), payload: objectPayload(object), imported: true, owned, ownedPaths: owned ? previous.ownedPaths : [] }]; }));
-    state.sync.objects = { ...(options.preserveLocal ? state.sync.objects : {}), ...importedRecords };
+    state.sync.objects = importedRecords;
     state.sync.environment = environmentKey(); state.sync.lastSyncAt = new Date().toISOString(); persist(false); render();
   }
   async function copySceneJson() { const output = { version: VERSION, units: "metres", coordinateSystem: "Designer world XYZ; top view X/Z; Stage centred at world origin", stage: state.stage, objects: state.objects.map(({ id, ...object }) => object.type === "projector" ? { ...object, lookAt: effectiveLookAt(object) } : object) }; const button = document.querySelector("#json-button"); try { await copyText(JSON.stringify(output, null, 2)); if (button) button.textContent = "Copied"; } catch (error) { if (button) button.textContent = "Copy failed"; console.error("Scene JSON copy failed", error); } finally { setTimeout(() => { if (button) button.textContent = "Copy JSON"; }, 1200); } }
 
-  document.querySelector("#json-button")?.addEventListener("click", copySceneJson); document.querySelector("#live-log-button")?.addEventListener("click", () => { renderLiveLog(); document.querySelector("#live-log-panel").open = true; }); document.querySelector("#diagnostics-export-button")?.addEventListener("click", copyDiagnostics); document.querySelector("#live-toggle")?.addEventListener("change", async event => { const toggle = event.target; if (STANDALONE_PREVIEW) { toggle.checked = false; toggle.disabled = true; document.querySelector("#adapter-status").textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; return; } if (!toggle.checked) { stopLive(); document.querySelector("#adapter-status").textContent = "LIVE off"; return; } toggle.disabled = true; try { await startLive(); } catch (error) { state.liveEnabled = false; toggle.checked = false; persist(false); document.querySelector("#adapter-status").textContent = `LIVE unavailable · ${error.message || error}`; } finally { toggle.disabled = false; renderStatus(); } });
+  document.querySelector("#json-button")?.addEventListener("click", copySceneJson); document.querySelector("#live-log-button")?.addEventListener("click", () => { renderLiveLog(); document.querySelector("#live-log-panel").open = true; }); document.querySelector("#diagnostics-export-button")?.addEventListener("click", copyDiagnostics);
   document.querySelector("#undo-button")?.addEventListener("click", () => applyHistory("undo")); document.querySelector("#redo-button")?.addEventListener("click", () => applyHistory("redo")); document.querySelector("#zoom-in")?.addEventListener("click", () => { state.zoom = clamp(state.zoom + .1, ZOOM_MIN, ZOOM_MAX); drawScene(); }); document.querySelector("#zoom-out")?.addEventListener("click", () => { state.zoom = clamp(state.zoom - .1, ZOOM_MIN, ZOOM_MAX); drawScene(); });
   const resetView = () => { state.zoom = 1; state.pan = { x: 0, y: 0 }; drawScene(); };
   document.querySelector("#zoom-reset").addEventListener("click", resetView); document.querySelector("#zoom-reset").addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); resetView(); } });
@@ -1105,13 +1104,34 @@
 
   setupStaticInputs(); if (!loadPersisted()) { syncStaticInputs(); render(); } else { syncStaticInputs(); render(); } renderDiagnostics();
   if (typeof ResizeObserver === "function") new ResizeObserver(() => drawScene()).observe(document.querySelector("#canvas-wrap"));
-  const adapter = getAdapter(); const adapterStatus = document.querySelector("#adapter-status");
-  const finishStartup = async () => { if (adapter) { try { await importDesignerScene(adapter); adapterStatus.textContent = "Designer scene imported"; } catch (error) { adapterStatus.textContent = `Designer import failed · ${error.message || error}`; } } const liveToggle = document.querySelector("#live-toggle"); if (STANDALONE_PREVIEW) { state.liveEnabled = false; liveToggle.checked = false; liveToggle.disabled = true; adapterStatus.textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; persist(false); } else if (!adapter?.capabilities?.liveUpdate) { state.liveEnabled = false; liveToggle.checked = false; liveToggle.disabled = true; adapterStatus.textContent = adapter ? "LIVE unavailable · WebSocket adapter is not available" : "Designer API unavailable · JSON available"; persist(false); } else { liveToggle.disabled = false; appReady = true; if (state.liveEnabled) { try { await startLive(); } catch (error) { state.liveEnabled = false; liveToggle.checked = false; adapterStatus.textContent = `LIVE unavailable · ${error.message || error}`; persist(false); } } } appReady = true; renderStatus(); };
-  if (!adapter) { state.liveEnabled = false; adapterStatus.textContent = "Designer API unavailable · JSON available"; finishStartup(); }
-  else {
-    adapterStatus.textContent = "Checking Designer API…";
-    Promise.resolve(adapter.sessionStatus?.()).then(() => { adapterStatus.textContent = "Designer API available"; finishStartup(); }).catch(() => { adapterStatus.textContent = "Designer API unavailable · JSON available"; finishStartup(); });
+  const adapterStatus = document.querySelector("#adapter-status");
+  let startupCompleted = false;
+  async function finishStartup(adapter) {
+    if (!adapter) { state.liveEnabled = false; adapterStatus.textContent = "Designer API unavailable · JSON available"; appReady = true; renderStatus(); return; }
+    if (startupCompleted) return;
+    startupCompleted = true;
+    try { await adapter?.saveAllResources?.(); }
+    catch (error) { plannerLog("warn", "Startup", `Resource save failed: ${error.message || error}`, { phase: "save-all" }); }
+    if (adapter) { try { await importDesignerScene(adapter); adapterStatus.textContent = "Designer scene imported"; } catch (error) { adapterStatus.textContent = `Designer import failed · ${error.message || error}`; } }
+    if (STANDALONE_PREVIEW) { state.liveEnabled = false; adapterStatus.textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; persist(false); }
+    else if (!adapter?.capabilities?.liveUpdate && !adapter?.liveStart) { state.liveEnabled = false; adapterStatus.textContent = adapter ? "LIVE unavailable · WebSocket adapter is not available" : "Designer API unavailable · JSON available"; persist(false); }
+    else { try { await startLive(); } catch (error) { state.liveEnabled = false; adapterStatus.textContent = `LIVE unavailable · ${error.message || error}`; persist(false); } }
+    appReady = true; renderStatus();
   }
+  async function runStartupGate() {
+    const adapter = getAdapter();
+    if (!adapter) return finishStartup(null);
+    const transport = await adapter.activeTransportStatus?.() || { known: false, running: false, transports: [] };
+    if (transport.running || !transport.known) {
+      const warning = document.querySelector("#startup-warning");
+      warning.hidden = false;
+      document.querySelector("#startup-accept").onclick = () => { warning.hidden = true; void finishStartup(adapter); };
+      document.querySelector("#startup-close").onclick = () => { warning.hidden = true; };
+      return { blocked: true, transport };
+    }
+    return finishStartup(adapter);
+  }
+  runStartupGate();
   function renamedOwnedPaths(record, nextPath) { const paths = Array.isArray(record?.ownedPaths) ? record.ownedPaths : []; return paths.map(path => String(path) === String(record?.path) ? nextPath : path); }
   function validatedOwnedPaths(result, type) {
     const paths = [...new Set((Array.isArray(result?.ownedPaths) ? result.ownedPaths : []).map(String).filter(Boolean))];
@@ -1122,5 +1142,5 @@
     if (type === "camera" && paths.filter(path => path.startsWith("objects/camera/")).length < 2) throw new Error("Designer ownership metadata is incomplete for camera");
     return paths;
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, commitProjectorBinding, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, projectorAutoThrowRatio, projectorRotationZValue, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, cancelProjectorWork, queueProjectorProjection, flushProjectorProjection, scheduleProjectorGeometry, handleProjectorLookDistance, handleProjectorFieldOfView, handleProjectorThrowRatio, finalizeProjectorRotation, applyLiveValue, projectorPending, plannerLog, setActiveError, resolveActiveError, diagnosticsLogs, plannerLogEntries, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
+  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, commitProjectorBinding, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, projectorAutoThrowRatio, projectorRotationZValue, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, cancelProjectorWork, queueProjectorProjection, flushProjectorProjection, scheduleProjectorGeometry, handleProjectorLookDistance, handleProjectorFieldOfView, handleProjectorThrowRatio, finalizeProjectorRotation, applyLiveValue, projectorPending, plannerLog, setActiveError, resolveActiveError, diagnosticsLogs, plannerLogEntries, runStartupGate, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
 })();
