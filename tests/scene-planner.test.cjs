@@ -133,5 +133,78 @@ function resultFor(payload, id = "designer-id") { return { designerId: id, path:
   assert.deepEqual(JSON.parse(JSON.stringify(core.validatedOwnedPaths({ path: "objects/fixturegroup/dmx light 4.apx", ownedPaths: ["objects/fixturegroup/dmx light 4.apx", "objects/directprojection/dmx light 4_directprojection.apx"] }, "dmxLight"))), ["objects/fixturegroup/dmx light 4.apx", "objects/directprojection/dmx light 4_directprojection.apx"]);
   assert.match(stylesSource, /external-override[^}]*#(?:d64545|e05252|ff[0-6][0-6][0-6])/i);
   assert.deepEqual(JSON.parse(JSON.stringify(core.renamedOwnedPaths({ path: "objects/projector/projector 2.apx", ownedPaths: ["objects/projector/projector 2.apx", "objects/projectorconfig/projector 2_config0.apx"] }, "objects/projector/front.apx"))), ["objects/projector/front.apx", "objects/projectorconfig/projector 2_config0.apx"]);
+
+  const cadenceHarness = createHarness();
+  const cadenceSurface = sceneObject("surface", "cadence-surface", { x: 0, y: -1, z: 0 });
+  cadenceSurface.geometry = { width: 8, height: 4 };
+  const cadenceProjector = sceneObject("projector", "cadence-projector", { x: 0, y: 3, z: -12 });
+  cadenceProjector.lookAt = { x: 0, y: 1, z: 0 };
+  cadenceProjector.optics = { throwRatio: 1.5, fieldOfView: 40, lookDistance: 1 };
+  cadenceProjector.targetSurfacePluginId = cadenceSurface.pluginId;
+  cadenceHarness.state.objects = [cadenceSurface, cadenceProjector];
+  cadenceHarness.state.sync.objects = { "cadence-projector": { designerId: "cadence-uid", path: "objects/projector/cadence.apx" } };
+  const cadenceWrites = [];
+  const cadenceRotations = [];
+  cadenceHarness.__context.disguiseSceneAdapter = {
+    inspectScene() {}, createObject() {}, updateObject() {},
+    liveSetProjectorProjection(pluginId, position, lookAt, throwRatio) {
+      cadenceWrites.push({ at: Date.now(), pluginId, position: JSON.parse(JSON.stringify(position)), lookAt: JSON.parse(JSON.stringify(lookAt)), throwRatio });
+      return true;
+    },
+    updateProjectorRotationZ(id, value) { cadenceRotations.push({ id, value }); return Promise.resolve({ readback: { projectorRoll: value } }); }
+  };
+  cadenceHarness.queueProjectorProjection(cadenceProjector, "cadence-test");
+  await new Promise(resolve => setTimeout(resolve, 10));
+  cadenceProjector.transform.position.x = 1; cadenceHarness.queueProjectorProjection(cadenceProjector, "cadence-test");
+  await new Promise(resolve => setTimeout(resolve, 10));
+  cadenceProjector.transform.position.x = 2; cadenceHarness.queueProjectorProjection(cadenceProjector, "cadence-test");
+  await new Promise(resolve => setTimeout(resolve, 10));
+  cadenceProjector.transform.position.x = 3; cadenceHarness.queueProjectorProjection(cadenceProjector, "cadence-test");
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.equal(cadenceWrites.length, 2, "rapid projector queues must coalesce into one cadence write");
+  assert.ok(cadenceWrites[1].at - cadenceWrites[0].at >= 35, "cadence writes must be spaced approximately 40 ms apart");
+  assert.deepEqual(cadenceWrites[1].position, { x: 3, y: 3, z: -12 });
+  await new Promise(resolve => setTimeout(resolve, 470));
+  assert.equal(cadenceWrites.length, 3, "the final fresh value must be resent after movement stops");
+  assert.deepEqual(cadenceWrites[2].position, { x: 3, y: 3, z: -12 });
+  assert.deepEqual(cadenceRotations, [{ id: "cadence-uid", value: 0 }]);
+  cadenceHarness.cancelProjectorWork(cadenceProjector.pluginId);
+
+  const externalHarness = createHarness();
+  const externalSurface = sceneObject("surface", "external-surface", { x: 0, y: -1, z: 0 });
+  externalSurface.geometry = { width: 8, height: 4 };
+  const externalProjector = sceneObject("projector", "external-projector", { x: 0, y: 3, z: -8 });
+  externalProjector.lookAt = { x: 0, y: 1, z: 0 };
+  externalProjector.optics = { throwRatio: 1.5, fieldOfView: 40, lookDistance: 8 };
+  externalHarness.state.objects = [externalSurface, externalProjector];
+  const externalWrites = [];
+  externalHarness.__context.disguiseSceneAdapter = {
+    inspectScene() {}, createObject() {}, updateObject() {},
+    liveSetProjectorProjection(pluginId, position, lookAt, throwRatio) {
+      externalWrites.push({ pluginId, position: JSON.parse(JSON.stringify(position)), lookAt: JSON.parse(JSON.stringify(lookAt)), throwRatio });
+      return true;
+    }
+  };
+  externalHarness.applyLiveValue({ pluginId: "external-projector", field: "transform.position", value: { x: 1, y: 3, z: -8 }, initial: true });
+  externalHarness.applyLiveValue({ pluginId: "external-projector", field: "lookAt", value: { x: 1, y: 1, z: 0 }, initial: true });
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.deepEqual(externalWrites, [], "initial Designer values must not write back");
+  externalHarness.applyLiveValue({ pluginId: "external-projector", field: "transform.position", value: { x: 2, y: 3, z: -8 } });
+  externalHarness.applyLiveValue({ pluginId: "external-projector", field: "lookAt", value: { x: 2, y: 1, z: 0 } });
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.equal(externalWrites.length, 1, "non-initial Position and Look At must queue current projection values");
+  assert.deepEqual(externalWrites[0].position, { x: 2, y: 3, z: -8 });
+  assert.deepEqual(externalWrites[0].lookAt, { x: 2, y: 1, z: 0 });
+  externalHarness.applyLiveValue({ pluginId: "external-projector", field: "optics.lookDistance", value: 9 });
+  externalHarness.applyLiveValue({ pluginId: "external-projector", field: "optics.fieldOfView", value: 28 });
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.equal(externalWrites.length, 1, "Look Distance and FOV readbacks must never queue writes");
+  externalProjector.targetSurfacePluginId = externalSurface.pluginId;
+  externalHarness.applyLiveValue({ pluginId: "external-surface", field: "geometry.width", value: 10 });
+  await new Promise(resolve => setTimeout(resolve, 60));
+  assert.equal(externalWrites.length, 2, "Surface geometry must queue each bound projector");
+  assert.equal(externalWrites[1].throwRatio, 0.849);
+  externalHarness.cancelProjectorWork(externalProjector.pluginId);
+
   console.log("stage-planner v11 tests: ok");
 })().catch(error => { console.error(error); process.exitCode = 1; });
