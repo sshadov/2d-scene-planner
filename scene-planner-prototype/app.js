@@ -57,6 +57,8 @@
   const projectorGenerations = new Map();
   const plannerLogEntries = [];
   const PLANNER_LOG_LIMIT = 200;
+  const diagnosticStream = [];
+  const diagnosticSeen = new Set();
 
   const clone = value => JSON.parse(JSON.stringify(value));
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
@@ -371,17 +373,12 @@
     return { at: String(raw.at || ""), source, level, subsystem, message, objectName: raw.objectName || null, phase: raw.phase || event || null, raw };
   }
   function diagnosticsLogs() {
-    const adapter = getAdapter();
-    return [
-      ...plannerLogEntries.map(entry => normalizeDiagnostic("planner", entry)),
-      ...(adapter?.getOperationLogs?.() || []).map(entry => normalizeDiagnostic("api", entry)),
-      ...(adapter?.getLiveLogs?.() || []).map(entry => normalizeDiagnostic("live", entry))
-    ].sort((left, right) => left.at.localeCompare(right.at));
+    return diagnosticStream.slice();
   }
   function renderDiagnostics() {
     const output = document.querySelector("#diagnostics-output");
     if (!output) return;
-    const rows = diagnosticsLogs().slice(-80).map(entry => {
+    const rows = diagnosticsLogs().map(entry => {
       const time = String(entry.at || "").slice(11, 19);
       const context = [entry.subsystem, entry.objectName, entry.phase].filter(Boolean).join(" · ");
       return element("div", `diagnostic-row diagnostic-${entry.level}`, `${time}  ${String(entry.level).toUpperCase()}  ${context}${context ? " · " : ""}${entry.message}`);
@@ -393,15 +390,26 @@
     const entry = { at: new Date().toISOString(), level: ["info", "warn", "error"].includes(level) ? level : "info", subsystem: String(subsystem || "Planner"), message: String(message || ""), ...details };
     plannerLogEntries.push(entry);
     if (plannerLogEntries.length > PLANNER_LOG_LIMIT) plannerLogEntries.shift();
+    diagnosticSeen.add(entry); diagnosticStream.push(normalizeDiagnostic("planner", entry));
     renderDiagnostics();
     return entry;
+  }
+  function appendAdapterDiagnostic(source, entry) {
+    if (!entry || diagnosticSeen.has(entry)) return;
+    diagnosticSeen.add(entry); diagnosticStream.push(normalizeDiagnostic(source, entry)); renderDiagnostics();
   }
   let diagnosticsAdapter = null;
   function attachDiagnostics(adapter) {
     if (adapter === diagnosticsAdapter) return;
     diagnosticsAdapter?.setDiagnosticsListener?.(null);
     diagnosticsAdapter = adapter || null;
-    diagnosticsAdapter?.setDiagnosticsListener?.(() => renderDiagnostics());
+    const initialEntries = [
+      ...plannerLogEntries.map(entry => ({ source: "planner", entry })),
+      ...(adapter?.getOperationLogs?.() || []).map(entry => ({ source: "api", entry })),
+      ...(adapter?.getLiveLogs?.() || []).map(entry => ({ source: "live", entry }))
+    ].sort((left, right) => String(left.entry?.at || "").localeCompare(String(right.entry?.at || "")));
+    initialEntries.forEach(event => appendAdapterDiagnostic(event.source, event.entry));
+    diagnosticsAdapter?.setDiagnosticsListener?.(event => appendAdapterDiagnostic(event?.source || "api", event?.entry));
     renderDiagnostics();
   }
   function objectHeightValue(object) { return object.transform.position.y; }
@@ -631,6 +639,19 @@
     if (ownershipError) throw ownershipError;
     return record;
   }
+  function removeInspectedCreateDuplicate(object, result) {
+    const designerId = String(result?.designerId || result?.id || "");
+    const path = String(result?.path || "");
+    if (!designerId && !path) return;
+    state.objects = state.objects.filter(candidate => candidate.pluginId === object.pluginId || !(String(candidate.designer?.designerId || "") === designerId || String(candidate.designer?.path || "") === path));
+    const records = state.sync.objects || {};
+    Object.keys(records).forEach(pluginId => {
+      if (pluginId === object.pluginId) return;
+      const record = records[pluginId];
+      if (String(record?.designerId || "") === designerId || String(record?.path || "") === path) delete records[pluginId];
+    });
+    state.sync.objects = records;
+  }
   async function createDesignerObject(object) {
     if (!object || object.type === "designer") return null;
     if (!STANDALONE_PREVIEW && !appReady) return null;
@@ -651,6 +672,7 @@
       try {
         logPlannerAction("create", object, { phase: "designer-create" });
         const result = await adapter.createObject(payload);
+        removeInspectedCreateDuplicate(object, result);
         const record = persistCreatedRecord(state.sync.objects || {}, object, payload, result, { owned: true });
         try { validateReadback(payload, result); record.readbackValid = true; }
         catch (validationError) { record.readbackValid = false; record.lastExported = null; throw validationError; }
@@ -990,13 +1012,6 @@
     adapter.configureLiveScene?.(inspection.stageId);
     if (inspection.stageFootprint) { state.stage.width = Math.max(2, finite(inspection.stageFootprint.width, state.stage.width)); state.stage.depth = Math.max(2, finite(inspection.stageFootprint.depth, state.stage.depth)); }
     const imported = (inspection.objects || []).map(importedObject);
-    const pendingObjects = state.objects.filter(object => pendingDesignerCreates.has(object.pluginId));
-    imported.forEach(object => {
-      const pending = pendingObjects.find(candidate => candidate.type === object.type && String(candidate.name || "").trim().toLocaleLowerCase() === String(object.name || "").trim().toLocaleLowerCase());
-      if (!pending) return;
-      object.id = pending.id;
-      object.pluginId = pending.pluginId;
-    });
     const importedSurfaces = imported.filter(object => object.type === "surface");
     imported.filter(object => object.type === "projector").forEach(projector => { const screen = projector.designer?.screens?.[0]; if (!screen) { delete projector.targetSurfacePluginId; return; } const surface = importedSurfaces.find(candidate => String(candidate.designer?.designerId || "") === String(screen.designerId || screen.id || screen.uid || "") || String(candidate.designer?.path || "") === String(screen.path || "")); if (surface) projector.targetSurfacePluginId = surface.pluginId; else delete projector.targetSurfacePluginId; });
     const importedPluginIds = new Set(imported.map(object => object.pluginId));

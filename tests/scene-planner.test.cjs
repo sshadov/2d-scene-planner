@@ -75,9 +75,20 @@ function resultFor(payload, id = "designer-id") { return { designerId: id, path:
   pendingRace.__context.disguiseSceneAdapter = { inspectScene() {}, updateObject() {}, createObject() { return new Promise(resolve => { resolveRacingCreate = resolve; }); } };
   const racingOperation = pendingRace.createDesignerObject(racingCreate);
   await pendingRace.importDesignerScene({ inspectScene: async () => ({ objects: [{ id: "pending-race-uid", type: "camera", path: "objects/camera/camera 12.apx", description: "Camera 12", transform: { position: { x: 1, y: 1.5, z: 2 }, rotation: { x: 0, y: 0, z: 0 } } }], floorY: 0 }) });
-  assert.deepEqual(JSON.parse(JSON.stringify(pendingRace.state.objects.map(item => item.pluginId))), ["pending-race"], "an inspected in-flight create must reuse its pending Planner identity");
+  assert.deepEqual(JSON.parse(JSON.stringify(pendingRace.state.objects.map(item => item.pluginId).sort())), ["designer-pending-race-uid", "pending-race"], "an in-flight create is kept separate until its exact UID/path is returned");
   resolveRacingCreate(resultFor(pendingRace.objectPayload(racingCreate), "pending-race-uid"));
   await racingOperation;
+  assert.deepEqual(JSON.parse(JSON.stringify(pendingRace.state.objects.map(item => item.pluginId))), ["pending-race"], "create response must remove the temporary inspected duplicate by returned UID/path");
+  const renamedPendingRace = createHarness();
+  const renamedCreate = sceneObject("camera", "pending-renamed"); renamedCreate.name = "Camera 12";
+  renamedPendingRace.state.objects = [renamedCreate];
+  let resolveRenamedCreate;
+  renamedPendingRace.__context.disguiseSceneAdapter = { inspectScene() {}, updateObject() {}, createObject() { return new Promise(resolve => { resolveRenamedCreate = resolve; }); } };
+  const renamedOperation = renamedPendingRace.createDesignerObject(renamedCreate);
+  await renamedPendingRace.importDesignerScene({ inspectScene: async () => ({ objects: [{ id: "renamed-uid", type: "camera", path: "objects/camera/camera 13.apx", description: "Camera 13", transform: { position: { x: 1, y: 1.5, z: 2 }, rotation: { x: 0, y: 0, z: 0 } } }], floorY: 0 }) });
+  resolveRenamedCreate({ ...resultFor(renamedPendingRace.objectPayload(renamedCreate), "renamed-uid"), path: "objects/camera/camera 13.apx", name: "Camera 13", ownedPaths: ["objects/camera/camera 13.apx", "objects/camera/camera 13 (perspective).apx", "objects/perspectiveprojectionobject/camera 13 (perspective).apx"] });
+  await renamedOperation;
+  assert.deepEqual(JSON.parse(JSON.stringify(renamedPendingRace.state.objects.map(item => item.pluginId))), ["pending-renamed"], "name changes must not leave a duplicate after create completion");
   const startupHarness = createHarness(undefined, "disguise-scene-generator-state-v11", { hostname: "designer", port: "" });
   const startupCalls = [];
   startupHarness.__context.disguiseSceneAdapter = {
@@ -126,29 +137,34 @@ function resultFor(payload, id = "designer-id") { return { designerId: id, path:
   assert.equal("errors" in diagnosticsHarness.state.sync, false, "runtime errors must not be persisted or gate current operations");
   diagnosticsHarness.plannerLogEntries.push(
     { at: "2026-08-21T01:00:00.000Z", level: "error", subsystem: "Planner", message: "planner-a" },
-    { at: "2026-08-21T01:00:03.000Z", level: "info", subsystem: "Planner", message: "planner-d" }
+    { at: "2026-08-21T01:00:03.000Z", level: "info", subsystem: "Planner", message: "planner-d" },
+    ...Array.from({ length: 80 }, (_, index) => ({ at: "2026-08-21T01:01:" + String(index).padStart(2, "0") + ".000Z", level: "info", subsystem: "Planner", message: "planner-extra-" + index }))
   );
   let diagnosticsListener;
   diagnosticsHarness.__context.disguiseSceneAdapter = {
     inspectScene() {},
     createObject() {},
     updateObject() {},
-    getOperationLogs: () => [{ at: "2026-08-21T01:00:01.000Z", event: "response", message: "api-b" }],
-    getLiveLogs: () => [{ at: "2026-08-21T01:00:02.000Z", event: "message", message: "live-c" }],
+    getOperationLogs: () => [{ at: "2026-08-21T01:00:01.000Z", event: "response", message: "api-b" }, { at: "2026-08-21T01:00:00.000Z", event: "response", message: "api-tie" }],
+    getLiveLogs: () => [{ at: "2026-08-21T01:00:02.000Z", event: "message", message: "live-c" }, { at: "2026-08-21T01:00:00.000Z", event: "message", message: "live-tie" }],
     setDiagnosticsListener(listener) { diagnosticsListener = listener; }
   };
   diagnosticsHarness.attachDiagnostics(diagnosticsHarness.__context.disguiseSceneAdapter);
-  diagnosticsListener();
+  diagnosticsListener({ source: "api", entry: { at: "2026-08-21T01:02:00.000Z", event: "response", message: "api-arrived-first" } });
+  diagnosticsListener({ source: "live", entry: { at: "2026-08-21T01:02:00.000Z", event: "message", message: "live-arrived-second" } });
   const chronological = diagnosticsHarness.diagnosticsLogs();
-  assert.deepEqual(JSON.parse(JSON.stringify(chronological.map(entry => entry.message))), ["planner-a", "api-b", "live-c", "planner-d"]);
-  assert.deepEqual(JSON.parse(JSON.stringify(chronological.map(entry => entry.source))), ["planner", "api", "live", "planner"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(chronological.slice(0, 6).map(entry => entry.message))), ["planner-a", "api-tie", "live-tie", "api-b", "live-c", "planner-d"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(chronological.slice(0, 6).map(entry => entry.source))), ["planner", "api", "live", "api", "live", "planner"]);
   assert.equal(chronological[0].raw.message, "planner-a");
+  assert.deepEqual(JSON.parse(JSON.stringify(chronological.slice(-2).map(entry => entry.message))), ["api-arrived-first", "live-arrived-second"], "equal-timestamp events retain append order");
   const diagnosticRows = diagnosticsHarness.__elements.get("#diagnostics-output").children;
-  assert.deepEqual(diagnosticRows.map(row => row.textContent.match(/planner-a|api-b|live-c|planner-d/)?.[0]), ["planner-a", "api-b", "live-c", "planner-d"]);
+  assert.ok(diagnosticRows.length > 80, "Diagnostics UI must retain the complete merged stream");
+  assert.deepEqual(diagnosticRows.slice(0, 6).map(row => row.textContent.match(/planner-a|api-tie|live-tie|api-b|live-c|planner-d/)?.[0]), ["planner-a", "api-tie", "live-tie", "api-b", "live-c", "planner-d"]);
   assert.match(diagnosticRows[0].className, /diagnostic-error/);
   assert.match(diagnosticRows[3].className, /diagnostic-info/);
   await diagnosticsHarness.copyDiagnostics();
-  assert.deepEqual(JSON.parse(diagnosticsHarness.__clipboardText()).map(entry => entry.message), ["planner-a", "api-b", "live-c", "planner-d"]);
+  assert.deepEqual(JSON.parse(diagnosticsHarness.__clipboardText()).map(entry => entry.message).slice(0, 6), ["planner-a", "api-tie", "live-tie", "api-b", "live-c", "planner-d"]);
+  assert.equal(JSON.parse(diagnosticsHarness.__clipboardText()).length, diagnosticRows.length, "visible and copied diagnostics use the same complete stream");
   assert.equal(core.state.objects.length, 0); assert.deepEqual(JSON.parse(JSON.stringify(core.state.stage)), { width: 20, depth: 12 }); assert.equal(core.newObject("projector").transform.position.y, 3); assert.equal(core.newObject("camera").transform.position.y, 1.5); assert.equal(core.newObject("screen").transform.position.y, 0); assert.equal(core.newObject("projector").lookAt.y, 0); assert.equal(core.newObject("screen").media.pixelsPerInch, 10); assert.equal("pixelsPerInch" in core.newObject("surface").media, false); assert.equal(core.newObject("dmxScreen").geometry.width, 4); assert.equal(core.newObject("dmxLight").transform.position.y, 5);
   const screen = sceneObject("screen", "plugin-screen", { x: 3, y: 0, z: -5 }); const payload = core.objectPayload(screen); assert.equal(core.finite("1,5", 9), 1.5); assert.equal(core.finite("", 9), 9); assert.equal(core.formatValue(4), "4"); assert.equal(core.formatValue(1.5), "1,5");
   const horizontalSurface = sceneObject("surface", "horizontal-surface", { x: 0, y: 0, z: 0 }); horizontalSurface.geometry = { width: 4, height: 2 }; const horizontalProjector = sceneObject("projector", "horizontal-projector", { x: 0, y: 1, z: -12 }); horizontalProjector.lookAt = { x: 0, y: 1, z: 0 }; horizontalProjector.optics = { throwRatio: 1.5, fieldOfView: 40, lookDistance: 1 }; horizontalProjector.targetSurfacePluginId = horizontalSurface.pluginId; core.state.objects = [horizontalSurface, horizontalProjector]; assert.deepEqual(JSON.parse(JSON.stringify(core.projectorGeometry(horizontalProjector))), { direction: { x: 0, y: 0, z: 1 }, distance: 12, projectedWidth: 4, throwRatio: 3, fieldOfView: 18.925, roll: 0 });
