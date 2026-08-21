@@ -12,6 +12,7 @@ const scripts = adapter.debugScripts;
 
 const update = scripts.updateScript("uid-1", { name: "surface renamed" }, "objects/screen2/old.apx", "surface");
 assert.match(update, /obj\.rename\(Path\(desired_path\)\)/); assert.match(update, /markDirty\(obj\)/); assert.match(update, /obj\.save\(\)/); assert.doesNotMatch(update, /assign\("path", desired_path\)/);
+assert.ok(update.includes("safe_name = re.sub(r'[\\\\/:*?\"<>|]'"), "rename script must compile when the name sanitizer contains a double quote");
 const create = scripts.createScript({ pluginId: "dmx-light-2", type: "dmxLight", name: "DMX Light 2", transform: { position: { x: 1, y: 5, z: 2 }, rotation: { x: 0, y: 0, z: 0 } } });
 assert.match(create, /resourceManager\.loadOrCreate\(Path\(object_path\), expected_type\)/); assert.match(create, /append_typed\(obj, collection\)/); assert.match(create, /assert_typed_membership/); assert.match(create, /"ownedPaths": owned_paths/); assert.match(create, /"name": resolved_name/);
 for (const type of ["screen", "dmxScreen", "surface"]) {
@@ -33,7 +34,13 @@ assert.match(adapterSource, /operationLogEntries/); assert.match(adapterSource, 
 const inspection = scripts.inspectScript(); assert.match(inspection, /warnings = \[\]/); assert.match(inspection, /errors = \[\]/); assert.match(inspection, /"complete": len\(errors\) == 0/); assert.match(inspection, /ignored Designer helper/); assert.match(inspection, /errors\.append\(\{"collection": collection_name/);
 
 async function verifyTransportAndSaveAdapter() {
-  for (const [transport, running] of [["Stop", false], ["Play", true], ["PlaySection", true], ["Loop", true]]) { context.fetch = async () => ({ ok: true, status: 200, json: async () => ({ activeTransport: transport }), text: async () => "" }); assert.deepEqual(JSON.parse(JSON.stringify(await adapter.activeTransportStatus())), { known: true, running, transports: [transport] }); }
+  for (const [playmode, running] of [["stop", false], ["play", true], ["playsection", true], ["loop", true]]) {
+    let request;
+    context.fetch = async (url, options) => { request = { url, options }; return { ok: true, status: 200, json: async () => ({ status: { code: 0, message: "" }, result: [{ uid: "transport-1", name: "Transport 1", playmode, engaged: true }] }), text: async () => "" }; };
+    assert.deepEqual(JSON.parse(JSON.stringify(await adapter.activeTransportStatus())), { known: true, running, transports: [playmode] });
+    assert.match(request.url, /\/api\/session\/transport\/activetransport$/);
+    assert.equal(request.options?.method, undefined, "transport safety check must remain a read-only GET");
+  }
   context.console = { error() {}, info() {} }; context.fetch = async () => ({ ok: true, status: 200, json: async () => ({}), text: async () => "" }); assert.deepEqual(JSON.parse(JSON.stringify(await adapter.activeTransportStatus())), { known: false, running: false, transports: [] }); context.fetch = async () => { throw new Error("transport unavailable"); }; assert.deepEqual(JSON.parse(JSON.stringify(await adapter.activeTransportStatus())), { known: false, running: false, transports: [] });
   let saveRequest; context.fetch = async (url, options) => { saveRequest = { url, options }; return { ok: true, status: 200, text: async () => JSON.stringify({ returnValue: JSON.stringify({ saved: 3 }) }) }; }; assert.deepEqual(JSON.parse(JSON.stringify(await adapter.saveAllResources())), { saved: 3 }); assert.match(saveRequest.url, /\/api\/session\/python\/execute$/); assert.match(JSON.parse(saveRequest.options.body).script, /saved = resourceManager\.saveAll\(\)/);
 }

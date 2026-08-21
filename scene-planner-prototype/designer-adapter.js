@@ -125,10 +125,11 @@
       const response = await fetchWithTimeout(`${API_ORIGIN}${ACTIVE_TRANSPORT_PATH}`, {}, 2500);
       if (!response.ok) throw new Error(`Designer active transport: HTTP ${response.status}`);
       const body = await response.json();
-      const values = Array.isArray(body) ? body : Array.isArray(body?.transports) ? body.transports : [body?.activeTransport ?? body?.transport ?? body?.status ?? body?.name];
-      const transports = values.map(value => typeof value === "string" ? value : value?.name ?? value?.status).filter(value => typeof value === "string" && value.length);
+      if (body?.status && Number(body.status.code) !== 0) throw new Error(body.status.message || `Designer active transport status ${body.status.code}`);
+      const values = Array.isArray(body?.result) ? body.result : [];
+      const transports = values.map(value => value?.playmode).filter(value => typeof value === "string" && value.length);
       if (!transports.length) throw new Error("Designer active transport response has no transport state");
-      return { known: true, running: transports.some(value => ["Play", "PlaySection", "Loop"].includes(value)), transports };
+      return { known: true, running: transports.some(value => ["play", "playsection", "loop"].includes(value.toLowerCase())), transports };
     } catch (error) {
       operationLog("error", { action: "active-transport", message: error.message || String(error) });
       console.error("[ScenePlanner API] active transport status", error);
@@ -567,7 +568,7 @@ object_path = str(getattr(obj, "path", ""))
 ${assignHelpers()}
 name_change = changed.get("name")
 if name_change:
-    safe_name = re.sub(r"[\\\\/:*?\"<>|]", "-", str(name_change)).strip() or "object"
+    safe_name = re.sub(r'[\\\\/:*?"<>|]', "-", str(name_change)).strip() or "object"
     folder = object_path.rsplit("/", 1)[0] if "/" in object_path else "objects"
     desired_path = folder + "/" + safe_name + ".apx"
     if desired_path != object_path:

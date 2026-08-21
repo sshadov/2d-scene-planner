@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.1
+
+- Parse the official active transport response from `result[].playmode` without issuing transport commands.
+- Keep Enter keydown/keypress/keyup inside Planner numeric fields so Designer transport shortcuts do not receive the key release.
+- Fix generated Python quoting in the resource-name sanitizer used by object updates.
+
 ## 0.21.1 - 2026-08-21
 
 - Hardened projector LIVE revision, retry, binding, and operation-error handling.
