@@ -106,8 +106,8 @@ Therefore the safe Planner boundary for the optical extension is:
 
 ```text
 write:  Projector.configPosition / Projector.configLookAt
-write:  Projector.configLookDistance / Projector.configThrowRatio
-read:   Projector.fieldOfView
+write:  Projector.configThrowRatio when bound to a Surface
+read:   Projector.configLookDistance / Projector.fieldOfView
 bind:   Projector.removeScreen(Screen2) / Projector.addScreen(Screen2)
 final:  preserve Projector.configRotation.x/y; force only .z to 0 or 90 degrees
 ```
@@ -131,7 +131,9 @@ The installed Designer runtime also uses an older embedded Python grammar than t
 When deleting any Stage device, remove the exact object from its owning typed Stage collection, save the parent Stage, and read back that same collection to verify the UID is absent. Do not treat a stale `stage.children` hierarchy reference as top-level Stage membership. Only the explicit Device list option may then remove named package resources. Removing the package file alone can leave a stale Stage reference.
 
 - Keep one official Live Update WebSocket and explicit binding state; do not add a second socket for optics.
-- Projector movement updates local geometry but sends only the LIVE Position binding, then finalizes the complete public configuration once the interaction ends.
-- Look At dragging sends only the LIVE Look At binding while optics remain local preview state; Designer readback becomes authoritative after the final commit.
+- Projector Position and Look At changes send the latest complete vectors together at a maximum 40 ms cadence, followed by one fresh final resend 500 ms after the last change.
+- Bound Projectors include calculated Throw Ratio in the same LIVE write. Unbound Projectors send no optical value. Look Distance and Field of View only update the Planner from Designer readback.
 - Surface binding stores exact Planner and Designer identities, derives the target point from that Surface, and uses public `addScreen/removeScreen` so Designer has the same binding.
 - Throw-ratio UI should be labelled as an approximate planning value. The Planner can calculate it from projector-to-screen distance and the requested projected width, send `configThrowRatio`, and draw a provisional cone from the returned field of view. It must not claim calibration accuracy.
+
+FixtureGroup/DMX Device-list deletion was deliberately not changed for the 0.22.0 release. The general typed-Stage removal guidance above remains valid, but physical FixtureGroup resource cleanup still requires a separate Designer test pass before it can be documented as supported.
