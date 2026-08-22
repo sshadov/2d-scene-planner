@@ -329,6 +329,9 @@ function resultFor(payload, id = "designer-id") { return { designerId: id, path:
   assert.doesNotMatch(indexSource, /id="diagnostics-panel"/, "Diagnostics must not be part of the user-facing planner UI");
   assert.equal(pluginManifest.name, "2D Scene Planner");
   assert.match(indexSource, /title>2D Scene Planner v0\.23\.0/);
+  assert.match(indexSource, /disguise-plugin-window-size" content="900,900"/, "Planner must start at the current minimum width while preserving its launch height");
+  assert.match(indexSource, /disguise-plugin-window-min-size" content="900,620"/);
+  assert.match(indexSource, /disguise-plugin-window-resizable" content="true"/);
   assert.match(indexSource, /id="info-product-name">2D Scene Planner<\/strong>/);
   assert.match(readmeSource, /^# 2D Scene Planner/m);
   assert.match(readmeSource, /Third-party 2D scene planning plugin for Disguise Designer/);
