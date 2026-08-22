@@ -12,13 +12,13 @@ It is intended for fast scene preparation when a full 3D workflow would be unnec
 
 ### For Disguise Designer
 
-**[Download the Designer plugin](https://github.com/sshadov/2d-scene-planner/releases/latest/download/2D-Scene-Planner.zip)**
+**[Download the Designer plugin](https://github.com/sshadov/2d-scene-planner/releases/download/v0.24.0-beta.1/2D-Scene-Planner.zip)**
 
 Synchronizes with Designer, creates and updates Designer objects, and uses Live Update.
 
 ### Offline version
 
-**[Download the Offline version](https://github.com/sshadov/2d-scene-planner/releases/latest/download/2D-Scene-Planner-Offline.zip)**
+**[Download the Offline version](https://github.com/sshadov/2d-scene-planner/releases/download/v0.24.0-beta.1/2D-Scene-Planner-Offline.zip)**
 
 Runs without Designer for local 2D planning, projection and LED calculations, with local browser storage.
 
