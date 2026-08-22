@@ -5,7 +5,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
-const adapterSource = fs.readFileSync(path.join(root, "scene-planner-prototype", "designer-adapter.js"), "utf8");
+const adapterSource = fs.readFileSync(path.join(root, "plugin", "designer-adapter.js"), "utf8");
 
 function startMockApi() {
   return new Promise((resolve, reject) => {

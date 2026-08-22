@@ -5,9 +5,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$source = Join-Path $repositoryRoot "scene-planner-prototype"
-$target = Join-Path $ProjectPath "plugins\scene-planner-prototype"
-$files = @("app.js", "d3plugin.json", "designer-adapter.js", "index.html", "README.md", "styles.css")
+$source = Join-Path $repositoryRoot "plugin"
+$target = Join-Path $ProjectPath "plugins\2D Scene Planner"
+$files = @("app.js", "d3plugin.json", "designer-adapter.js", "index.html", "styles.css")
 
 if (-not (Test-Path -LiteralPath $ProjectPath -PathType Container)) {
   throw "Designer project folder not found: $ProjectPath"

@@ -11,7 +11,23 @@ coverage/
 .env.*
 !.env.example
 *.local.js
-scene-planner-prototype/local-config.js
+plugin/local-config.js
+
+# Local development knowledge and investigation history
+/.superpowers/
+/docs/
+/fixtures/
+/schemas/
+/ARCHITECTURE.md
+/DECISIONS.md
+/ERROR_LOG.md
+/GLOSSARY.md
+/PROJECT.md
+/TESTING.md
+/TODO.md
+/plugin/README.md
+/scripts/diagnose-composite-devices.py
+/tests/diagnose-composite-devices.test.cjs
 
 # Editors and operating systems
 .vscode/

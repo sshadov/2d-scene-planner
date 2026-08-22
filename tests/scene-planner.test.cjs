@@ -4,13 +4,13 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "..");
-const appSource = fs.readFileSync(path.join(root, "scene-planner-prototype", "app.js"), "utf8");
-const adapterSource = fs.readFileSync(path.join(root, "scene-planner-prototype", "designer-adapter.js"), "utf8");
-const indexSource = fs.readFileSync(path.join(root, "scene-planner-prototype", "index.html"), "utf8");
-const stylesSource = fs.readFileSync(path.join(root, "scene-planner-prototype", "styles.css"), "utf8");
+const appSource = fs.readFileSync(path.join(root, "plugin", "app.js"), "utf8");
+const adapterSource = fs.readFileSync(path.join(root, "plugin", "designer-adapter.js"), "utf8");
+const indexSource = fs.readFileSync(path.join(root, "plugin", "index.html"), "utf8");
+const stylesSource = fs.readFileSync(path.join(root, "plugin", "styles.css"), "utf8");
 const packageSource = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-const pluginManifest = JSON.parse(fs.readFileSync(path.join(root, "scene-planner-prototype", "d3plugin.json"), "utf8"));
-const readmeSource = fs.readFileSync(path.join(root, "scene-planner-prototype", "README.md"), "utf8");
+const pluginManifest = JSON.parse(fs.readFileSync(path.join(root, "plugin", "d3plugin.json"), "utf8"));
+const readmeSource = fs.readFileSync(path.join(root, "README.md"), "utf8");
 
 class ElementStub {
   constructor(value = "") { this.value = value; this.hidden = false; this.checked = false; this.disabled = false; this.textContent = ""; this.children = []; this._listeners = {}; this.dataset = {}; this.style = {}; this.className = ""; this.widthWrites = 0; this.heightWrites = 0; this._width = 0; this._height = 0; Object.defineProperty(this, "width", { get: () => this._width, set: next => { this._width = next; this.widthWrites += 1; } }); Object.defineProperty(this, "height", { get: () => this._height, set: next => { this._height = next; this.heightWrites += 1; } }); this.classList = { add: (...names) => { const classes = new Set(this.className.split(/\s+/).filter(Boolean)); names.forEach(name => classes.add(name)); this.className = [...classes].join(" "); }, remove: (...names) => { const removed = new Set(names); this.className = this.className.split(/\s+/).filter(name => name && !removed.has(name)).join(" "); }, contains: name => this.className.split(/\s+/).includes(name) }; }
@@ -338,7 +338,7 @@ function resultFor(payload, id = "designer-id") { return { designerId: id, path:
   assert.match(indexSource, /disguise-plugin-window-resizable" content="true"/);
   assert.match(indexSource, /id="info-product-name">2D Scene Planner<\/strong>/);
   assert.match(readmeSource, /^# 2D Scene Planner/m);
-  assert.match(readmeSource, /Third-party 2D scene planning plugin for Disguise Designer/);
+  assert.match(readmeSource, /third-party plugin for quickly building simple stage layouts directly inside Designer/i);
   assert.equal(packageSource.description, "Third-party 2D scene planning plugin for Disguise Designer");
   assert.match(indexSource, /id="info-button"/, "Scene header must expose the Info button");
   assert.match(indexSource, /id="info-popover"/, "Info button must open a dedicated popover");
