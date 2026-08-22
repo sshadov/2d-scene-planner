@@ -1,8 +1,8 @@
 {
-  "name": "disguise-scene-planner",
+  "name": "disguise-2d-scene-planner",
   "version": "0.23.0",
   "private": true,
-  "description": "Disguise Designer Scene Planner plugin",
+  "description": "Disguise 2d scene planner plugin",
   "scripts": {
     "check": "node --check scene-planner-prototype/app.js && node --check scene-planner-prototype/designer-adapter.js",
     "test": "node tests/scene-planner.test.cjs && node tests/projector-contract.test.cjs && node tests/live-state-machine.test.cjs && node tests/delete-semantics.test.cjs && node tests/lifecycle-release.test.cjs && node tests/diagnose-composite-devices.test.cjs",
