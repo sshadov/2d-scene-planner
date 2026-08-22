@@ -159,6 +159,14 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .canvas-context-menu { position: fixed; z-index: 20; width: 220px; margin: 0; padding: 5px; border: 1px solid #3b4b5c; border-radius: 4px; background: #17202a; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
 .canvas-context-menu > button, #object-context-actions > button, .surface-context-list button { width: 100%; min-height: 31px; padding: 0 9px; border: 0; border-radius: 3px; background: transparent; color: #d7dfe7; font-size: 10px; text-align: left; }
 .canvas-context-menu button:hover { background: #22303c; color: var(--cyan); }
+.alignment-actions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; }
+.alignment-actions > button { width: 32px; height: 30px; padding: 0; border: 0; border-radius: 3px; display: grid; place-items: center; background: transparent; color: #aab6c1; }
+.align-icon { position: relative; width: 16px; height: 16px; border: 1px solid #526170; display: block; }
+.align-icon::before { content: ""; position: absolute; background: currentColor; }
+.align-left-icon::before, .align-center-x-icon::before, .align-right-icon::before { top: 3px; bottom: 3px; width: 2px; }
+.align-left-icon::before { left: 2px; }.align-center-x-icon::before { left: 6px; }.align-right-icon::before { right: 2px; }
+.align-top-icon::before, .align-center-z-icon::before, .align-bottom-icon::before { left: 3px; right: 3px; height: 2px; }
+.align-top-icon::before { top: 2px; }.align-center-z-icon::before { top: 6px; }.align-bottom-icon::before { bottom: 2px; }
 .canvas-context-menu .danger-menu-item { color: #ff9f96; }
 .context-title { display: block; padding: 5px 7px 8px; color: #8795a3; font-size: 9px; text-transform: uppercase; }
 .quick-add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }

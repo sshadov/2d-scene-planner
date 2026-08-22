@@ -15,6 +15,8 @@ assert.match(update, /obj\.rename\(Path\(desired_path\)\)/); assert.match(update
 assert.ok(update.includes("safe_name = re.sub(r'[\\\\/:*?\"<>|]'"), "rename script must compile when the name sanitizer contains a double quote");
 const create = scripts.createScript({ pluginId: "dmx-light-2", type: "dmxLight", name: "DMX Light 2", transform: { position: { x: 1, y: 5, z: 2 }, rotation: { x: 0, y: 0, z: 0 } } });
 assert.match(create, /resourceManager\.loadOrCreate\(Path\(object_path\), expected_type\)/); assert.match(create, /append_typed\(obj, collection\)/); assert.match(create, /assert_typed_membership/); assert.match(create, /"ownedPaths": owned_paths/); assert.match(create, /"name": resolved_name/);
+const displayCreate = scripts.createScript({ pluginId: "screen-constructor", type: "screen", name: "Screen constructor", transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 } }, geometry: { width: 4, height: 2 }, media: { resolutionX: 1920, resolutionY: 1080 } });
+assert.match(displayCreate, /obj = expected_type\(\)/); assert.match(displayCreate, /obj\.path = Path\(object_path\)/); assert.doesNotMatch(displayCreate, /resourceManager\.loadOrCreate\(Path\(object_path\), expected_type\)/);
 for (const type of ["screen", "dmxScreen", "surface"]) {
   const resolutionCreate = scripts.createScript({ pluginId: `${type}-resolution`, type, name: `${type} resolution`, transform: { position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 } }, geometry: { width: 4, height: 2 }, media: { resolutionX: 1920, resolutionY: 1080 } });
   assert.match(resolutionCreate, /Vec2\(int\(media\["resolutionX"\]\), int\(media\["resolutionY"\]\)\)/);
@@ -22,6 +24,11 @@ for (const type of ["screen", "dmxScreen", "surface"]) {
   const resolutionUpdate = scripts.updateScript(`${type}-uid`, { media: { resolutionX: 1280, resolutionY: 720 } }, `objects/${type}/${type}.apx`, type);
   assert.match(resolutionUpdate, /assign\("resolution", Vec2\(int\(media_change/);
 }
+const projectorResolutionCreate = scripts.createScript({ pluginId: "projector-resolution", type: "projector", name: "Projector resolution", transform: { position: { x: 0, y: 3, z: -8 }, rotation: { x: 0, y: 0, z: 0 } }, lookAt: { x: 0, y: 1, z: 0 }, media: { resolutionX: 3840, resolutionY: 2160 }, optics: { throwRatio: 2 } });
+assert.match(projectorResolutionCreate, /obj\.resolution = Vec2\(int\(media\["resolutionX"\]\), int\(media\["resolutionY"\]\)\)/);
+assert.match(projectorResolutionCreate, /"media": \{"resolutionX": int\(resolution.x\), "resolutionY": int\(resolution.y\)\}/);
+const projectorResolutionUpdate = scripts.updateScript("projector-resolution-uid", { media: { resolutionX: 2560, resolutionY: 1600 } }, "objects/projector/projector resolution.apx", "projector");
+assert.match(projectorResolutionUpdate, /assign\("resolution", Vec2\(int\(media_change/);
 const cameraCreate = scripts.createScript({ pluginId: "camera-2", type: "camera", name: "Camera 2", transform: { position: { x: 1, y: 1.5, z: 2 }, rotation: { x: 0, y: 180, z: 0 } } });
 assert.match(cameraCreate, /PerspectiveProjectionObject/); assert.match(cameraCreate, /PerspectiveProjection/); assert.match(cameraCreate, /collection\.remove\(attached\)/); assert.match(cameraCreate, /created_resource\.saveOnDelete\(\)/); assert.ok(cameraCreate.indexOf("if errors: return errors") < cameraCreate.indexOf("for path in reversed(rollback_paths)"));
 const rename = scripts.updateScript("uid-1", { name: "DMX Light 2" }, "objects/dmxlight/dmx light 1.apx", "dmxLight");
@@ -30,10 +37,10 @@ const importedDelete = scripts.deleteScript([{ id: "imported-uid", path: "object
 const managedDelete = scripts.deleteManagedScript([{ id: "managed-uid", path: "objects/camera/managed.apx", owned: true, ownedPaths: [], removeResource: true }]);
 for (const generated of [importedDelete, managedDelete]) { assert.match(generated, /getattr\(stage, collection_name\)\.remove\(candidate\)/); assert.match(generated, /stage\.save\(\)/); assert.match(generated, /stage_contains/); assert.match(generated, /resourceManager\.remove\(Path\(candidate_path\)\)/); assert.ok(generated.indexOf("stage.save()") < generated.indexOf("resourceManager.remove(Path(candidate_path))")); assert.doesNotMatch(generated, /findResourcesPointingToThis/); }
 assert.match(importedDelete, /if not bool\(item\.get\("owned"\)\): return \[\]/); assert.match(managedDelete, /sole_target/); assert.match(managedDelete, /type or owner identity mismatch/);
-assert.match(adapterSource, /operationLogEntries/); assert.match(adapterSource, /operationLog\("request"/); assert.match(adapterSource, /operationLog\("response"/); assert.match(adapterSource, /operationLog\("error"/); assert.match(adapterSource, /activeTransportStatus/); assert.match(adapterSource, /resourceManager\.saveAll\(\)/);
+assert.match(adapterSource, /operationLogEntries/); assert.match(adapterSource, /operationLog\("request"/); assert.match(adapterSource, /operationLog\("response"/); assert.match(adapterSource, /operationLog\("error"/); assert.match(adapterSource, /activeTransportStatus/); assert.doesNotMatch(adapterSource, /resourceManager\.saveAll\(\)/); assert.equal(adapter.saveAllResources, undefined, "The adapter must not expose a startup-wide resource save operation");
 const inspection = scripts.inspectScript(); assert.match(inspection, /warnings = \[\]/); assert.match(inspection, /errors = \[\]/); assert.match(inspection, /"complete": len\(errors\) == 0/); assert.match(inspection, /ignored Designer helper/); assert.match(inspection, /errors\.append\(\{"collection": collection_name/);
 
-async function verifyTransportAndSaveAdapter() {
+async function verifyTransportAdapter() {
   for (const [playmode, running] of [["stop", false], ["play", true], ["playsection", true], ["loop", true]]) {
     let request;
     context.fetch = async (url, options) => { request = { url, options }; return { ok: true, status: 200, json: async () => ({ status: { code: 0, message: "" }, result: [{ uid: "transport-1", name: "Transport 1", playmode, engaged: true }] }), text: async () => "" }; };
@@ -42,6 +49,5 @@ async function verifyTransportAndSaveAdapter() {
     assert.equal(request.options?.method, undefined, "transport safety check must remain a read-only GET");
   }
   context.console = { error() {}, info() {} }; context.fetch = async () => ({ ok: true, status: 200, json: async () => ({}), text: async () => "" }); assert.deepEqual(JSON.parse(JSON.stringify(await adapter.activeTransportStatus())), { known: false, running: false, transports: [] }); context.fetch = async () => { throw new Error("transport unavailable"); }; assert.deepEqual(JSON.parse(JSON.stringify(await adapter.activeTransportStatus())), { known: false, running: false, transports: [] });
-  let saveRequest; context.fetch = async (url, options) => { saveRequest = { url, options }; return { ok: true, status: 200, text: async () => JSON.stringify({ returnValue: JSON.stringify({ saved: 3 }) }) }; }; assert.deepEqual(JSON.parse(JSON.stringify(await adapter.saveAllResources())), { saved: 3 }); assert.match(saveRequest.url, /\/api\/session\/python\/execute$/); assert.match(JSON.parse(saveRequest.options.body).script, /saved = resourceManager\.saveAll\(\)/);
 }
-verifyTransportAndSaveAdapter().then(() => console.log("lifecycle release contract test: ok")).catch(error => { console.error(error); process.exitCode = 1; });
+verifyTransportAdapter().then(() => console.log("lifecycle release contract test: ok")).catch(error => { console.error(error); process.exitCode = 1; });

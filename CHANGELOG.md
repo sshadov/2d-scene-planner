@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.23.0 - 2026-08-22
+
+- Debounced wheel and arrow-key edits into one final Python commit after 500 ms while keeping immediate local and LIVE feedback.
+- Removed startup-wide resource saving; startup now checks transport state with a read-only request, imports the current Designer scene, and then starts LIVE.
+- Replaced `loadOrCreate` for LED Screen, DMX Screen, and Surface creation with constructor-created named resources appended to their exact typed Stage collections.
+- Restored Projector resolution and synchronized resolution readback for LED Screen, DMX Screen, Surface, and Projector.
+- Fixed portrait Surface projector width, throw ratio, field of view, and final `0/90` roll calculations.
+- Restored the 2D rotation handle and added six edge/centre alignment actions with rotated visible bounds.
+- Removed Device List deletion for DMX Light; Planner deletion now detaches its exact FixtureGroup from Stage only.
+
 ## 0.22.1
 
 - Parse the official active transport response from `result[].playmode` without issuing transport commands.

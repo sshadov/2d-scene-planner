@@ -6,8 +6,8 @@
     <meta name="disguise-plugin-window-size" content="1440,900" />
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
-    <title>Disguise Scene Planner v0.22.1</title>
-    <link rel="stylesheet" href="./styles.css?v=0.22.1" />
+    <title>Disguise Scene Planner v0.23.0</title>
+    <link rel="stylesheet" href="./styles.css?v=0.23.0" />
   </head>
   <body>
     <main class="app-shell">
@@ -74,6 +74,15 @@
         </div>
       </div>
       <div id="object-context-actions">
+         <div class="alignment-actions" role="group" aria-label="Align object to Stage">
+           <button type="button" data-action="align-left" title="Align left" aria-label="Align left"><span class="align-icon align-left-icon" aria-hidden="true"></span></button>
+           <button type="button" data-action="align-center-x" title="Align horizontal centre" aria-label="Align horizontal centre"><span class="align-icon align-center-x-icon" aria-hidden="true"></span></button>
+           <button type="button" data-action="align-right" title="Align right" aria-label="Align right"><span class="align-icon align-right-icon" aria-hidden="true"></span></button>
+           <button type="button" data-action="align-top" title="Align top" aria-label="Align top"><span class="align-icon align-top-icon" aria-hidden="true"></span></button>
+           <button type="button" data-action="align-center-z" title="Align vertical centre" aria-label="Align vertical centre"><span class="align-icon align-center-z-icon" aria-hidden="true"></span></button>
+           <button type="button" data-action="align-bottom" title="Align bottom" aria-label="Align bottom"><span class="align-icon align-bottom-icon" aria-hidden="true"></span></button>
+         </div>
+         <div class="menu-separator"></div>
          <button type="button" data-action="duplicate">Duplicate</button>
          <button type="button" data-action="rotate-90">Rotate 90°</button>
          <button type="button" data-action="bind-surface" id="context-bind-surface" hidden>Bind to surface ›</button>
@@ -91,7 +100,7 @@
          </div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=0.22.1"></script>
-    <script src="./app.js?v=0.22.1"></script>
+    <script src="./designer-adapter.js?v=0.23.0"></script>
+    <script src="./app.js?v=0.23.0"></script>
   </body>
 </html>

@@ -1,6 +1,6 @@
 # Roadmap and Technical Debt
 
-## Current backlog - 2026-08-22
+## v0.23.0 completed - 2026-08-22
 
 ### P0 Designer regressions
 

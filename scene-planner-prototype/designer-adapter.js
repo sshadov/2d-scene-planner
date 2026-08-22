@@ -136,7 +136,6 @@
       return { known: false, running: false, transports: [] };
     }
   }
-  function saveAllResources() { return execute('import json\nsaved = resourceManager.saveAll()\nreturn json.dumps({"saved": int(saved)})', { action: "save-all-resources", type: "stage", path: "resourceManager" }); }
   function environmentScript(environment) {
     return `import json
 stage = state.stage
@@ -223,8 +222,9 @@ def readback(obj, kind):
         look_at = vec_data(obj.configLookAt)
         distance = ((look_at["x"] - position["x"]) ** 2 + (look_at["y"] - position["y"]) ** 2 + (look_at["z"] - position["z"]) ** 2) ** 0.5
         rotation = obj.configRotation
+        resolution = obj.resolution
         screens = [{"designerId": str(screen.uid), "path": str(screen.path), "name": str(getattr(screen, "description", ""))} for screen in obj.screens]
-        return {"transform": {"position": position, "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": look_at, "optics": {"throwRatio": scalar("configThrowRatio", 1.5), "fieldOfView": scalar("fieldOfView", 40.0), "lookDistance": scalar("configLookDistance", distance)}, "projectorRoll": float(rotation.z), "screens": screens}
+        return {"transform": {"position": position, "rotation": {"x": 0.0, "y": 0.0, "z": 0.0}}, "lookAt": look_at, "media": {"resolutionX": int(resolution.x), "resolutionY": int(resolution.y)}, "optics": {"throwRatio": scalar("configThrowRatio", 1.5), "fieldOfView": scalar("fieldOfView", 40.0), "lookDistance": scalar("configLookDistance", distance)}, "projectorRoll": float(rotation.z), "screens": screens}
     if kind == "camera":
         return {"transform": {"position": vec_data(obj.offset), "rotation": vec_data(obj.rotation)}}
     position = getattr(obj, "offset", None)
@@ -510,6 +510,8 @@ owned_paths = owned_resource_paths(obj, created_paths)`)
       .replaceAll('"name": resolved_name, "readback": readback(obj, kind)', '"name": resolved_name, "ownedPaths": owned_paths, "readback": readback(obj, kind)')
       .replace('allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type)', 'allocate_path(folder, payload.get("name") or payload.get("pluginId"), expected_type.__name__)')
       .replace('    if "throwRatio" in optics: obj.configThrowRatio = float(optics["throwRatio"])\n    append_typed(obj, collection)\n    config.save(); obj.save(); stage.save()', `    if "throwRatio" in optics: obj.configThrowRatio = float(optics["throwRatio"])
+    media = payload.get("media", {})
+    if "resolutionX" in media and "resolutionY" in media: obj.resolution = Vec2(int(media["resolutionX"]), int(media["resolutionY"]))
     append_typed(obj, collection)
     target = payload.get("targetSurface")
     target_screen = None
@@ -536,6 +538,7 @@ owned_paths = owned_resource_paths(obj, created_paths)`)
     obj.configRotation = Vec(current_rotation.x, current_rotation.y, float(payload.get("projectorRoll", 0.0)))
     config.save(); obj.save(); stage.save()`)
       .replace('        def assign(field, value):\n    try:\n        setattr(obj, field, value)\n    except Exception as error:\n        raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, object_path, error))', '        def assign(field, value):\n            try:\n                setattr(obj, field, value)\n            except Exception as error:\n                raise RuntimeError("Cannot set {} on {} at {}: {}".format(field, type(obj).__name__, object_path, error))')
+      .replace('        obj = resourceManager.loadOrCreate(Path(object_path), expected_type)', ["screen", "dmxScreen", "surface"].includes(payload.type) ? '        obj = expected_type()\n        obj.path = Path(object_path)' : '        obj = resourceManager.loadOrCreate(Path(object_path), expected_type)')
       .replace('if getattr(obj, "config", None) is not config: raise RuntimeError("projector config reference was not retained")', 'retained_config = getattr(obj, "config", None)\n    if retained_config is None or str(getattr(retained_config, "path", "")) != config_path: raise RuntimeError("projector config reference was not retained")');
   }
 
@@ -638,6 +641,10 @@ elif kind == "projector":
     optics_change = changed.get("optics", {})
     if "throwRatio" in optics_change:
         assign("configThrowRatio", float(optics_change["throwRatio"]))
+    media_change = changed.get("media", {})
+    if "resolutionX" in media_change or "resolutionY" in media_change:
+        current_resolution = obj.resolution
+        assign("resolution", Vec2(int(media_change.get("resolutionX", current_resolution.x)), int(media_change.get("resolutionY", current_resolution.y))))
     if "targetSurface" in changed:
         previous_screens = [screen for screen in obj.screens]
         target = changed.get("targetSurface")
@@ -1287,6 +1294,11 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       add("optics.fieldOfView", "object.fieldOfView", value => Number(value), value => Number(value), false);
       add("optics.lookDistance", "object.configLookDistance", value => { const numeric = Number(value); if (Number.isFinite(numeric)) return Math.max(.1, numeric); const position = payload.transform?.position || {}; const lookAt = payload.lookAt || position; return Math.max(.1, Math.hypot(Number(lookAt.x || 0) - Number(position.x || 0), Number(lookAt.y || 0) - Number(position.y || 0), Number(lookAt.z || 0) - Number(position.z || 0))); }, value => Number(value), false);
       add("projectorRoll", "object.configRotation.z", value => Number(value), value => Number(value), false);
+      if (payload.media) {
+        const resolution = value => { const numeric = Math.round(Number(value)); return Number.isFinite(numeric) ? Math.max(1, numeric) : 1; };
+        add("media.resolutionX", "object.resolution.x", resolution, resolution);
+        add("media.resolutionY", "object.resolution.y", resolution, resolution);
+      }
     } else {
       ["x", "y", "z"].forEach(axis => add(`transform.position.${axis}`, `object.offset.${axis}`));
     }
@@ -1294,6 +1306,11 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
       add("geometry.width", "object.scale.x"); add("geometry.height", "object.scale.y", value => value, value => value);
       add("transform.position.y", "object.offset.y", value => Number(value) + Number(payload.geometry?.height || 0) / 2, value => Number(value) - Number(payload.geometry?.height || 0) / 2);
       add("transform.rotation.y", "object.rotation.y");
+      if (payload.media) {
+        const resolution = value => { const numeric = Math.round(Number(value)); return Number.isFinite(numeric) ? Math.max(1, numeric) : 1; };
+        add("media.resolutionX", "object.resolution.x", resolution, resolution);
+        add("media.resolutionY", "object.resolution.y", resolution, resolution);
+      }
     } else if (type !== "projector") {
       ["x", "y", "z"].forEach(axis => add(`transform.rotation.${axis}`, `object.rotation.${axis}`));
     }
@@ -1550,7 +1567,6 @@ return json.dumps({"deleted": deleted, "resourcesDeleted": resources_deleted, "r
     capabilities: { liveUpdate: true, liveTransport: "websocket", httpSync: true, selectiveDelete: true, readback: true, source: "Designer Python API + Live Update WebSocket", apiOrigin: API_ORIGIN, liveUrl: LIVE_URL, director: API_ORIGIN },
     sessionStatus,
     activeTransportStatus,
-    saveAllResources,
     syncEnvironment: environment => execute(environmentScript(environment), { action: "sync-environment", type: "stage", path: "state.stage" }),
     inspectScene: () => execute(inspectScript(), { action: "inspect-scene", type: "stage", path: "state.stage" }),
     createObject: payload => execute(createScript(payload), { action: "create", type: payload.type, pluginId: payload.pluginId, path: resourcePath(payload) }),

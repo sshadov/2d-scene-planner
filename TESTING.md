@@ -103,11 +103,11 @@ Use disposable resources only.
 
 ## Manual checks for morning
 
-- [ ] Planner-created and imported objects x Stage-only and Device List delete for LED Screen, DMX Screen, Surface, Projector, Camera, and DMX Light.
-- [ ] FixtureGroup/DMX Light DirectProjection: sole target is removable; shared and unrelated targets remain.
-- [ ] Resolution property/type round-trip for LED Screen, DMX Screen, and Surface; projector resolution control remains hidden.
+- [ ] Planner-created and imported objects x Stage-only and Device List delete for LED Screen, DMX Screen, Surface, Projector, and Camera. DMX Light must offer Stage-only deletion and no Device List checkbox.
+- [ ] Any Planner auxiliary DirectProjection cleanup removes only an exact sole target; shared and unrelated dependencies remain.
+- [ ] Resolution property/type round-trip for LED Screen, DMX Screen, Surface, and Projector.
 - [ ] LIVE initial socket failure -> reconnect -> object and Stage subscriptions.
-- [ ] Startup transport gate and best-effort `saveAll` before authoritative import.
+- [ ] Startup transport gate uses only a read-only status request, never changes playback, never calls `saveAll`, and imports before LIVE.
 - [ ] Incomplete inspection during startup and LIVE leaves the last complete Planner scene untouched.
 - [ ] Create -> immediate Delete resolves one exact UID/path and leaves no orphan.
 
@@ -138,7 +138,7 @@ Run one kind at a time with `--kind dmxLight`, `--kind camera`, or `--kind proje
 3. Change Surface width/height and confirm Auto Throw Ratio recalculates from Designer Look Distance and projected width. Verify `Designer`, `Rounded`, and fixed Rotation Z modes; no path may write `configLookDistance` or Rotation X/Y.
 4. Restart the plugin window and confirm the Projector still shows the same bound Surface by Designer UID/path.
 
-The window title and all three static asset URLs must show product version `0.21.0`; persisted browser/JSON state remains schema version `11`.
+The window title and all three static asset URLs must show product version `0.23.0`; persisted browser/JSON state remains schema version `11`.
 
 ## Release Evidence
 
