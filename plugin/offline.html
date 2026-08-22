@@ -6,21 +6,21 @@
     <meta name="disguise-plugin-window-size" content="900,900" />
     <meta name="disguise-plugin-window-min-size" content="900,620" />
     <meta name="disguise-plugin-window-resizable" content="true" />
-    <title>2D Scene Planner v0.24.0 for Disguise Designer</title>
+    <title>2D Scene Planner v0.24.0 Offline</title>
     <link rel="stylesheet" href="./styles.css?v=0.24.0" />
   </head>
-  <body>
+  <body class="offline-mode">
     <main class="app-shell">
       <section class="workspace" aria-label="Scene editor">
         <aside class="object-rail designer-panel" id="object-rail">
           <section class="scene-config" aria-label="Scene dimensions">
-            <div class="panel-heading"><h1>Scene</h1><div class="panel-heading-meta"><button class="icon-button info-button" id="info-button" type="button" aria-label="Info" aria-expanded="false" title="Info">i</button><div class="info-popover" id="info-popover" role="dialog" aria-label="Planner information" hidden><strong id="info-product-name">2D Scene Planner</strong><span class="info-product-subtitle">for Disguise Designer</span><span id="info-version"></span><span>Total objects: <b id="info-object-total">0</b></span><span id="info-object-types"></span><span>LIVE: <b id="info-live-state">disconnected</b></span><div class="info-controls"><span>Drag — move</span><span>Rotation handle — rotate</span><span>Wheel/arrow over numeric field — change value</span><span>Context menu — additional actions</span></div><a class="info-contact" href="https://t.me/shadov" target="_blank" rel="noreferrer">t.me/shadov</a></div></div></div>
+            <div class="panel-heading"><h1>Scene</h1><div class="panel-heading-meta"><button class="icon-button info-button" id="info-button" type="button" aria-label="Info" aria-expanded="false" title="Info">i</button><div class="info-popover" id="info-popover" role="dialog" aria-label="Planner information" hidden><strong id="info-product-name">2D Scene Planner</strong><span class="info-product-subtitle">Offline</span><span id="info-version"></span><span>Total objects: <b id="info-object-total">0</b></span><span id="info-object-types"></span><div class="info-controls"><span>Drag — move</span><span>Rotation handle — rotate</span><span>Wheel/arrow over numeric field — change value</span><span>Context menu — additional actions</span></div><a class="info-contact" href="https://t.me/shadov" target="_blank" rel="noreferrer">t.me/shadov</a></div></div></div>
             <div class="scene-dimensions">
               <label>Width <span class="input-shell"><input id="scene-width" type="text" inputmode="decimal" value="20" /><i>m</i></span></label>
               <label>Depth <span class="input-shell"><input id="scene-depth" type="text" inputmode="decimal" value="12" /><i>m</i></span></label>
             </div>
             <div class="panel-actions">
-              <span class="live-status" id="adapter-status">LIVE off</span>
+              <span class="live-status" id="adapter-status">Offline</span>
               <button class="text-button" id="json-button" type="button">Copy JSON</button>
             </div>
           </section>
@@ -47,14 +47,6 @@
         </section>
       </section>
     </main>
-
-    <section class="startup-warning" id="startup-warning" role="dialog" aria-modal="true" aria-labelledby="startup-warning-title" hidden>
-      <div class="startup-warning-dialog">
-        <h2 id="startup-warning-title">Transport safety check</h2>
-        <p id="startup-warning-message">Designer transport is running or could not be verified. Importing and LIVE updates may change the active session.</p>
-        <div class="startup-warning-actions"><button class="button danger" id="startup-accept" type="button">I accept responsibility</button><button class="button secondary" id="startup-close" type="button">Close</button></div>
-      </div>
-    </section>
 
     <menu class="canvas-context-menu" id="canvas-context-menu" hidden>
       <div class="empty-context-actions" id="empty-context-actions" hidden>
@@ -88,14 +80,12 @@
         <div class="menu-separator"></div>
          <button class="danger-menu-item" type="button" data-action="delete">Delete</button>
          <div class="context-delete-confirm" id="context-delete-confirm" hidden>
-           <span id="context-delete-imported" class="context-delete-imported" hidden>Imported from Designer</span>
            <span id="context-delete-message">Delete object?</span>
-           <label class="context-delete-option"><input id="confirm-delete-device-list" type="checkbox" /> Delete from Device list</label>
            <button type="button" id="context-delete-yes">Yes</button><button type="button" id="context-delete-no">No</button>
          </div>
       </div>
     </menu>
-    <script src="./designer-adapter.js?v=0.24.0"></script>
+    <script>window.SCENE_PLANNER_MODE = "offline";</script>
     <script src="./app.js?v=0.24.0"></script>
   </body>
 </html>

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.0 - 2026-08-22
+
+- Added an explicit Offline distribution using the shared Planner runtime.
+- Added isolated local storage and local-only projector calculations for Offline mode.
+- Added separate plugin and Offline release packaging.
+
 ## 0.23.0 - 2026-08-22
 
 - Debounced wheel and arrow-key edits into one final Python commit after 500 ms while keeping immediate local and LIVE feedback.

@@ -1,12 +1,13 @@
 {
   "name": "disguise-2d-scene-planner",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "private": true,
   "description": "Third-party 2D scene planning plugin for Disguise Designer",
   "scripts": {
     "check": "node --check plugin/app.js && node --check plugin/designer-adapter.js",
-    "test": "node tests/scene-planner.test.cjs && node tests/projector-contract.test.cjs && node tests/live-state-machine.test.cjs && node tests/delete-semantics.test.cjs && node tests/lifecycle-release.test.cjs",
+    "test": "node tests/scene-planner.test.cjs && node tests/offline-entry.test.cjs && node tests/projector-contract.test.cjs && node tests/live-state-machine.test.cjs && node tests/delete-semantics.test.cjs && node tests/lifecycle-release.test.cjs && pwsh -NoProfile -File tests/package-release.test.ps1",
     "deploy": "pwsh -NoProfile -File scripts/deploy-plugin.ps1 -ProjectPath D:\\Disguise\\Projects\\start",
+    "package": "pwsh -NoProfile -File scripts/package-release.ps1 -OutputDirectory dist",
     "release-check": "npm run check && npm test && git diff --check"
   }
 }

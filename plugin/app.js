@@ -1,6 +1,9 @@
 (() => {
   const VERSION = 11;
-  const STORAGE_KEY = "disguise-scene-generator-state-v11";
+  const OFFLINE_MODE = globalThis.SCENE_PLANNER_MODE === "offline";
+  const PLUGIN_STORAGE_KEY = "disguise-scene-generator-state-v11";
+  const OFFLINE_STORAGE_KEY = "2d-scene-planner-offline-state-v11";
+  const STORAGE_KEY = OFFLINE_MODE ? OFFLINE_STORAGE_KEY : PLUGIN_STORAGE_KEY;
   const ZOOM_MIN = .1;
   const ZOOM_MAX = 3;
   const STANDALONE_PREVIEW = ["127.0.0.1", "localhost"].includes(location.hostname) && String(location.port) === "4173";
@@ -65,6 +68,7 @@
   const diagnosticSeen = new Set();
 
   const clone = value => JSON.parse(JSON.stringify(value));
+  function isOfflineMode() { return OFFLINE_MODE; }
   const vector = value => ({ x: finite(value?.x, 0), y: finite(value?.y, 0), z: finite(value?.z, 0) });
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const normalizeYaw = value => Number(((((finite(value) + 180) % 360) + 360) % 360 - 180).toFixed(3));
@@ -89,7 +93,7 @@
   function formatValue(value, step = .1) { let numeric = finite(value); if (Math.abs(numeric) < .0000005) numeric = 0; if (Number.isInteger(numeric)) return String(numeric); const digits = step >= 1 ? 0 : step >= .1 ? 1 : step >= .01 ? 2 : 3; return numeric.toFixed(digits).replace(".", ","); }
   function inputDisplayValue(value, step = .1) { return typeof value === "string" ? value : formatValue(value, step); }
   function modelSnapshot() {
-    return { version: VERSION, stage: state.stage, objects: state.objects, sync: state.sync, liveEnabled: state.liveEnabled, lastHeights: state.lastHeights };
+    return { version: VERSION, stage: state.stage, objects: state.objects, sync: OFFLINE_MODE ? { objects: {}, lastSyncAt: null } : state.sync, liveEnabled: OFFLINE_MODE ? false : state.liveEnabled, lastHeights: state.lastHeights };
   }
   function persist(schedule = true) { localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...modelSnapshot(), nextId })); if (schedule) scheduleLiveSync(); }
 
@@ -148,14 +152,14 @@
   }
   function loadPersisted() {
     try {
-      if (getAdapter() && !STANDALONE_PREVIEW) return false;
+      if (!OFFLINE_MODE && getAdapter() && !STANDALONE_PREVIEW) return false;
       // Legacy v2-v10 saves may contain `room`; v11 persists only Stage.
-      const keys = [STORAGE_KEY, "disguise-scene-generator-state-v10", "disguise-scene-generator-state-v9", "disguise-scene-generator-state-v8", "disguise-scene-generator-state-v7", "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
+      const keys = OFFLINE_MODE ? [OFFLINE_STORAGE_KEY] : [PLUGIN_STORAGE_KEY, "disguise-scene-generator-state-v10", "disguise-scene-generator-state-v9", "disguise-scene-generator-state-v8", "disguise-scene-generator-state-v7", "disguise-scene-generator-state-v6", "disguise-scene-generator-state-v5", "disguise-scene-generator-state-v4", "disguise-scene-generator-state-v3", "disguise-scene-generator-state-v2"];
       const saved = JSON.parse(keys.map(key => localStorage.getItem(key)).find(Boolean) || "null"); if (!saved) return false;
       const sourceVersion = Number(saved.version) || (saved.objects?.some(object => object.position) ? 3 : 2);
       state.stage = normalizedStage(saved.stage, saved.room || {}, sourceVersion);
       state.objects = Array.isArray(saved.objects) ? saved.objects.map((object, index) => normalizeObject(object, index, sourceVersion)) : [];
-      state.sync = { objects: {}, lastSyncAt: null, ...(saved.sync || {}) }; delete state.sync.errors; delete state.sync.deleted; state.liveEnabled = Boolean(saved.liveEnabled);
+      state.sync = OFFLINE_MODE ? { objects: {}, lastSyncAt: null } : { objects: {}, lastSyncAt: null, ...(saved.sync || {}) }; delete state.sync.errors; delete state.sync.deleted; state.liveEnabled = OFFLINE_MODE ? false : Boolean(saved.liveEnabled);
       state.lastHeights = { ...(saved.lastHeights || {}) };
       nextId = Math.max(Number(saved.nextId) || 1, ...state.objects.map(object => (Number(object.id) || 0) + 1), 1);
       state.selectedId = state.objects[0]?.id ?? null; state.selectedIds = new Set(state.selectedId ? [state.selectedId] : []); persist(); return true;
@@ -507,7 +511,7 @@
   function makeProjectorAutoControl(object) { const label = element("label", "projector-auto-control"); const input = document.createElement("input"); input.type = "checkbox"; input.checked = object.optics?.autoThrowRatio !== false; input.setAttribute("aria-label", `${object.name}: Auto throw ratio`); input.addEventListener("change", () => { object.optics ||= {}; object.optics.autoThrowRatio = input.checked; if (input.checked) recalculateProjectorGeometry(object); persist(); render(); queueProjectorProjection(object, "throw-ratio-mode"); }); label.append(input, element("span", "", "Auto")); return label; }
   function makePropertySection(object, definition) { const section = element("section", "active-property-section"); section.append(element("h3", "active-property-title", definition.title)); const grid = element("div", "active-property-grid"); if (definition.targetSurface) grid.append(makeTargetSurfaceField(object)); else { if (definition.autoThrowRatio) grid.append(makeProjectorAutoControl(object)); definition.fields.forEach(field => grid.append(makeObjectField(object, field))); } section.append(grid); return section; }
   function objectSyncStatus(object) { const record = state.sync.objects?.[object.pluginId]; return record?.lastExported === canonical(objectPayload(object)) ? "synced" : "changed"; }
-  function plannerVersionLabel() { const match = String(document.title || "").match(/\bv([0-9]+\.[0-9]+\.[0-9]+)\b/i); return match?.[1] || "0.23.0"; }
+  function plannerVersionLabel() { const match = String(document.title || "").match(/\bv([0-9]+\.[0-9]+\.[0-9]+)\b/i); return match?.[1] || "0.24.0"; }
   function infoLiveState() { const live = getAdapter()?.getLiveState?.(); if (state.liveEnabled && (!live || live.socket === "open")) return "connected"; if (live?.wanted || live?.socket === "connecting" || live?.socket === "closed") return "reconnecting"; return "disconnected"; }
   function renderInfo() {
     const total = state.objects.length;
@@ -579,7 +583,7 @@
   function logPlannerAction(event, object, details = {}) {
     const record = object ? state.sync.objects?.[object.pluginId] : null;
     plannerLog("info", object?.type === "projector" ? "Projector" : "Planner", event, { objectName: object?.name || null, ...details });
-    globalThis.disguiseSceneAdapter?.recordOperation?.(event, {
+    if (!OFFLINE_MODE) globalThis.disguiseSceneAdapter?.recordOperation?.(event, {
       source: "planner",
       pluginId: object?.pluginId || null,
       type: object?.type || null,
@@ -677,7 +681,7 @@
     ["x", "y", "z"].forEach(axis => compare(`position.${axis}`, expected.transform.position[axis], actual.transform?.position?.[axis])); if (expected.type !== "projector") ["x", "y", "z"].forEach(axis => compareAngle(`rotation.${axis}`, expected.transform.rotation[axis], actual.transform?.rotation?.[axis])); if (expected.lookAt) ["x", "y", "z"].forEach(axis => compare(`lookAt.${axis}`, expected.lookAt[axis], actual.lookAt?.[axis])); if (expected.geometry) { compare("geometry.width", expected.geometry.width, actual.geometry?.width); compare("geometry.height", expected.geometry.height, actual.geometry?.height); } if (expected.media && actual.media && ["screen", "dmxScreen", "surface", "projector"].includes(expected.type)) { compare("media.resolutionX", expected.media.resolutionX, actual.media?.resolutionX); compare("media.resolutionY", expected.media.resolutionY, actual.media?.resolutionY); } if (expected.optics?.throwRatio !== undefined && actual.optics?.throwRatio !== undefined) compare("optics.throwRatio", expected.optics.throwRatio, actual.optics.throwRatio);
     if (mismatches.length) throw new Error(`Проверка координат Designer не пройдена: ${mismatches.join("; ")}`); return true;
   }
-  function getAdapter() { const adapter = globalThis.disguiseSceneAdapter; return adapter && ["inspectScene", "createObject", "updateObject"].every(method => typeof adapter[method] === "function") ? adapter : null; }
+  function getAdapter() { if (OFFLINE_MODE) return null; const adapter = globalThis.disguiseSceneAdapter; return adapter && ["inspectScene", "createObject", "updateObject"].every(method => typeof adapter[method] === "function") ? adapter : null; }
   function environmentKey() { return canonical({ stage: state.stage }); }
   async function syncEnvironmentIfChanged(adapter) { if (typeof adapter?.syncEnvironment !== "function") return false; const key = environmentKey(); if (state.sync.environment === key) return false; const adapterStage = { ...state.stage, enabled: true, height: 0 }; await adapter.syncEnvironment({ stage: adapterStage }); state.sync.environment = key; persist(false); return true; }
   function typeOfSceneObject(item) { return item.type || ({ ledScreens: "screen", dmxScreens: "dmxScreen", surfaces: "surface", dmxLights: "dmxLight", cameras: "camera", projectors: "projector" }[item.collection]); }
@@ -796,6 +800,16 @@
     const position = clone(current.transform.position); const lookAt = clone(effectiveLookAt(current));
     if (current.optics?.autoThrowRatio !== false) recalculateProjectorGeometry(current);
     const ratio = projectorThrowRatio(current);
+    if (OFFLINE_MODE) {
+      pending.lastSentAt = Date.now(); pending.cadenceTimer = null;
+      if (final) {
+        pending.finalTimer = null;
+        const roll = projectorRotationZValue(current);
+        if (roll !== null) current.projectorRoll = roll;
+        persist(false); refreshActiveValues(); drawScene();
+      }
+      return true;
+    }
     const adapter = getAdapter();
     const sent = adapter?.liveSetProjectorProjection?.(pluginId, position, lookAt, ratio);
     pending.lastSentAt = Date.now(); pending.cadenceTimer = null;
@@ -823,6 +837,13 @@
   function scheduleProjectorGeometry(object, source = "planner") { return queueProjectorProjection(object, source); }
   function commitProjectorBinding(object) {
     if (object?.type !== "projector") return Promise.resolve(null);
+    if (OFFLINE_MODE) {
+      recalculateProjectorGeometry(object);
+      const roll = projectorRotationZValue(object);
+      if (roll !== null) object.projectorRoll = roll;
+      persist(false); refreshActiveValues(); drawScene();
+      return Promise.resolve({ offline: true });
+    }
     return queueConfigurationCommit(object, async isLatest => {
       const surface = targetSurface(object);
       if (surface && !state.sync.objects?.[surface.pluginId]?.designerId) {
@@ -1290,6 +1311,12 @@
     startupCompleted = true; startupFinishing = false; appReady = true; if (state.liveEnabled) scheduleLiveSync(0); renderStatus();
   }
   async function runStartupGate() {
+    if (OFFLINE_MODE) {
+      state.liveEnabled = false; appReady = true;
+      adapterStatus.textContent = "Offline";
+      persist(false); renderStatus();
+      return { offline: true };
+    }
     const adapter = getAdapter();
     attachDiagnostics(adapter);
     if (STANDALONE_PREVIEW) { state.liveEnabled = false; appReady = true; adapterStatus.textContent = "LIVE disabled in standalone preview · use the Designer plugin window"; persist(false); renderStatus(); return { standalone: true }; }
@@ -1312,5 +1339,5 @@
     if (type === "camera" && paths.filter(path => path.startsWith("objects/camera/")).length < 2) throw new Error("Designer ownership metadata is incomplete for camera");
     return paths;
   }
-  globalThis.scenePlannerDebug = { state, makeDiff, syncToDesigner, createDesignerObject, commitProjectorBinding, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, projectorProjectedWidth, projectorProjectedPixelSizeMm, projectorAutoThrowRatio, projectorRotationZValue, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, alignObjectToStage, rotationHandleGeometry, hitTestRotationHandle, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, cancelProjectorWork, queueProjectorProjection, flushProjectorProjection, scheduleProjectorGeometry, handleProjectorLookDistance, handleProjectorFieldOfView, handleProjectorThrowRatio, finalizeProjectorRotation, applyLiveValue, projectorPending, plannerLog, diagnosticsLogs, plannerLogEntries, attachDiagnostics, copyDiagnostics, runStartupGate, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
+  globalThis.scenePlannerDebug = { state, isOfflineMode, makeDiff, syncToDesigner, createDesignerObject, commitProjectorBinding, commitFieldChange, runLiveSync, commitObjectName, deleteObject, renamedOwnedPaths, validatedOwnedPaths, objectPayload, validateReadback, canonical, changedValue, normalizeObject, stageBounds, stageFloorY, toScreen, toWorld, snapCoordinate, typeConfig, finite, formatValue, objectHeightValue, setObjectHeight, newObject, fieldSections, nextDimensionField, initialObjectFocusPath, effectiveLookAt, projectorYaw, setProjectorYaw, setProjectorLookDistance, projectorGeometry, projectorProjectedWidth, projectorProjectedPixelSizeMm, projectorAutoThrowRatio, projectorRotationZValue, recalculateProjectorGeometry, setPath, setObjectPlanPosition, addObjectAt, selectObject, duplicateObject, copySelectedObjects, pasteCopiedObjects, rotateObject90, alignObjectToStage, rotationHandleGeometry, hitTestRotationHandle, normalizeYaw, hitTest, syncScreenMedia, setScreenInputMode, importDesignerScene, importedObject, updateProjectorTargetPlacement, commitProjectorTargetPlacement, cancelProjectorTargetPlacement, cancelProjectorWork, queueProjectorProjection, flushProjectorProjection, scheduleProjectorGeometry, handleProjectorLookDistance, handleProjectorFieldOfView, handleProjectorThrowRatio, finalizeProjectorRotation, applyLiveValue, projectorPending, plannerLog, diagnosticsLogs, plannerLogEntries, attachDiagnostics, copyDiagnostics, runStartupGate, projectorPlacement: () => projectorTargetPlacement, pendingFocusPath: () => pendingFocusPath };
 })();
