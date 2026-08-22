@@ -211,6 +211,8 @@ input:focus, select:focus { border-color: var(--cyan) !important; box-shadow: 0 
 .info-popover > span { color: #9eabb8; }
 .info-popover b { color: #dfe8ef; font-weight: 650; }
 .info-controls { margin-top: 3px; padding-top: 7px; border-top: 1px solid #344250; display: grid; gap: 4px; color: #aebbc7; }
+.info-contact { margin-top: 2px; color: var(--cyan); font-size: 9px; text-decoration: none; }
+.info-contact:hover, .info-contact:focus-visible { color: #67e8e4; text-decoration: underline; }
 .panel-heading span { min-width: 22px; padding: 3px 6px; border: 1px solid #3a4652; border-radius: 3px; color: var(--muted); font-size: 9px; text-align: center; }
 .scene-dimensions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .scene-dimensions label { display: grid; gap: 4px; color: var(--muted); font-size: 9px; }
