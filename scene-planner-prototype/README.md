@@ -1,6 +1,6 @@
-# Disguise 2d scene planner
+# 2D Scene Planner
 
-Disguise 2d scene planner is an embedded Disguise Designer plugin for planning supported scene equipment in a top X/Z view and keeping mapped Designer resources synchronized.
+Third-party 2D scene planning plugin for Disguise Designer. It plans supported scene equipment in a top X/Z view and keeps mapped Designer resources synchronized.
 
 The fixed left panel contains Scene width/depth, grouped objects, and the selected object's properties. The remaining window is the 2D plan. Magnet and zoom overlay the top-right. Objects are added from the empty-canvas context menu. The supported types are LED Screen, DMX Screen, Projection Surface, DMX Light, Projector, and Camera.
 
