@@ -1118,9 +1118,6 @@
     return object;
   }
   async function importDesignerScene(adapter, options = {}) {
-    const previousSelectedPluginId = state.objects.find(object => object.id === state.selectedId)?.pluginId || null;
-    const previousSelectedPluginIds = new Set(state.objects.filter(object => state.selectedIds.has(object.id)).map(object => object.pluginId));
-    const activeFieldPath = document.activeElement?.dataset?.field || null;
     const inspection = await adapter.inspectScene();
     if (inspection?.complete === false) {
       const messages = (inspection.errors || []).map(error => error?.message || String(error));
@@ -1128,8 +1125,11 @@
       persist(false); renderStatus();
       return inspection;
     }
+    const previousSelectedPluginId = state.objects.find(object => object.id === state.selectedId)?.pluginId || null;
+    const previousSelectedPluginIds = new Set(state.objects.filter(object => state.selectedIds.has(object.id)).map(object => object.pluginId));
+    const activeFieldPath = document.activeElement?.dataset?.field || null;
     adapter.configureLiveScene?.(inspection.stageId);
-    if (inspection.stageFootprint) { state.stage.width = Math.max(2, finite(inspection.stageFootprint.width, state.stage.width)); state.stage.depth = Math.max(2, finite(inspection.stageFootprint.depth, state.stage.depth)); }
+    if (!options.preserveLocal && inspection.stageFootprint) { state.stage.width = Math.max(2, finite(inspection.stageFootprint.width, state.stage.width)); state.stage.depth = Math.max(2, finite(inspection.stageFootprint.depth, state.stage.depth)); }
     const imported = (inspection.objects || []).map(importedObject);
     const importedSurfaces = imported.filter(object => object.type === "surface");
     imported.filter(object => object.type === "projector").forEach(projector => { const screen = projector.designer?.screens?.[0]; if (!screen) { delete projector.targetSurfacePluginId; return; } const surface = importedSurfaces.find(candidate => String(candidate.designer?.designerId || "") === String(screen.designerId || screen.id || screen.uid || "") || String(candidate.designer?.path || "") === String(screen.path || "")); if (surface) projector.targetSurfacePluginId = surface.pluginId; else delete projector.targetSurfacePluginId; });
